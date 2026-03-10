@@ -3859,23 +3859,31 @@ async function openMeetScreen() {
 
     // 6. Subscribe to Realtime on contacts table for this user
     // (so if the OTHER person scans first, we still get notified)
+    // Listen for INSERT *and* UPDATE so re-meeting an existing contact still triggers
+    const meetRealtimeHandler = (payload) => {
+        if (meetHandled) return;
+        meetHandled = true;
+        const contactId = payload.new.contact_id;
+        // Look up the contact's name
+        db.from('profiles').select('display_name').eq('id', contactId).single()
+            .then(({ data: profile }) => {
+                const name = profile?.display_name || 'someone';
+                meetSuccess(name);
+            });
+    };
     meetChannel = db.channel('meet-contacts')
         .on('postgres_changes', {
             event: 'INSERT',
             schema: 'public',
             table: 'contacts',
             filter: 'user_id=eq.' + currentUser.id
-        }, (payload) => {
-            if (meetHandled) return;
-            meetHandled = true;
-            const contactId = payload.new.contact_id;
-            // Look up the contact's name
-            db.from('profiles').select('display_name').eq('id', contactId).single()
-                .then(({ data: profile }) => {
-                    const name = profile?.display_name || 'someone';
-                    meetSuccess(name);
-                });
-        })
+        }, meetRealtimeHandler)
+        .on('postgres_changes', {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'contacts',
+            filter: 'user_id=eq.' + currentUser.id
+        }, meetRealtimeHandler)
         .subscribe();
 
     // 7. Begin scanning loop if camera is active
@@ -4029,7 +4037,7 @@ async function loadAndRenderContactList() {
             .from('contacts')
             .select('*')
             .eq('user_id', currentUser.id)
-            .order('created_at', { ascending: false });
+            .order('met_at', { ascending: false });
 
         if (error) throw error;
 
