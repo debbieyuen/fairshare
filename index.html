@@ -982,6 +982,7 @@
             flex-shrink: 0;
         }
         .contact-row-name { font-weight: 600; font-size: 1rem; flex: 1; }
+        .contact-row-lastseen { font-size: 0.78rem; color: var(--dark-gray); white-space: nowrap; }
         .contact-row-chevron { font-size: 0.9rem; color: var(--dark-gray); transition: transform 0.2s; }
         .contact-row.expanded .contact-row-chevron { transform: rotate(90deg); }
         .contact-detail {
@@ -1015,7 +1016,7 @@
 
 <!-- ===== HEADER ===== -->
 <div class="header">
-    <h1><a href="index.html">FairShare</a></h1>
+    <h1><a href="index.html">FS</a> <span id="buildVersion" style="font-size:0.55rem;font-weight:400;opacity:0.55;letter-spacing:0.02em;">__BUILD_VERSION__</span></h1>
     <div class="header-right">
         <button type="button" class="header-icon-btn" onclick="openMeetScreen()" title="Exchange contacts (show QR)" aria-label="Exchange contacts">🤝</button>
         <button type="button" class="header-icon-btn" onclick="openContactListScreen()" title="Contacts" aria-label="Contacts">👥</button>
@@ -4084,6 +4085,21 @@ async function loadAndRenderContactList() {
     }
 }
 
+function formatLastSeen(isoStr) {
+    if (!isoStr) return '';
+    const d = new Date(isoStr);
+    const now = new Date();
+    const diffMs = now - d;
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'Just now';
+    if (diffMin < 60) return diffMin + 'm ago';
+    const diffHrs = Math.floor(diffMin / 60);
+    if (diffHrs < 24) return diffHrs + 'h ago';
+    const diffDays = Math.floor(diffHrs / 24);
+    if (diffDays < 30) return diffDays + 'd ago';
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
+}
+
 function renderContactRow(contact, profile, shared) {
     const name = profile.display_name || 'Unknown';
     const avatarUrl = profile.profile_image_url || null;
@@ -4091,6 +4107,7 @@ function renderContactRow(contact, profile, shared) {
     const email = (shared.shared_email != null && shared.shared_email !== '') ? shared.shared_email : '';
     const cid = esc(contact.contact_id);
     const selfieUrl = contact.selfie_url || null;
+    const lastSeen = formatLastSeen(contact.met_at);
     const avatarHtml = avatarUrl
         ? `<img class="contact-row-avatar" src="${esc(avatarUrl)}" alt="">`
         : '<div class="contact-row-avatar-placeholder">👤</div>';
@@ -4102,6 +4119,7 @@ function renderContactRow(contact, profile, shared) {
             <div class="contact-row-header">
                 ${avatarHtml}
                 <span class="contact-row-name">${esc(name)}</span>
+                ${lastSeen ? `<span class="contact-row-lastseen">${lastSeen}</span>` : ''}
                 <span class="contact-row-chevron">›</span>
             </div>
             <div class="contact-detail">

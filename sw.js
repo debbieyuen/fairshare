@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fairshare-v1';
+const CACHE_NAME = 'fairshare-__BUILD_HASH__';
 
 // App shell files to pre-cache on install
 const APP_SHELL = [
