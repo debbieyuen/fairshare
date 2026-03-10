@@ -885,6 +885,27 @@
             padding: 1rem;
         }
 
+        /* Full-screen flash overlay for successful handshake */
+        .handshake-flash {
+            position: fixed;
+            inset: 0;
+            z-index: 99999;
+            pointer-events: none;
+            opacity: 0;
+        }
+        .handshake-flash.active {
+            animation: handshakeFlash 0.6s ease-in-out;
+        }
+        @keyframes handshakeFlash {
+            0%   { opacity: 1; background: #3a7ca5; }
+            16%  { opacity: 1; background: #d0d0d0; }
+            33%  { opacity: 1; background: #3a7ca5; }
+            50%  { opacity: 1; background: #d0d0d0; }
+            66%  { opacity: 1; background: #3a7ca5; }
+            83%  { opacity: 1; background: #d0d0d0; }
+            100% { opacity: 0; background: #d0d0d0; }
+        }
+
         /* Contact list overlay */
         .contacts-overlay {
             position: fixed;
@@ -1116,6 +1137,9 @@
     </div>
 </div>
 
+<!-- Full-screen flash for successful handshake -->
+<div id="handshakeFlash" class="handshake-flash"></div>
+
 <!-- ===== MEET / QR CONTACT EXCHANGE OVERLAY ===== -->
 <div id="meetOverlay" class="meet-overlay hidden">
     <button class="meet-close" onclick="closeMeetScreen()" aria-label="Close">✕</button>
@@ -1225,10 +1249,19 @@ async function init() {
     }
 
     // Check for invite token in URL
+    // NOTE: We use localStorage (not sessionStorage) so the token survives
+    // the cross-tab redirect that happens when a new user confirms their
+    // email — the confirmation link opens in a new tab where sessionStorage
+    // would be empty, causing the sponsorship claim to silently fail.
     const urlParams = new URLSearchParams(window.location.search);
     const inviteToken = urlParams.get('invite');
     if (inviteToken) {
-        sessionStorage.setItem('fairshare_invite', inviteToken);
+        localStorage.setItem('fairshare_invite', JSON.stringify({
+            token: inviteToken,
+            savedAt: Date.now()
+        }));
+        // Clean the invite param from the URL immediately
+        window.history.replaceState({}, document.title, window.location.pathname);
         await showInviteBanner(inviteToken);
     }
 
@@ -1389,7 +1422,7 @@ async function showInviteBanner(token) {
             document.getElementById('inviteBannerText').innerHTML =
                 `<strong>Invitation issue:</strong> ${esc(msg)}`;
             document.getElementById('inviteBanner').classList.remove('hidden');
-            sessionStorage.removeItem('fairshare_invite');
+            localStorage.removeItem('fairshare_invite');
             return;
         }
 
@@ -1410,8 +1443,26 @@ async function showInviteBanner(token) {
 // Claim a pending invite after the user has signed in
 // Returns the group_id if successfully claimed, so the caller can navigate there
 async function handlePendingInvite() {
-    const token = sessionStorage.getItem('fairshare_invite');
-    if (!token) return null;
+    const stored = localStorage.getItem('fairshare_invite');
+    if (!stored) return null;
+
+    let token = null;
+    try {
+        const parsed = JSON.parse(stored);
+        // Discard tokens older than 7 days (matches server-side expiry)
+        const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+        if (parsed.token && (Date.now() - parsed.savedAt) < SEVEN_DAYS_MS) {
+            token = parsed.token;
+        }
+    } catch {
+        // Legacy format (plain string) — treat as valid token
+        token = stored;
+    }
+
+    if (!token) {
+        localStorage.removeItem('fairshare_invite');
+        return null;
+    }
 
     let claimedGroupId = null;
     try {
@@ -1431,7 +1482,7 @@ async function handlePendingInvite() {
     }
 
     // Always clear the stored token (used or failed)
-    sessionStorage.removeItem('fairshare_invite');
+    localStorage.removeItem('fairshare_invite');
 
     // Clean the URL
     if (window.location.search.includes('invite=')) {
@@ -3894,6 +3945,14 @@ function meetSuccess(contactName) {
     if (navigator.vibrate) {
         navigator.vibrate([200, 100, 200]);
     }
+
+    // Flash the whole screen blue/grey to make the connection unmistakable
+    const flash = document.getElementById('handshakeFlash');
+    flash.classList.remove('active');
+    // Force reflow so re-adding the class restarts the animation
+    void flash.offsetWidth;
+    flash.classList.add('active');
+    flash.addEventListener('animationend', () => flash.classList.remove('active'), { once: true });
 
     // Show success in the overlay
     document.getElementById('meetScanHint').textContent = '';
