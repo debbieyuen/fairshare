@@ -2715,6 +2715,7 @@ function showModal(type) {
 }
 
 function closeModal() {
+    if (heartDialogTimer) { clearTimeout(heartDialogTimer); heartDialogTimer = null; }
     if (contactSelfieStream) {
         stopContactSelfieStream();
         contactSelfieId = null;
@@ -4289,6 +4290,7 @@ async function sendAttestation(contactId, type) {
     }
 }
 
+let heartDialogTimer = null;
 async function openHeartDialog() {
     if (!currentUser) return;
     try {
@@ -4300,10 +4302,11 @@ async function openHeartDialog() {
         showModal('heartDialog');
         document.getElementById('modalBody').innerHTML = `
             <h3 style="margin-bottom:1rem;">❤️ Love &amp; Trust</h3>
-            <p style="font-size:1.05rem;line-height:1.6;">${esc(msg)}</p>
-            <div style="margin-top:1.5rem;text-align:right;">
-                <button class="btn btn-primary btn-small" onclick="closeModal()">OK</button>
-            </div>`;
+            <p style="font-size:1.05rem;line-height:1.6;">${esc(msg)}</p>`;
+        heartDialogTimer = setTimeout(() => {
+            const overlay = document.getElementById('modalOverlay');
+            if (overlay && !overlay.classList.contains('hidden')) closeModal();
+        }, 5000);
     } catch (e) {
         console.error('Heart dialog error:', e);
         showToast('Could not load attestations', 'error');
