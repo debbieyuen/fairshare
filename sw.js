@@ -34,6 +34,35 @@ self.addEventListener('activate', event => {
   );
 });
 
+// Handle incoming push notifications
+self.addEventListener('push', event => {
+  const data = event.data ? event.data.json() : {};
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'FairShare', {
+      body: data.body || '',
+      icon: './icon-192.png',
+      badge: './icon-192.png',
+      data: { url: data.url || './' },
+    })
+  );
+});
+
+// Open or focus the app when the user taps a notification
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const targetUrl = new URL(event.notification.data?.url || './', self.location.origin);
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
+      for (const client of windowClients) {
+        if (new URL(client.url).pathname.startsWith(targetUrl.pathname) && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      return clients.openWindow(targetUrl.href);
+    })
+  );
+});
+
 // Network-first strategy for all requests
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
