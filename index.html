@@ -1267,6 +1267,7 @@ async function init() {
     // would be empty, causing the sponsorship claim to silently fail.
     const urlParams = new URLSearchParams(window.location.search);
     const inviteToken = urlParams.get('invite');
+    const meetToken = urlParams.get('meet');
     if (inviteToken) {
         localStorage.setItem('fairshare_invite', JSON.stringify({
             token: inviteToken,
@@ -1275,6 +1276,13 @@ async function init() {
         // Clean the invite param from the URL immediately
         window.history.replaceState({}, document.title, window.location.pathname);
         await showInviteBanner(inviteToken);
+    } else if (meetToken) {
+        localStorage.setItem('fairshare_meet', JSON.stringify({
+            token: meetToken,
+            savedAt: Date.now()
+        }));
+        window.history.replaceState({}, document.title, window.location.pathname);
+        await showMeetBanner(meetToken);
     }
 
     try {
@@ -1283,6 +1291,7 @@ async function init() {
             currentUser = session.user;
             await loadProfile();
             const claimedGroup = await handlePendingInvite();
+            await handlePendingMeet();
             showApp(claimedGroup);
         } else {
             showAuth();
@@ -1302,6 +1311,7 @@ async function init() {
                     try {
                         await loadProfile();
                         const claimedGroup = await handlePendingInvite();
+                        await handlePendingMeet();
                         showApp(claimedGroup);
                     } catch (e) {
                         console.error('[auth] post-SIGNED_IN error:', e);
@@ -1505,6 +1515,72 @@ async function handlePendingInvite() {
     // Hide the invite banner
     document.getElementById('inviteBanner').classList.add('hidden');
     return claimedGroupId;
+}
+
+// Show meet banner on the auth screen when arriving via ?meet=TOKEN
+async function showMeetBanner(token) {
+    try {
+        const { data, error } = await db.rpc('get_meet_by_token', { p_token: token });
+        if (error || data?.error) {
+            const msg = data?.error || error?.message || 'Invalid meet link';
+            document.getElementById('inviteBannerText').innerHTML =
+                `<strong>Meet link issue:</strong> ${esc(msg)}`;
+            document.getElementById('inviteBanner').classList.remove('hidden');
+            localStorage.removeItem('fairshare_meet');
+            return;
+        }
+
+        document.getElementById('inviteBannerText').innerHTML =
+            `<strong>${esc(data.user_name)}</strong> wants to connect with you on FairShare!` +
+            `<br><br>Sign up to add them as a contact.`;
+        document.getElementById('inviteBanner').classList.remove('hidden');
+
+        switchAuthTab('signup');
+    } catch (e) {
+        console.error('Failed to load meet details:', e);
+    }
+}
+
+// Claim a pending meet token after the user has signed in
+async function handlePendingMeet() {
+    const stored = localStorage.getItem('fairshare_meet');
+    if (!stored) return;
+
+    let token = null;
+    try {
+        const parsed = JSON.parse(stored);
+        const ONE_HOUR_MS = 60 * 60 * 1000;
+        if (parsed.token && (Date.now() - parsed.savedAt) < ONE_HOUR_MS) {
+            token = parsed.token;
+        }
+    } catch {
+        token = stored;
+    }
+
+    if (!token) {
+        localStorage.removeItem('fairshare_meet');
+        return;
+    }
+
+    try {
+        const { data, error } = await db.rpc('complete_meet', { p_token: token });
+        if (error) {
+            showToast('Meet: ' + error.message, 'error');
+        } else {
+            const contactName = data?.contact_name || 'New contact';
+            showToast(`Connected with ${contactName}!`, 'success');
+        }
+    } catch (e) {
+        console.error('Failed to complete meet:', e);
+    }
+
+    localStorage.removeItem('fairshare_meet');
+
+    if (window.location.search.includes('meet=')) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    document.getElementById('inviteBanner').classList.add('hidden');
 }
 
 // ============================================================
@@ -3899,9 +3975,11 @@ async function openMeetScreen() {
 
     const token = data.token;
 
-    // 5. Generate QR code encoding the token
+    // 5. Generate QR code encoding a navigable URL so non-members
+    //    scanning with their phone camera land on the signup page.
     const qr = qrcode(0, 'M');
-    qr.addData('fairshare-meet:' + token);
+    const meetUrl = `${window.location.origin}${window.location.pathname}?meet=${token}`;
+    qr.addData(meetUrl);
     qr.make();
     const qrBox = document.getElementById('meetQrBox');
     if (qrBox) qrBox.innerHTML = qr.createSvgTag({ cellSize: 5, margin: 4 });
@@ -3962,13 +4040,22 @@ function meetScanLoop() {
         inversionAttempts: 'dontInvert'
     });
 
-    if (code && code.data && code.data.startsWith('fairshare-meet:')) {
-        const scannedToken = code.data.replace('fairshare-meet:', '');
-        if (!meetHandled) {
+    if (code && code.data) {
+        let scannedToken = null;
+        // New format: full URL with ?meet= parameter
+        try {
+            const scannedUrl = new URL(code.data);
+            scannedToken = scannedUrl.searchParams.get('meet');
+        } catch {}
+        // Legacy format: fairshare-meet:TOKEN
+        if (!scannedToken && code.data.startsWith('fairshare-meet:')) {
+            scannedToken = code.data.replace('fairshare-meet:', '');
+        }
+        if (scannedToken && !meetHandled) {
             meetHandled = true;
             handleMeetScan(scannedToken);
+            return;
         }
-        return;
     }
 
     // Continue scanning
