@@ -2780,7 +2780,7 @@ async function createGroup(e) {
     const currencySymbol = document.getElementById('newCurrencySymbol').value.trim();
 
     // Generate default constitution
-    const defaultConstitution = 'Group Name: ' + name + ' $GROUP_NAME\nCurrency Name: ' + currencyName + ' $CURRENCY_NAME\nCurrency Symbol: ' + currencySymbol + ' $CURRENCY_SYMBOL\nApprove New Member: 100% members $NEW_MEMBER_PERCENTAGE\nApprove Amendment: 100% members $AMENDMENT_PERCENTAGE\nChange Currency Rates: 66% members $CHANGE_CURRENCY_RATES_PERCENTAGE';
+    const defaultConstitution = 'We, the people, hereby give this Group Name: ' + name + ' $GROUP_NAME\n\nIn economic matters, we choose the Currency Name: ' + currencyName + ' $CURRENCY_NAME, and the Currency Symbol: ' + currencySymbol + ' $CURRENCY_SYMBOL, and to Change Currency Rates: 66% $CHANGE_CURRENCY_RATES_PERCENTAGE of member\'s vote is required.\n\nTo Approve New Member: 100% $NEW_MEMBER_PERCENTAGE of member\'s vote is required.\n\nAny member may propose amendment to this constitution. To Approve Amendment: 100% $AMENDMENT_PERCENTAGE of member\'s vote is required.';
 
     // Create the group
     const { data: group, error: groupError } = await db
@@ -3105,14 +3105,14 @@ function renderConstitution(text) {
 // Parse $AMENDMENT_PERCENTAGE from constitution text (returns 0-1)
 function parseAmendmentThreshold(constitutionText) {
     if (!constitutionText) return 1.0; // default 100%
-    const match = constitutionText.match(/:\s*(\d+)%\s*members?\s*\$AMENDMENT_PERCENTAGE/i);
+    const match = constitutionText.match(/(\d+)%\s*(?:members?\s*)?\$AMENDMENT_PERCENTAGE/i);
     if (match) return parseInt(match[1]) / 100;
     return 1.0;
 }
 
 function parseNewMemberThreshold(constitutionText) {
     if (!constitutionText) return 1.0; // default 100%
-    const match = constitutionText.match(/:\s*(\d+)%\s*members?\s*\$NEW_MEMBER_PERCENTAGE/i);
+    const match = constitutionText.match(/(\d+)%\s*(?:members?\s*)?\$NEW_MEMBER_PERCENTAGE/i);
     if (match) return parseInt(match[1]) / 100;
     return 1.0;
 }
