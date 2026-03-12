@@ -436,7 +436,6 @@
         /* Members list */
         .member-item {
             display: flex;
-            justify-content: space-between;
             align-items: center;
             padding: 0.6rem 0;
             border-bottom: 1px solid var(--light-gray);
@@ -472,7 +471,7 @@
         }
         .member-status.active { background: #d4edda; color: #155724; }
         .member-status.pending { background: #fff3cd; color: #856404; }
-        .member-sponsor { font-size: 0.8rem; color: var(--dark-gray); font-style: italic; }
+        .member-sponsor { font-size: 0.8rem; color: var(--dark-gray); font-style: italic; margin-left: auto; }
 
         /* Modal overlay (above contact list and meet overlay so dialogs are visible) */
         .modal-overlay {
@@ -512,7 +511,7 @@
             color: var(--white);
             font-weight: 500;
             font-size: 0.9rem;
-            z-index: 2000;
+            z-index: 10000;
             animation: slideIn 0.3s ease-out;
             max-width: 350px;
         }
@@ -1015,6 +1014,11 @@
         .contact-selfie-wrap img { width: 100%; height: 100%; object-fit: cover; }
         .contact-detail-actions { margin-top: 1rem; }
         .contact-detail-actions .btn { margin-right: 0.5rem; }
+        .btn-trust { background: var(--primary-color); color: var(--white); }
+        .btn-trust:hover:not(:disabled) { background: var(--accent-color); }
+        .btn-love { background: #d63384; color: var(--white); }
+        .btn-love:hover:not(:disabled) { background: #b02a6e; }
+        .header-heart-btn { color: #ff4d6d !important; font-size: 1.15rem !important; }
     </style>
 </head>
 <body>
@@ -1025,6 +1029,7 @@
     <div class="header-right">
         <button type="button" class="header-icon-btn" onclick="openMeetScreen()" title="Exchange contacts (show QR)" aria-label="Exchange contacts">🤝</button>
         <button type="button" class="header-icon-btn" onclick="openContactListScreen()" title="Contacts" aria-label="Contacts">👥</button>
+        <button type="button" class="header-icon-btn header-heart-btn" onclick="openHeartDialog()" title="Love &amp; Trust" aria-label="Love and Trust">❤️</button>
         <span class="user-name" id="userDisplay" onclick="openPreferences()" title="Profile &amp; preferences"></span>
     </div>
 </div>
@@ -2710,6 +2715,7 @@ function showModal(type) {
 }
 
 function closeModal() {
+    if (heartDialogTimer) { clearTimeout(heartDialogTimer); heartDialogTimer = null; }
     if (contactSelfieStream) {
         stopContactSelfieStream();
         contactSelfieId = null;
@@ -4134,6 +4140,8 @@ function renderContactRow(contact, profile, shared) {
                 <div class="contact-selfie-wrap" onclick="event.stopPropagation();openContactSelfie('${cid}')">${selfieHtml}</div>
                 <div class="contact-detail-actions">
                     <button type="button" class="btn btn-primary btn-small btn-share-with-contact" data-contact-id="${cid}" data-contact-name="${esc(name)}">Share</button>
+                    <button type="button" class="btn btn-small btn-trust" onclick="event.stopPropagation();sendAttestation('${cid}','trust')">Trust</button>
+                    <button type="button" class="btn btn-small btn-love" onclick="event.stopPropagation();sendAttestation('${cid}','love')">Love</button>
                 </div>
             </div>
         </div>`;
@@ -4262,6 +4270,69 @@ async function submitShareWithContact(e) {
 function openPreferences() {
     if (!currentUser) return;
     showModal('preferences');
+}
+
+// ============================================================
+// WEB OF TRUST (Attestations)
+// ============================================================
+async function sendAttestation(contactId, type) {
+    if (!currentUser) return;
+    try {
+        const { data, error } = await db.rpc('create_attestation', {
+            p_to_user_id: contactId,
+            p_attestation_type: type
+        });
+        if (error) throw error;
+        showToast(type === 'love' ? 'Love Recorded' : 'Trust Recorded', 'info');
+    } catch (e) {
+        console.error('Attestation error:', e);
+        showToast(e.message || 'Could not send attestation', 'error');
+    }
+}
+
+let heartDialogTimer = null;
+async function openHeartDialog() {
+    if (!currentUser) return;
+    try {
+        const { data, error } = await db.rpc('get_my_attestation_counts');
+        if (error) throw error;
+        const love = data.love_count || 0;
+        const trust = data.trust_count || 0;
+        const msg = formatAttestationMessage(love, trust);
+        showModal('heartDialog');
+        document.getElementById('modalBody').innerHTML = `
+            <h3 style="margin-bottom:1rem;">❤️ Love &amp; Trust</h3>
+            <p style="font-size:1.05rem;line-height:1.6;">${esc(msg)}</p>`;
+        heartDialogTimer = setTimeout(() => {
+            const overlay = document.getElementById('modalOverlay');
+            if (overlay && !overlay.classList.contains('hidden')) closeModal();
+        }, 5000);
+    } catch (e) {
+        console.error('Heart dialog error:', e);
+        showToast('Could not load attestations', 'error');
+    }
+}
+
+function formatAttestationMessage(love, trust) {
+    if (love === 0 && trust === 0) return 'No attestations yet.';
+
+    const lovePart = formatSingleAttestation(love, 'loved');
+    const trustPart = formatSingleAttestation(trust, 'trusted');
+
+    if (lovePart && trustPart) {
+        if (love < 10 && trust < 10) {
+            return 'You are loved and trusted by others.';
+        }
+        return lovePart + ', and ' + trustPart.replace('You are ', '').replace(/\.$/, '') + '.';
+    }
+    return lovePart || trustPart;
+}
+
+function formatSingleAttestation(count, verb) {
+    if (count === 0) return '';
+    if (count < 10) return `You are ${verb} by others.`;
+    const rounded = Math.floor(count / 10) * 10;
+    return `You are ${verb} by more than ${rounded} people.`;
 }
 
 // ============================================================
