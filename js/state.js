@@ -1,0 +1,12 @@
+let currentUser = null;
+let currentProfile = null;
+let selectedGroup = null;
+let myGroups = [];
+let groupChannel = null; // Supabase Realtime channel for current group
+let contactSharesChannel = null; // Realtime for "X shared Y with you" toasts
+let activeTab = 'money'; // Current tab: 'money', 'members', 'constitution', 'chat'
+let shareWithContactId = null;
+let shareWithContactName = '';
+let contactSelfieId = null;
+let contactSelfieStream = null;
+let profileCache = {};   // user_id -> display_name cache for chat
