@@ -30,7 +30,6 @@ body {
     color: var(--white);
     padding: 1rem 2rem;
     display: flex;
-    justify-content: space-between;
     align-items: center;
     box-shadow: var(--shadow);
     position: sticky;
@@ -59,13 +58,15 @@ body {
 }
 .header-right { display: flex; align-items: center; gap: 0.5rem; }
 .header .user-name {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
     font-size: 0.9rem;
     opacity: 0.9;
     cursor: pointer;
     white-space: nowrap;
+    margin-left: 0.75rem;
+    margin-right: auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
 }
 .header .user-name:hover { opacity: 1; }
 .header-icon-btn {
