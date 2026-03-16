@@ -33,10 +33,12 @@ body {
     justify-content: space-between;
     align-items: center;
     box-shadow: var(--shadow);
+    position: sticky;
+    top: 0;
+    z-index: 100;
 }
 .header h1 { font-size: 1.5rem; font-weight: 700; }
 .header h1 a { color: var(--white); text-decoration: none; cursor: pointer; }
-.header { position: relative; }
 .version-floater {
     position: absolute;
     top: calc(100% + 4px);
@@ -56,7 +58,15 @@ body {
     to   { opacity: 1; transform: translateY(0); }
 }
 .header-right { display: flex; align-items: center; gap: 0.5rem; }
-.header .user-name { font-size: 0.9rem; opacity: 0.9; cursor: pointer; }
+.header .user-name {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.9rem;
+    opacity: 0.9;
+    cursor: pointer;
+    white-space: nowrap;
+}
 .header .user-name:hover { opacity: 1; }
 .header-icon-btn {
     width: 38px;
