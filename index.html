@@ -9,14 +9,14 @@
         location.replace('https://' + location.host + location.pathname + location.search + location.hash);
     }
     </script>
-    <title>FairShare - Group Currency</title>
+    <title>Union - Group Currency</title>
 
     <!-- PWA -->
     <link rel="manifest" href="./manifest.json">
     <meta name="theme-color" content="#3a7ca5">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="apple-mobile-web-app-title" content="FairShare">
+    <meta name="apple-mobile-web-app-title" content="Union">
     <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -28,7 +28,8 @@
 
 <!-- ===== HEADER ===== -->
 <div class="header">
-    <h1><a href="index.html">FS</a> <span id="buildVersion" style="font-size:0.55rem;font-weight:400;opacity:0.55;letter-spacing:0.02em;">__BUILD_VERSION__</span></h1>
+    <h1><a href="index.html" id="appLogo" onclick="toggleVersionFloater(event)">U</a></h1>
+    <span id="versionFloater" class="version-floater hidden">__BUILD_VERSION__</span>
     <div class="header-right">
         <button type="button" class="header-icon-btn" onclick="openMeetScreen()" title="Exchange contacts (show QR)" aria-label="Exchange contacts">🤝</button>
         <button type="button" class="header-icon-btn" onclick="openContactListScreen()" title="Contacts" aria-label="Contacts">👥</button>
@@ -39,8 +40,8 @@
 
 <!-- ===== AUTH SCREEN ===== -->
 <div id="authScreen" class="auth-container">
-    <h2>FairShare</h2>
-    <p class="subtitle">Group currency for everyone</p>
+    <h2>Union</h2>
+    <p class="subtitle">Find the others</p>
 
     <!-- Invite banner (shown when arriving via invite link) -->
     <div id="inviteBanner" class="hidden" style="background:linear-gradient(135deg,#e3f0f8,#d4e8f5);border-radius:8px;padding:1rem;margin-bottom:1.5rem;border-left:4px solid var(--primary-color);">
@@ -69,7 +70,7 @@
     <form id="signupForm" class="hidden" onsubmit="handleSignup(event)">
         <div id="signupGate" class="hidden" style="text-align:center;padding:1.5rem 0;color:var(--dark-gray);">
             <p style="font-size:0.95rem;margin-bottom:0.5rem;">You need an invitation link to create an account.</p>
-            <p style="font-size:0.85rem;">Ask an existing FairShare member to sponsor you.</p>
+            <p style="font-size:0.85rem;">Ask an existing member to sponsor you.</p>
         </div>
         <div id="signupFields">
             <div class="form-group">
@@ -235,8 +236,8 @@
 <script>
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js')
-        .then(reg => console.log('FairShare SW registered, scope:', reg.scope))
-        .catch(err => console.error('FairShare SW registration failed:', err));
+        .then(reg => console.log(APP_NAME + ' SW registered, scope:', reg.scope))
+        .catch(err => console.error(APP_NAME + ' SW registration failed:', err));
 }
 </script>
 </body>

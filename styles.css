@@ -1,4 +1,4 @@
-﻿:root {
+:root {
     --primary-color: #3a7ca5;
     --secondary-color: #2f6690;
     --accent-color: #16425b;
@@ -35,7 +35,26 @@ body {
     box-shadow: var(--shadow);
 }
 .header h1 { font-size: 1.5rem; font-weight: 700; }
-.header h1 a { color: var(--white); text-decoration: none; }
+.header h1 a { color: var(--white); text-decoration: none; cursor: pointer; }
+.header { position: relative; }
+.version-floater {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 2rem;
+    background: rgba(0,0,0,0.8);
+    color: #fff;
+    font-size: 0.7rem;
+    padding: 0.3rem 0.6rem;
+    border-radius: 4px;
+    white-space: nowrap;
+    z-index: 1000;
+    pointer-events: none;
+    animation: floaterFadeIn 0.15s ease;
+}
+@keyframes floaterFadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
 .header-right { display: flex; align-items: center; gap: 0.5rem; }
 .header .user-name { font-size: 0.9rem; opacity: 0.9; cursor: pointer; }
 .header .user-name:hover { opacity: 1; }

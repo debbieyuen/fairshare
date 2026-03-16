@@ -1,4 +1,10 @@
 async function init() {
+    document.title = APP_NAME + ' - ' + APP_TAG_LINE;
+    const authHeading = document.querySelector('#authScreen h2');
+    if (authHeading) authHeading.textContent = APP_NAME;
+    const authSubtitle = document.querySelector('#authScreen .subtitle');
+    if (authSubtitle) authSubtitle.textContent = APP_TAG_LINE;
+
     console.log('[init] Starting…');
     if (!db) {
         showToast('Could not connect to database. Check Supabase config.', 'error');
@@ -176,7 +182,7 @@ async function showMeetBanner(token) {
         }
 
         document.getElementById('inviteBannerText').innerHTML =
-            `<strong>${esc(data.user_name)}</strong> wants to connect with you on FairShare!` +
+            `<strong>${esc(data.user_name)}</strong> wants to connect with you on ${APP_NAME}!` +
             `<br><br>Sign up to add them as a contact.`;
         document.getElementById('inviteBanner').classList.remove('hidden');
 
