@@ -1,5 +1,5 @@
 async function init() {
-    document.title = APP_NAME + ' - ' + APP_TAG_LINE;
+    document.title = APP_NAME;
     const authHeading = document.querySelector('#authScreen h2');
     if (authHeading) authHeading.textContent = APP_NAME;
     const authSubtitle = document.querySelector('#authScreen .subtitle');

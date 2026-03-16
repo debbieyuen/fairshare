@@ -1,5 +1,5 @@
 {
-  "name": "Union - Group Currency",
+  "name": "Union",
   "short_name": "Union",
   "description": "Create groups with their own currencies. Members vote on fees and income, endorse new members, and send currency to each other.",
   "start_url": "./index.html",
