@@ -291,7 +291,7 @@ body {
     border: 1px solid var(--medium-gray);
     border-radius: 6px;
     font-family: inherit;
-    font-size: 0.9rem;
+    font-size: 16px; /* prevents iOS auto-zoom on focus */
     transition: var(--transition);
 }
 .form-group input[type="checkbox"] {

@@ -199,7 +199,7 @@ function showModal(type) {
                 </div>
                 <div class="form-group">
                     <label>Edit the constitution below</label>
-                    <textarea id="amendmentEditor" rows="8" style="font-family:monospace;font-size:0.85rem;line-height:1.6;"
+                    <textarea id="amendmentEditor" rows="8" style="font-family:monospace;font-size:16px;line-height:1.6;"
                         oninput="updateAmendmentPreview()">${esc(selectedGroup?.constitution || '')}</textarea>
                 </div>
                 <div class="form-group">
