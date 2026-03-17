@@ -226,12 +226,6 @@ body {
     transition: opacity 0.2s ease;
 }
 .group-name-link:hover { opacity: 0.8; }
-.group-name-back {
-    font-size: 0.9rem;
-    opacity: 0.7;
-    font-weight: 400;
-    margin-bottom: 0.2rem;
-}
 
 /* Auth screen */
 .auth-container {

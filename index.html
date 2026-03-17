@@ -113,9 +113,8 @@
         <!-- Group view (hidden until group selected) -->
         <div id="groupView" class="hidden">
             <!-- Group name header — click to go back to groups list -->
-            <div class="card balance-card" style="display:flex;align-items:center;">
-                <div class="group-name-link" onclick="showGroupsList()" style="flex:1;">
-                    <div class="group-name-back">&#8592; My Groups</div>
+            <div class="card balance-card group-name-link" onclick="showGroupsList()" style="display:flex;align-items:center;">
+                <div style="flex:1;">
                     <div class="balance-amount" id="groupNameDisplay"></div>
                 </div>
             </div>
