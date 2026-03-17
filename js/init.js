@@ -99,11 +99,16 @@ async function showInviteBanner(token) {
             return;
         }
 
+        const sponsorName = data?.sponsor_name || 'A Union member';
+        const sponsorInitial = sponsorName.charAt(0).toUpperCase() || 'U';
+        const sponsorAvatar = data?.profile_image_url
+            ? `<img class="invite-sponsor-avatar" src="${esc(data.profile_image_url)}" alt="${esc(sponsorName)}">`
+            : `<span class="invite-sponsor-avatar invite-sponsor-avatar-fallback">${esc(sponsorInitial)}</span>`;
+
         document.getElementById('inviteBannerText').innerHTML =
-            `<strong>${esc(data.sponsor_name)}</strong> is offering to sponsor your candidacy for ` +
-            `<strong>${esc(data.group_name)}</strong>.` +
-            (data.message ? `<br><em style="color:var(--dark-gray);">"${esc(data.message)}"</em>` : '') +
-            `<br><br>If you haven't yet created an account, start by making one.`;
+            `<div class="invite-sponsor-row">${sponsorAvatar}<div class="invite-sponsor-message"><strong class="invite-sponsor-name">${esc(sponsorName)}</strong> wants to sponsor you as a member of the <strong>${esc(data.group_name)}</strong> group!</div></div>` +
+            (data.message ? `<div class="invite-sponsor-note"><em>"${esc(data.message)}"</em></div>` : '') +
+            `<div class="invite-sponsor-subtext">If you haven't yet created an account, start by making one.</div>`;
         document.getElementById('inviteBanner').classList.remove('hidden');
 
         // Default to sign-up tab for new users arriving via invite
@@ -181,9 +186,15 @@ async function showMeetBanner(token) {
             return;
         }
 
+        const sponsorName = data?.user_name || 'A Union member';
+        const sponsorInitial = sponsorName.charAt(0).toUpperCase() || 'U';
+        const sponsorAvatar = data?.profile_image_url
+            ? `<img class="invite-sponsor-avatar" src="${esc(data.profile_image_url)}" alt="${esc(sponsorName)}">`
+            : `<span class="invite-sponsor-avatar invite-sponsor-avatar-fallback">${esc(sponsorInitial)}</span>`;
+
         document.getElementById('inviteBannerText').innerHTML =
-            `<strong>${esc(data.user_name)}</strong> wants to connect with you on ${APP_NAME}!` +
-            `<br><br>Sign up to add them as a contact.`;
+            `<div class="invite-sponsor-row">${sponsorAvatar}<div class="invite-sponsor-message"><strong class="invite-sponsor-name">${esc(sponsorName)}</strong> wants to sponsor you as a Union member!</div></div>` +
+            `<div class="invite-sponsor-subtext">Sign up to join and add them as a contact.</div>`;
         document.getElementById('inviteBanner').classList.remove('hidden');
 
         switchAuthTab('signup');

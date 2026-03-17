@@ -333,6 +333,43 @@ body {
     border-bottom-color: var(--primary-color);
 }
 
+.invite-sponsor-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+.invite-sponsor-message {
+    min-width: 0;
+}
+.invite-sponsor-name {
+    white-space: nowrap;
+    margin-right: 0.2rem;
+}
+.invite-sponsor-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid rgba(22, 66, 91, 0.2);
+    flex-shrink: 0;
+}
+.invite-sponsor-avatar-fallback {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--white);
+    background: var(--primary-color);
+}
+.invite-sponsor-subtext {
+    margin-top: 0.7rem;
+}
+.invite-sponsor-note {
+    margin-top: 0.35rem;
+    color: var(--dark-gray);
+}
+
 /* Forms */
 .form-group {
     margin-bottom: 1rem;
