@@ -59,6 +59,13 @@ async function loadMyGroups(autoNavigateGroupId) {
     }
 }
 
+function renderGroupCardLogo(logoUrl, groupName) {
+    if (logoUrl) {
+        return `<img class="group-card-logo" src="${esc(logoUrl)}" alt="${esc(groupName)} logo">`;
+    }
+    return '<div class="group-card-logo-placeholder" aria-hidden="true">👥</div>';
+}
+
 function renderGroupList() {
     const el = document.getElementById('groupList');
     const hint = document.getElementById('groupsEmptyHint');
@@ -70,12 +77,15 @@ function renderGroupList() {
     hint.classList.add('hidden');
     el.innerHTML = myGroups.map(m => `
         <div class="group-card" onclick="selectGroupById('${m.group_id}')">
-            <div>
+            <div class="group-card-main">
+                ${renderGroupCardLogo(m.groups.logo_url, m.groups.name)}
+                <div>
                 <div class="group-card-name">
                     ${esc(m.groups.name)}
                     ${m.status === 'pending' ? '<span class="group-card-status">pending</span>' : ''}
                 </div>
                 <div class="group-card-meta">${m._memberCount || 0} member${m._memberCount === 1 ? '' : 's'}</div>
+                </div>
             </div>
             <div class="group-card-arrow">›</div>
         </div>
@@ -103,6 +113,9 @@ async function selectGroup(group, membership) {
 
     // Show group name at top
     document.getElementById('groupNameDisplay').textContent = group.name;
+    setGroupAvatar(group.logo_url || null);
+    bindGroupLogoInput();
+    updateGroupLogoControl(membership?.status === 'active');
 
     if (membership.status === 'pending') {
         document.getElementById('tabBar').classList.add('hidden');
@@ -149,4 +162,75 @@ function showGroupsList() {
         groupChannel = null;
     }
     renderGroupList();
+}
+
+function updateGroupLogoControl(isActiveMember) {
+    const wrap = document.querySelector('.group-header-avatar-wrap');
+    if (!wrap) return;
+    wrap.classList.toggle('group-logo-disabled', !isActiveMember);
+    wrap.title = isActiveMember ? 'Click to change group logo' : 'Only active members can change the group logo';
+}
+
+function bindGroupLogoInput() {
+    const input = document.getElementById('groupLogoInput');
+    if (!input || input.dataset.bound === '1') return;
+    input.addEventListener('change', onGroupLogoSelected);
+    input.dataset.bound = '1';
+}
+
+function onGroupLogoClick(event) {
+    event?.stopPropagation();
+    if (!selectedGroup) return;
+    const membership = myGroups.find(m => m.group_id === selectedGroup.id);
+    if (!membership || membership.status !== 'active') {
+        showToast('Only active group members can change the logo.', 'error');
+        return;
+    }
+    const input = document.getElementById('groupLogoInput');
+    if (!input) return;
+    input.value = '';
+    input.click();
+}
+
+async function onGroupLogoSelected(event) {
+    const file = event?.target?.files?.[0];
+    if (!file || !selectedGroup || !currentUser) return;
+
+    const membership = myGroups.find(m => m.group_id === selectedGroup.id);
+    if (!membership || membership.status !== 'active') {
+        showToast('Only active group members can change the logo.', 'error');
+        return;
+    }
+
+    const wrap = document.querySelector('.group-header-avatar-wrap');
+    wrap?.classList.add('updating');
+    try {
+        const ext = (file.name && file.name.split('.').pop()) || 'jpg';
+        const filePath = `${currentUser.id}/group_${selectedGroup.id}.${ext}`;
+
+        const { error: upErr } = await db.storage.from('avatars').upload(filePath, file, { upsert: true });
+        if (upErr) throw upErr;
+
+        const { data: urlData } = db.storage.from('avatars').getPublicUrl(filePath);
+        const logoUrl = urlData?.publicUrl;
+        if (!logoUrl) throw new Error('Could not create logo URL');
+
+        const { error: rpcErr } = await db.rpc('update_group_logo', {
+            p_group_id: selectedGroup.id,
+            p_logo_url: logoUrl
+        });
+        if (rpcErr) throw rpcErr;
+
+        selectedGroup.logo_url = logoUrl;
+        membership.groups.logo_url = logoUrl;
+        setGroupAvatar(logoUrl);
+        renderGroupList();
+        showToast('Group logo updated.', 'success');
+    } catch (err) {
+        console.error('Group logo update error:', err);
+        showToast('Could not update group logo: ' + (err.message || 'error'), 'error');
+    } finally {
+        wrap?.classList.remove('updating');
+        if (event?.target) event.target.value = '';
+    }
 }

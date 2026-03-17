@@ -114,10 +114,14 @@
         <div id="groupView" class="hidden">
             <!-- Group name header — click to go back to groups list -->
             <div class="card balance-card group-name-link" onclick="showGroupsList()" style="display:flex;align-items:center;">
-                <div style="flex:1;">
+                <div class="group-header-center">
+                    <div class="group-avatar-wrap group-header-avatar-wrap" onclick="onGroupLogoClick(event)" title="Click to change group logo">
+                        <div id="groupAvatarImg" class="group-avatar-placeholder" aria-label="Group logo">👥</div>
+                    </div>
                     <div class="balance-amount" id="groupNameDisplay"></div>
                 </div>
             </div>
+            <input type="file" id="groupLogoInput" accept="image/*" class="hidden">
 
             <!-- Tab bar -->
             <div class="tab-bar" id="tabBar">

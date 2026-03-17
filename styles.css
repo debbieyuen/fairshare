@@ -125,6 +125,44 @@ body {
     color: rgba(255,255,255,0.6);
     background: rgba(255,255,255,0.1);
 }
+.group-header-avatar-wrap {
+    margin-right: 0;
+    margin-bottom: 0;
+    cursor: pointer;
+    border-radius: 50%;
+    transition: var(--transition);
+    flex-shrink: 0;
+}
+.group-header-avatar-wrap .group-avatar,
+.group-header-avatar-wrap .group-avatar-placeholder {
+    width: 56px;
+    height: 56px;
+}
+.group-header-avatar-wrap:hover {
+    transform: scale(1.03);
+}
+.group-header-avatar-wrap.group-logo-disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+.group-header-avatar-wrap.group-logo-disabled:hover {
+    transform: none;
+}
+.group-header-avatar-wrap.updating {
+    opacity: 0.6;
+    pointer-events: none;
+}
+.group-header-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    width: 100%;
+    min-width: 0;
+}
+.group-header-center .balance-amount {
+    margin: 0;
+}
 .chat-avatar {
     width: 24px;
     height: 24px;
@@ -200,6 +238,12 @@ body {
     justify-content: space-between;
     align-items: center;
 }
+.group-card-main {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+}
 .group-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 6px 12px rgba(0,0,0,0.15);
@@ -218,6 +262,27 @@ body {
 .group-card .group-card-arrow {
     font-size: 1.2rem;
     color: var(--dark-gray);
+}
+.group-card-logo,
+.group-card-logo-placeholder {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.group-card-logo {
+    object-fit: cover;
+    border: 2px solid var(--medium-gray);
+    background: var(--light-gray);
+}
+.group-card-logo-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--light-gray);
+    border: 2px solid var(--medium-gray);
+    color: var(--dark-gray);
+    font-size: 1.05rem;
 }
 
 /* Clickable group name header */

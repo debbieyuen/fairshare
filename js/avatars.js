@@ -8,7 +8,7 @@ function setGroupAvatar(url) {
         img.className = 'group-avatar';
         img.id = 'groupAvatarImg';
         img.src = url;
-        img.alt = 'Your photo';
+        img.alt = 'Group logo';
         parent.replaceChild(img, el);
     } else {
         // Show placeholder
@@ -17,7 +17,7 @@ function setGroupAvatar(url) {
             const placeholder = document.createElement('div');
             placeholder.className = 'group-avatar-placeholder';
             placeholder.id = 'groupAvatarImg';
-            placeholder.textContent = '👤';
+            placeholder.textContent = '👥';
             parent.replaceChild(placeholder, el);
         }
     }

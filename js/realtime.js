@@ -94,6 +94,17 @@ async function handleGroupEvent(event) {
             if (activeTab === 'members') await renderMembersTab();
             break;
         }
+        case 'group_logo_changed': {
+            const { data: updatedGroup } = await db.from('groups').select('*').eq('id', selectedGroup.id).single();
+            if (updatedGroup) {
+                selectedGroup = updatedGroup;
+                const membership = myGroups.find(m => m.group_id === selectedGroup.id);
+                if (membership) membership.groups = updatedGroup;
+                setGroupAvatar(updatedGroup.logo_url || null);
+                renderGroupList();
+            }
+            break;
+        }
         case 'payment_received': {
             // Refresh balance if we are the recipient
             const toUser = event.metadata?.to_user;
