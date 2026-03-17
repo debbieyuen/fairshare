@@ -76,7 +76,7 @@ function showModal(type) {
                         <label>Profile photo (shown to new contacts)</label>
                         <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
                             <div id="prefPhotoPreview" class="contact-selfie-wrap" style="width:80px;height:80px;cursor:pointer;" onclick="document.getElementById('prefPhotoInput').click()">📷</div>
-                            <input type="file" id="prefPhotoInput" accept="image/*" capture="user" style="display:none;">
+                            <input type="file" id="prefPhotoInput" accept="image/*" style="display:none;">
                             <span style="font-size:0.85rem;color:var(--dark-gray);">Tap to take or choose photo</span>
                         </div>
                     </div>
