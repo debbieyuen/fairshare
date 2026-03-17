@@ -329,6 +329,7 @@ async function savePreferences(e) {
         }
         const userDisplay = document.getElementById('userDisplay');
         if (userDisplay) userDisplay.textContent = payload.display_name;
+        setHeaderAvatar(profileImageUrl || null);
         showToast('Preferences saved.', 'success');
         closeModal();
     } catch (err) {

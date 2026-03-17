@@ -106,7 +106,6 @@ async function selectGroup(group, membership) {
 
     // Set avatar for this group membership
     setGroupAvatar(membership.avatar_url || null);
-    setHeaderAvatar(membership.avatar_url || null);
 
     if (membership.status === 'pending') {
         document.getElementById('tabBar').classList.add('hidden');
@@ -146,7 +145,7 @@ function showGroupsList() {
     document.getElementById('groupsScreen').classList.remove('hidden');
     document.getElementById('groupView').classList.add('hidden');
     selectedGroup = null;
-    setHeaderAvatar(null); // hide avatar when not in a group
+    setHeaderAvatar(currentProfile?.profile_image_url || null);
     // Unsubscribe from realtime when leaving a group
     if (groupChannel) {
         db.removeChannel(groupChannel);

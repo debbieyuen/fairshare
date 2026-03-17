@@ -62,7 +62,7 @@ body {
     opacity: 0.9;
     cursor: pointer;
     white-space: nowrap;
-    margin-left: 0.75rem;
+    margin-left: 0;
     flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -90,11 +90,14 @@ body {
 
 /* Avatars */
 .header-avatar {
-    width: 32px;
-    height: 32px;
+    width: 38px;
+    height: 38px;
     border-radius: 50%;
     object-fit: cover;
     border: 2px solid rgba(255,255,255,0.5);
+    margin-right: 0.5rem;
+    cursor: pointer;
+    flex-shrink: 0;
 }
 .group-avatar-wrap {
     position: relative;

@@ -51,7 +51,6 @@ async function uploadAvatar(file) {
 
         // Update UI
         setGroupAvatar(publicUrl);
-        setHeaderAvatar(publicUrl);
 
         showToast('Photo updated!', 'success');
     } catch (e) {

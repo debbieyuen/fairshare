@@ -93,6 +93,7 @@ async function showApp(navigateToGroupId) {
     document.getElementById('authScreen').classList.add('hidden');
     document.getElementById('appScreen').classList.remove('hidden');
     document.getElementById('userDisplay').textContent = currentProfile?.display_name || currentUser.email;
+    setHeaderAvatar(currentProfile?.profile_image_url || null);
     subscribeToContactShares();
     if (currentProfile?.push_notifications !== false) subscribeToPush();
     await loadMyGroups(navigateToGroupId || null);
