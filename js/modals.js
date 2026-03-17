@@ -61,40 +61,53 @@ function showModal(type) {
 
         case 'preferences':
             body.innerHTML = `
-                <h3>Profile &amp; Preferences</h3>
-                <div id="prefSponsorLine" style="font-size:0.9rem;color:var(--dark-gray);margin-bottom:1rem;font-style:italic;">Loading sponsor…</div>
+                <div class="pref-modal-header">
+                    <h3>Public Profile</h3>
+                    <button type="button" class="btn btn-outline btn-small pref-logout-btn" onclick="closeModal();logout();">Log Out</button>
+                </div>
                 <form id="preferencesForm">
+                    <div class="pref-profile-row">
+                        <div id="prefPhotoPreview" class="contact-selfie-wrap pref-photo-preview" onclick="document.getElementById('prefPhotoInput').click()">📷</div>
+                        <input type="file" id="prefPhotoInput" accept="image/*" style="display:none;">
+                        <div class="form-group pref-display-name-group">
+                            <label for="prefDisplayName">Display Name</label>
+                            <input type="text" id="prefDisplayName" placeholder="Your public name" maxlength="80">
+                            <p class="pref-help-text">Shared with contacts, who will vouch for its accuracy.</p>
+                        </div>
+                    </div>
                     <div class="form-group">
-                        <label>Email (for contacts)</label>
+                        <label for="prefEmail">Email</label>
+                        <p class="pref-help-text">(not shared by default)</p>
                         <input type="email" id="prefEmail" placeholder="you@example.com">
                     </div>
                     <div class="form-group">
-                        <label>Phone (for contacts)</label>
+                        <label for="prefPhone">Phone</label>
+                        <p class="pref-help-text">(not shared by default)</p>
                         <input type="tel" id="prefPhone" placeholder="+1 234 567 8900">
                     </div>
-                    <div class="form-group">
-                        <label>Profile photo (shown to new contacts)</label>
-                        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
-                            <div id="prefPhotoPreview" class="contact-selfie-wrap" style="width:80px;height:80px;cursor:pointer;" onclick="document.getElementById('prefPhotoInput').click()">📷</div>
-                            <input type="file" id="prefPhotoInput" accept="image/*" style="display:none;">
-                            <span style="font-size:0.85rem;color:var(--dark-gray);">Tap to take or choose photo</span>
+                    <div class="pref-sponsor-card">
+                        <div id="prefSponsorAvatar" class="pref-sponsor-avatar">👤</div>
+                        <div>
+                            <div class="pref-sponsor-label">Sponsor</div>
+                            <div id="prefSponsorName" class="pref-sponsor-name">Loading sponsor...</div>
                         </div>
                     </div>
+                    <hr class="pref-divider">
+                    <h4 class="pref-section-title">Preferences</h4>
                     ${'PushManager' in window ? `
-                    <div class="form-group" style="display:flex;align-items:center;gap:0.5rem;">
+                    <div class="form-group pref-checkbox-row">
                         <input type="checkbox" id="prefPushNotifications" style="flex-shrink:0;">
-                        <label for="prefPushNotifications" style="margin:0;">Push notifications</label>
+                        <label for="prefPushNotifications" style="margin:0;">Push Notifications</label>
                     </div>
-                    <p id="prefPushHint" style="font-size:0.8rem;color:var(--dark-gray);margin-top:-0.5rem;"></p>
+                    <p id="prefPushHint" class="pref-help-text pref-push-hint"></p>
                     ` : ''}
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Save</button>
+                        <button type="button" id="prefSaveBtn" class="btn btn-primary" onclick="savePreferences(event)">Save</button>
                     </div>
-                    <hr style="margin:1.2rem 0 1rem;border:none;border-top:1px solid var(--light-gray);">
-                    <button type="button" class="btn btn-outline" style="width:100%;color:var(--dark-gray);border-color:var(--dark-gray);" onclick="closeModal();logout();">Log Out</button>
                 </form>
             `;
+            document.getElementById('prefDisplayName').value = currentProfile?.display_name || '';
             document.getElementById('prefEmail').value = currentProfile?.email || '';
             document.getElementById('prefPhone').value = currentProfile?.phone || '';
             const prefPreview = document.getElementById('prefPhotoPreview');
@@ -119,18 +132,30 @@ function showModal(type) {
                 prefPreview._pendingFile = file;
             });
             document.getElementById('preferencesForm').addEventListener('submit', (e) => savePreferences(e));
+            document.getElementById('prefSaveBtn').addEventListener('click', (e) => savePreferences(e));
             // Load sponsor info
             (async () => {
-                const el = document.getElementById('prefSponsorLine');
-                if (!el) return;
+                const sponsorNameEl = document.getElementById('prefSponsorName');
+                const sponsorAvatarEl = document.getElementById('prefSponsorAvatar');
+                if (!sponsorNameEl || !sponsorAvatarEl) return;
                 try {
                     if (currentProfile?.sponsor_id) {
-                        const { data: sp } = await db.from('profiles').select('display_name').eq('id', currentProfile.sponsor_id).single();
-                        el.textContent = 'Sponsored by ' + (sp?.display_name || 'unknown');
+                        const { data: sp } = await db.from('profiles').select('display_name, profile_image_url').eq('id', currentProfile.sponsor_id).single();
+                        const sponsorName = sp?.display_name || 'Unknown';
+                        sponsorNameEl.textContent = sponsorName;
+                        if (sp?.profile_image_url) {
+                            sponsorAvatarEl.innerHTML = `<img src="${esc(sp.profile_image_url)}" alt="${esc(sponsorName)}">`;
+                        } else {
+                            sponsorAvatarEl.textContent = sponsorName.charAt(0).toUpperCase() || '👤';
+                        }
                     } else {
-                        el.textContent = 'Root user (no sponsor)';
+                        sponsorNameEl.textContent = 'Root user (no sponsor)';
+                        sponsorAvatarEl.textContent = '★';
                     }
-                } catch (_) { el.textContent = ''; }
+                } catch (_) {
+                    sponsorNameEl.textContent = '';
+                    sponsorAvatarEl.textContent = '👤';
+                }
             })();
             // Initialize push toggle
             if ('PushManager' in window) {
@@ -234,52 +259,87 @@ function closeModal() {
 }
 
 async function savePreferences(e) {
-    e.preventDefault();
-    const email = document.getElementById('prefEmail').value.trim();
-    const phone = document.getElementById('prefPhone').value.trim();
-    const prefPreview = document.getElementById('prefPhotoPreview');
-    let profileImageUrl = currentProfile?.profile_image_url || null;
-    if (prefPreview._pendingFile) {
-        try {
-            const file = prefPreview._pendingFile;
-            const ext = (file.name && file.name.split('.').pop()) || 'jpg';
-            const filePath = `${currentUser.id}/profile.${ext}`;
-            const { error: upErr } = await db.storage.from('avatars').upload(filePath, file, { upsert: true });
-            if (upErr) throw upErr;
-            const { data: urlData } = db.storage.from('avatars').getPublicUrl(filePath);
-            profileImageUrl = urlData.publicUrl;
-        } catch (err) {
-            console.error('Profile photo upload error:', err);
-            showToast('Could not upload photo: ' + (err.message || 'error'), 'error');
+    e?.preventDefault();
+    const saveBtn = document.getElementById('prefSaveBtn');
+    const originalSaveLabel = saveBtn?.textContent || 'Save';
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+    }
+    try {
+        if (!currentUser) {
+            showToast('Session expired — please log in again.', 'error');
+            return;
+        }
+
+        const form = document.getElementById('preferencesForm');
+        if (form && !form.reportValidity()) {
+            showToast('Please correct the highlighted field(s).', 'error');
+            return;
+        }
+
+        const displayName = document.getElementById('prefDisplayName').value.trim();
+        const email = document.getElementById('prefEmail').value.trim();
+        const phone = document.getElementById('prefPhone').value.trim();
+        const prefPreview = document.getElementById('prefPhotoPreview');
+        let profileImageUrl = currentProfile?.profile_image_url || null;
+        if (prefPreview?._pendingFile) {
+            try {
+                const file = prefPreview._pendingFile;
+                const ext = (file.name && file.name.split('.').pop()) || 'jpg';
+                const filePath = `${currentUser.id}/profile.${ext}`;
+                const { error: upErr } = await db.storage.from('avatars').upload(filePath, file, { upsert: true });
+                if (upErr) throw upErr;
+                const { data: urlData } = db.storage.from('avatars').getPublicUrl(filePath);
+                profileImageUrl = urlData.publicUrl;
+            } catch (err) {
+                console.error('Profile photo upload error:', err);
+                showToast('Could not upload photo: ' + (err.message || 'error'), 'error');
+            }
+        }
+        const payload = {
+            display_name: displayName || currentUser.email,
+            email: email || null,
+            phone: phone || null
+        };
+        if (profileImageUrl !== undefined) payload.profile_image_url = profileImageUrl;
+
+        // Handle push notification toggle
+        const pushCheck = document.getElementById('prefPushNotifications');
+        if (pushCheck) {
+            payload.push_notifications = pushCheck.checked;
+            if (pushCheck.checked) {
+                await subscribeToPush();
+            } else {
+                await unsubscribePush();
+            }
+        }
+
+        const { error } = await db.from('profiles').update(payload).eq('id', currentUser.id);
+        if (error) {
+            showToast('Could not save: ' + error.message, 'error');
+            return;
+        }
+        if (currentProfile) {
+            currentProfile.display_name = payload.display_name;
+            currentProfile.email = email || null;
+            currentProfile.phone = phone || null;
+            currentProfile.profile_image_url = profileImageUrl;
+            if (pushCheck) currentProfile.push_notifications = pushCheck.checked;
+        }
+        const userDisplay = document.getElementById('userDisplay');
+        if (userDisplay) userDisplay.textContent = payload.display_name;
+        showToast('Preferences saved.', 'success');
+        closeModal();
+    } catch (err) {
+        console.error('savePreferences failed:', err);
+        showToast('Could not save preferences.', 'error');
+    } finally {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = originalSaveLabel;
         }
     }
-    const payload = { email: email || null, phone: phone || null };
-    if (profileImageUrl !== undefined) payload.profile_image_url = profileImageUrl;
-
-    // Handle push notification toggle
-    const pushCheck = document.getElementById('prefPushNotifications');
-    if (pushCheck) {
-        payload.push_notifications = pushCheck.checked;
-        if (pushCheck.checked) {
-            await subscribeToPush();
-        } else {
-            await unsubscribePush();
-        }
-    }
-
-    const { error } = await db.from('profiles').update(payload).eq('id', currentUser.id);
-    if (error) {
-        showToast('Could not save: ' + error.message, 'error');
-        return;
-    }
-    if (currentProfile) {
-        currentProfile.email = email || null;
-        currentProfile.phone = phone || null;
-        currentProfile.profile_image_url = profileImageUrl;
-        if (pushCheck) currentProfile.push_notifications = pushCheck.checked;
-    }
-    showToast('Preferences saved.', 'success');
-    closeModal();
 }
 
 // Allow Escape key to close any open modal or overlays

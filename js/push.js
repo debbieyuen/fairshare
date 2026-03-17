@@ -7,10 +7,16 @@ function urlBase64ToUint8Array(base64String) {
     return arr;
 }
 
+function canUsePush() {
+    const isWebProtocol = window.location.protocol === 'http:' || window.location.protocol === 'https:';
+    return isWebProtocol && window.isSecureContext && ('serviceWorker' in navigator) && ('PushManager' in window);
+}
+
 async function subscribeToPush() {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    if (!canUsePush()) return;
     try {
-        const reg = await navigator.serviceWorker.ready;
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (!reg) return;
         let sub = await reg.pushManager.getSubscription();
         if (!sub) {
             const permission = await Notification.requestPermission();
@@ -33,9 +39,10 @@ async function subscribeToPush() {
 }
 
 async function unsubscribePush() {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    if (!canUsePush()) return;
     try {
-        const reg = await navigator.serviceWorker.ready;
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (!reg) return;
         const sub = await reg.pushManager.getSubscription();
         if (sub) {
             const endpoint = sub.endpoint;
@@ -51,9 +58,10 @@ async function unsubscribePush() {
 }
 
 async function isPushSubscribed() {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
+    if (!canUsePush()) return false;
     try {
-        const reg = await navigator.serviceWorker.ready;
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (!reg) return false;
         const sub = await reg.pushManager.getSubscription();
         return !!sub;
     } catch { return false; }
