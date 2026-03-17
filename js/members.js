@@ -5,7 +5,7 @@ async function loadMembersList() {
 
     const [{ data, error }, { data: sponsorships }] = await Promise.all([
         db.from('members')
-            .select('*, profiles(display_name)')
+            .select('*, profiles(display_name, profile_image_url)')
             .eq('group_id', selectedGroup.id)
             .eq('status', 'active')
             .order('joined_at', { ascending: true }),
@@ -35,8 +35,9 @@ async function loadMembersList() {
         const isCreator = m.user_id === selectedGroup.created_by;
         const sponsorLabel = isCreator ? 'founder' : (sponsor ? `sponsored by ${esc(sponsor)}` : '');
         const displayName = m.profiles?.display_name || 'Unknown';
-        const avatarHtml = m.avatar_url
-            ? `<img class="member-avatar" src="${esc(m.avatar_url)}" alt="">`
+        const avatarUrl = m.profiles?.profile_image_url || null;
+        const avatarHtml = avatarUrl
+            ? `<img class="member-avatar" src="${esc(avatarUrl)}" alt="">`
             : `<div class="member-avatar-placeholder">${esc(displayName.charAt(0).toUpperCase())}</div>`;
         return `<div class="member-item">
             ${avatarHtml}

@@ -50,24 +50,23 @@ async function buildProfileCache() {
     if (!selectedGroup) return;
     const { data } = await db
         .from('members')
-        .select('user_id, avatar_url, profiles(display_name)')
+        .select('user_id, profiles(display_name, profile_image_url)')
         .eq('group_id', selectedGroup.id);
     if (data) {
         data.forEach(m => {
             if (m.profiles) {
                 profileCache[m.user_id] = {
                     name: m.profiles.display_name,
-                    avatar: m.avatar_url || null
+                    avatar: m.profiles.profile_image_url || null
                 };
             }
         });
     }
     // Always include current user
-    if (currentProfile) {
-        const myMem = myGroups.find(mg => mg.group_id === selectedGroup.id);
+    if (currentProfile && currentUser) {
         profileCache[currentUser.id] = {
             name: currentProfile.display_name,
-            avatar: myMem?.avatar_url || null
+            avatar: currentProfile.profile_image_url || null
         };
     }
 }
@@ -75,9 +74,9 @@ async function buildProfileCache() {
 async function getDisplayName(userId) {
     if (profileCache[userId]) return profileCache[userId].name;
     // Fetch on demand for former members
-    const { data } = await db.from('profiles').select('display_name').eq('id', userId).single();
+    const { data } = await db.from('profiles').select('display_name, profile_image_url').eq('id', userId).single();
     if (data) {
-        profileCache[userId] = { name: data.display_name, avatar: null };
+        profileCache[userId] = { name: data.display_name, avatar: data.profile_image_url || null };
         return data.display_name;
     }
     return 'Unknown';

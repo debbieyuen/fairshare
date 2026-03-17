@@ -104,9 +104,6 @@ async function selectGroup(group, membership) {
     // Show group name at top
     document.getElementById('groupNameDisplay').textContent = group.name;
 
-    // Set avatar for this group membership
-    setGroupAvatar(membership.avatar_url || null);
-
     if (membership.status === 'pending') {
         document.getElementById('tabBar').classList.add('hidden');
         document.getElementById('tabContent').innerHTML =

@@ -113,12 +113,7 @@
         <!-- Group view (hidden until group selected) -->
         <div id="groupView" class="hidden">
             <!-- Group name header — click to go back to groups list -->
-            <div class="card balance-card" style="display:flex;align-items:center;gap:1rem;">
-                <div class="group-avatar-wrap" onclick="event.stopPropagation();document.getElementById('avatarInput').click();" title="Change your group photo">
-                    <div id="groupAvatarImg" class="group-avatar-placeholder">📷</div>
-                    <div class="group-avatar-edit">✎</div>
-                    <input type="file" id="avatarInput" accept="image/*" capture="user" style="display:none;" onchange="handleAvatarSelect(this)">
-                </div>
+            <div class="card balance-card" style="display:flex;align-items:center;">
                 <div class="group-name-link" onclick="showGroupsList()" style="flex:1;">
                     <div class="group-name-back">&#8592; My Groups</div>
                     <div class="balance-amount" id="groupNameDisplay"></div>
