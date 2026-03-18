@@ -89,6 +89,8 @@ async function logout() {
 function showAuth() {
     document.getElementById('authScreen').classList.remove('hidden');
     document.getElementById('appScreen').classList.add('hidden');
+    const installHintFloater = document.getElementById('installHintFloater');
+    if (installHintFloater) installHintFloater.classList.add('hidden');
     document.getElementById('userDisplay').textContent = '';
     setHeaderAvatar(null);
 }
@@ -100,6 +102,7 @@ async function showApp(navigateToGroupId) {
     setHeaderAvatar(currentProfile?.profile_image_url || null);
     subscribeToContactShares();
     subscribeToContactEvents();
+    maybeShowInstallHintFloater();
     if (currentProfile?.push_notifications !== false) subscribeToPush();
     await loadMyGroups(navigateToGroupId || null);
     await openPendingContactDetailsIfAny();

@@ -27,3 +27,75 @@ function showToast(message, type = 'info') {
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 4000);
 }
+
+const INSTALL_HINT_SESSION_KEY = 'union_install_hint_dismissed';
+let _installHintCloseBound = false;
+
+function isStandaloneApp() {
+    const standaloneMedia = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+    const iosStandalone = window.navigator.standalone === true;
+    return Boolean(standaloneMedia || iosStandalone);
+}
+
+function isMobileBrowser() {
+    const coarsePointer = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    const ua = window.navigator.userAgent || '';
+    const mobileUA = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+    return Boolean(coarsePointer || mobileUA);
+}
+
+function shouldShowInstallHintThisSession() {
+    try {
+        return sessionStorage.getItem(INSTALL_HINT_SESSION_KEY) !== '1';
+    } catch (e) {
+        console.warn('Install hint session storage unavailable:', e);
+        return true;
+    }
+}
+
+function markInstallHintDismissedForSession() {
+    try {
+        sessionStorage.setItem(INSTALL_HINT_SESSION_KEY, '1');
+    } catch (e) {
+        console.warn('Could not persist install hint dismissal:', e);
+    }
+}
+
+function dismissInstallHintFloater() {
+    const floater = document.getElementById('installHintFloater');
+    if (!floater) return;
+    floater.classList.add('hidden');
+    markInstallHintDismissedForSession();
+}
+
+function showInstallHintFloater() {
+    const floater = document.getElementById('installHintFloater');
+    const message = document.getElementById('installHintMessage');
+    const closeBtn = document.getElementById('installHintCloseBtn');
+    if (!floater || !message) return;
+
+    const isMobile = isMobileBrowser();
+    message.textContent = isMobile
+        ? `Install ${APP_NAME} to homescreen to get notifications`
+        : `Install ${APP_NAME} as desktop icon to get notifications`;
+
+    if (isMobile) {
+        floater.style.left = '';
+        floater.style.right = '';
+    } else {
+        floater.style.left = '50vw';
+        floater.style.right = 'auto';
+    }
+    floater.classList.remove('hidden');
+
+    if (closeBtn && !_installHintCloseBound) {
+        closeBtn.addEventListener('click', dismissInstallHintFloater);
+        _installHintCloseBound = true;
+    }
+}
+
+function maybeShowInstallHintFloater() {
+    if (isStandaloneApp()) return;
+    if (!shouldShowInstallHintThisSession()) return;
+    showInstallHintFloater();
+}
