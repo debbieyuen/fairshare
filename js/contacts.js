@@ -351,10 +351,16 @@ function renderContactRow(contact, profile, shared) {
 
 const sharedTrustCache = {};
 function renderSharedTrust(container, trustData) {
-    const contactsCount = Number.isFinite(Number(trustData?.contactsCount)) ? Number(trustData.contactsCount) : 0;
-    const attestersCount = Number.isFinite(Number(trustData?.attestersCount)) ? Number(trustData.attestersCount) : 0;
-    const groupNames = Array.isArray(trustData?.groups) ? trustData.groups.filter(Boolean) : [];
-    const groupsText = groupNames.length > 0 ? groupNames.map(name => esc(name)).join(', ') : 'None';
+    const contactsCount = trustData?.contactsCount == null
+        ? 'Unavailable'
+        : (Number.isFinite(Number(trustData.contactsCount)) ? Number(trustData.contactsCount) : 0);
+    const attestersCount = trustData?.attestersCount == null
+        ? 'Unavailable'
+        : (Number.isFinite(Number(trustData.attestersCount)) ? Number(trustData.attestersCount) : 0);
+    const groupNames = Array.isArray(trustData?.groups) ? trustData.groups.filter(Boolean) : null;
+    const groupsText = groupNames == null
+        ? 'Unavailable'
+        : (groupNames.length > 0 ? groupNames.map(name => esc(name)).join(', ') : 'None');
     container.innerHTML = `
         <div class="contact-shared-title">Shared</div>
         <div class="contact-detail-line"><span class="contact-shared-key">Contacts:</span> ${contactsCount}</div>
@@ -381,19 +387,34 @@ async function loadSharedTrust(contactId) {
             db.rpc('get_shared_groups', { p_contact_id: contactId }),
             db.rpc('get_shared_attesters_count', { p_contact_id: contactId })
         ]);
-        if (sharedContactsRes.error) throw sharedContactsRes.error;
-        if (sharedGroupsRes.error) throw sharedGroupsRes.error;
-        if (sharedAttestersRes.error) throw sharedAttestersRes.error;
+
+        if (sharedContactsRes.error) console.error('Shared trust contacts RPC error:', sharedContactsRes.error);
+        if (sharedGroupsRes.error) console.error('Shared trust groups RPC error:', sharedGroupsRes.error);
+        if (sharedAttestersRes.error) console.error('Shared trust attesters RPC error:', sharedAttestersRes.error);
 
         const trustData = {
-            contactsCount: Number.isFinite(Number(sharedContactsRes.data)) ? Number(sharedContactsRes.data) : 0,
-            groups: Array.isArray(sharedGroupsRes.data)
-                ? sharedGroupsRes.data.map(row => row.name).filter(Boolean)
-                : [],
-            attestersCount: Number.isFinite(Number(sharedAttestersRes.data)) ? Number(sharedAttestersRes.data) : 0
+            contactsCount: sharedContactsRes.error
+                ? null
+                : (Number.isFinite(Number(sharedContactsRes.data)) ? Number(sharedContactsRes.data) : 0),
+            groups: sharedGroupsRes.error
+                ? null
+                : (Array.isArray(sharedGroupsRes.data) ? sharedGroupsRes.data.map(row => row.name).filter(Boolean) : []),
+            attestersCount: sharedAttestersRes.error
+                ? null
+                : (Number.isFinite(Number(sharedAttestersRes.data)) ? Number(sharedAttestersRes.data) : 0)
         };
-        sharedTrustCache[contactId] = trustData;
+
+        const allFailed = trustData.contactsCount == null && trustData.groups == null && trustData.attestersCount == null;
         container.dataset.loaded = '1';
+        if (allFailed) {
+            container.innerHTML = `
+                <div class="contact-shared-title">Shared</div>
+                <div class="contact-detail-line contact-detail-muted">Could not load shared trust yet.</div>
+            `;
+            return;
+        }
+
+        sharedTrustCache[contactId] = trustData;
         renderSharedTrust(container, trustData);
     } catch (e) {
         console.error('Shared trust error:', e);
