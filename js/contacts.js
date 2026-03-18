@@ -187,6 +187,8 @@ function renderContactRow(contact, profile, shared) {
     const avatarUrl = profile.profile_image_url || null;
     const phone = (shared.shared_phone != null && shared.shared_phone !== '') ? shared.shared_phone : '';
     const email = (shared.shared_email != null && shared.shared_email !== '') ? shared.shared_email : '';
+    const hasSharedPhone = !!phone;
+    const hasSharedEmail = !!email;
     const cid = esc(contact.contact_id);
     const selfieUrl = contact.selfie_url || null;
     const lastSeen = formatLastSeen(contact.met_at);
@@ -199,11 +201,20 @@ function renderContactRow(contact, profile, shared) {
     const selfieHtml = selfieUrl
         ? `<img src="${esc(selfieUrl)}" alt="Selfie">`
         : '<span title="Tap to take a selfie">📷</span>';
+    const sharedIconHtml = (hasSharedPhone || hasSharedEmail)
+        ? `<span class="contact-row-shared-icons" aria-label="Contact details shared with you">
+                ${hasSharedPhone ? '<span class="contact-row-shared-icon" title="Phone shared">📞</span>' : ''}
+                ${hasSharedEmail ? '<span class="contact-row-shared-icon contact-row-shared-icon-email" title="Email shared">✉</span>' : ''}
+            </span>`
+        : '';
     return `
         <div class="contact-row" data-contact-id="${cid}">
             <div class="contact-row-header">
                 ${avatarHtml}
-                <span class="contact-row-name">${esc(name)}</span>
+                <span class="contact-row-name">
+                    <span class="contact-row-name-text">${esc(name)}</span>
+                    ${sharedIconHtml}
+                </span>
                 ${lastSeen ? `<span class="contact-row-lastseen">${lastSeen}</span>` : ''}
                 <span class="contact-row-chevron">›</span>
             </div>

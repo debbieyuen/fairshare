@@ -1193,7 +1193,35 @@ body {
     color: var(--dark-gray);
     flex-shrink: 0;
 }
-.contact-row-name { font-weight: 600; font-size: 1rem; flex: 1; }
+.contact-row-name {
+    font-weight: 600;
+    font-size: 1rem;
+    flex: 1;
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+.contact-row-name-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.contact-row-shared-icons {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    margin-left: 0.3rem;
+    color: var(--dark-gray);
+}
+.contact-row-shared-icon {
+    font-size: 0.78rem;
+    line-height: 1;
+}
+.contact-row-shared-icon-email {
+    font-size: 1.56rem;
+}
 .contact-row-lastseen { font-size: 0.78rem; color: var(--dark-gray); white-space: nowrap; }
 .contact-row-chevron { font-size: 0.9rem; color: var(--dark-gray); transition: transform 0.2s; }
 .contact-row.expanded .contact-row-chevron { transform: rotate(90deg); }
