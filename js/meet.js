@@ -25,7 +25,7 @@ async function openMeetScreen() {
     // 2. Show the overlay immediately (camera preview + loading QR)
     document.getElementById('meetOverlay').classList.remove('hidden');
     document.getElementById('meetScanHint').textContent = cameraOk
-        ? 'Point at the other person\'s QR code'
+        ? 'Show your phones to each other'
         : 'Camera unavailable — ask the other person to scan your code';
     document.getElementById('meetQrBox').innerHTML =
         '<div style="color:var(--dark-gray);font-size:0.85rem;padding:1rem;">Loading…</div>';
@@ -195,7 +195,8 @@ function meetSuccess(contactName) {
 function copyMeetLink() {
     if (!currentMeetUrl) return;
     navigator.clipboard.writeText(currentMeetUrl).then(() => {
-        showToast('Meet link copied to clipboard!', 'success');
+        showToast('Invite link copied', 'success');
+        closeMeetScreen();
     }).catch(() => {
         showToast('Could not copy link', 'error');
     });

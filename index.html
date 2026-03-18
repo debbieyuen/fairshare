@@ -162,16 +162,15 @@
 <div id="meetOverlay" class="meet-overlay hidden">
     <button class="meet-close" onclick="closeMeetScreen()" aria-label="Close">✕</button>
     <div class="meet-qr-section">
-        <div class="meet-label">Your QR Code</div>
         <div class="meet-qr-box" id="meetQrBox">
             <!-- QR code rendered here -->
         </div>
-        <button class="meet-copy-btn" id="meetCopyBtn" onclick="copyMeetLink()" style="display:none;">📋 Copy Link</button>
+        <button class="meet-copy-btn" id="meetCopyBtn" onclick="copyMeetLink()" style="display:none;">📋 Copy invite link</button>
     </div>
     <div class="meet-camera-section">
         <video id="meetVideo" autoplay playsinline muted></video>
         <canvas id="meetCanvas" style="display:none;"></canvas>
-        <div class="meet-scan-hint" id="meetScanHint">Point at the other person's QR code</div>
+        <div class="meet-scan-hint" id="meetScanHint">Show your phones to each other</div>
     </div>
 </div>
 
