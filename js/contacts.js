@@ -338,7 +338,7 @@ function renderContactRow(contact, profile, shared) {
                     ${!phone && !email ? '<div class="contact-detail-line contact-detail-muted">No phone or email shared with you yet.</div>' : ''}
                 </div>
                 <div class="contact-shared-trust" id="shared-${cid}">
-                    <div class="contact-shared-title">Shared</div>
+                    <div class="contact-shared-title">Trust</div>
                     <div class="contact-detail-line contact-detail-muted">Loading shared trust…</div>
                 </div>
                 <div class="family-tree" id="ft-${cid}">
@@ -357,15 +357,36 @@ function renderSharedTrust(container, trustData) {
     const attestersCount = trustData?.attestersCount == null
         ? 'Unavailable'
         : (Number.isFinite(Number(trustData.attestersCount)) ? Number(trustData.attestersCount) : 0);
-    const groupNames = Array.isArray(trustData?.groups) ? trustData.groups.filter(Boolean) : null;
-    const groupsText = groupNames == null
+    const profileMatchesCount = trustData?.profileMatchesCount == null
         ? 'Unavailable'
-        : (groupNames.length > 0 ? groupNames.map(name => esc(name)).join(', ') : 'None');
+        : (Number.isFinite(Number(trustData.profileMatchesCount)) ? Number(trustData.profileMatchesCount) : 0);
+    const groupNames = Array.isArray(trustData?.groups) ? trustData.groups.filter(Boolean) : null;
+    const contactsText = contactsCount === 'Unavailable'
+        ? 'Shared contacts unavailable'
+        : (Number(contactsCount) > 0
+            ? `<span class="contact-shared-key">${Number(contactsCount)}</span> Shared Contacts`
+            : 'No Shared Contacts');
+    const groupsText = groupNames == null
+        ? 'Shared groups unavailable'
+        : (groupNames.length > 0
+            ? `Shared groups: <span class="contact-shared-key">${groupNames.map(name => esc(name)).join(', ')}</span>`
+            : 'No Shared Groups');
+    const attestersText = attestersCount === 'Unavailable'
+        ? 'Mutual attestations unavailable'
+        : (Number(attestersCount) > 0
+            ? `<span class="contact-shared-key">${Number(attestersCount)}</span> Mutual Attestations`
+            : 'No Mutual Attestations');
+    const profileMatchesText = profileMatchesCount === 'Unavailable'
+        ? 'Matches Profile unavailable'
+        : (Number(profileMatchesCount) > 0
+            ? `<span class="contact-shared-key">${Number(profileMatchesCount)}</span> profile picture confirmations`
+            : 'No profile picture confirmations');
     container.innerHTML = `
-        <div class="contact-shared-title">Shared</div>
-        <div class="contact-detail-line"><span class="contact-shared-key">Contacts:</span> ${contactsCount}</div>
-        <div class="contact-detail-line"><span class="contact-shared-key">Groups:</span> ${groupsText}</div>
-        <div class="contact-detail-line"><span class="contact-shared-key">Attested both:</span> ${attestersCount}</div>
+        <div class="contact-shared-title">Trust</div>
+        <div class="contact-detail-line">${contactsText}</div>
+        <div class="contact-detail-line">${groupsText}</div>
+        <div class="contact-detail-line">${attestersText}</div>
+        <div class="contact-detail-line">${profileMatchesText}</div>
     `;
 }
 
@@ -382,15 +403,17 @@ async function loadSharedTrust(contactId) {
     }
 
     try {
-        const [sharedContactsRes, sharedGroupsRes, sharedAttestersRes] = await Promise.all([
+        const [sharedContactsRes, sharedGroupsRes, sharedAttestersRes, profileMatchesRes] = await Promise.all([
             db.rpc('get_shared_contacts_count', { p_contact_id: contactId }),
             db.rpc('get_shared_groups', { p_contact_id: contactId }),
-            db.rpc('get_shared_attesters_count', { p_contact_id: contactId })
+            db.rpc('get_shared_attesters_count', { p_contact_id: contactId }),
+            db.rpc('get_profile_picture_attesters_count', { p_contact_id: contactId })
         ]);
 
         if (sharedContactsRes.error) console.error('Shared trust contacts RPC error:', sharedContactsRes.error);
         if (sharedGroupsRes.error) console.error('Shared trust groups RPC error:', sharedGroupsRes.error);
         if (sharedAttestersRes.error) console.error('Shared trust attesters RPC error:', sharedAttestersRes.error);
+        if (profileMatchesRes.error) console.error('Shared trust profile match RPC error:', profileMatchesRes.error);
 
         const trustData = {
             contactsCount: sharedContactsRes.error
@@ -401,14 +424,20 @@ async function loadSharedTrust(contactId) {
                 : (Array.isArray(sharedGroupsRes.data) ? sharedGroupsRes.data.map(row => row.name).filter(Boolean) : []),
             attestersCount: sharedAttestersRes.error
                 ? null
-                : (Number.isFinite(Number(sharedAttestersRes.data)) ? Number(sharedAttestersRes.data) : 0)
+                : (Number.isFinite(Number(sharedAttestersRes.data)) ? Number(sharedAttestersRes.data) : 0),
+            profileMatchesCount: profileMatchesRes.error
+                ? null
+                : (Number.isFinite(Number(profileMatchesRes.data)) ? Number(profileMatchesRes.data) : 0)
         };
 
-        const allFailed = trustData.contactsCount == null && trustData.groups == null && trustData.attestersCount == null;
+        const allFailed = trustData.contactsCount == null
+            && trustData.groups == null
+            && trustData.attestersCount == null
+            && trustData.profileMatchesCount == null;
         container.dataset.loaded = '1';
         if (allFailed) {
             container.innerHTML = `
-                <div class="contact-shared-title">Shared</div>
+                <div class="contact-shared-title">Trust</div>
                 <div class="contact-detail-line contact-detail-muted">Could not load shared trust yet.</div>
             `;
             return;
@@ -420,7 +449,7 @@ async function loadSharedTrust(contactId) {
         console.error('Shared trust error:', e);
         container.dataset.loaded = '1';
         container.innerHTML = `
-            <div class="contact-shared-title">Shared</div>
+            <div class="contact-shared-title">Trust</div>
             <div class="contact-detail-line contact-detail-muted">Could not load shared trust yet.</div>
         `;
     }

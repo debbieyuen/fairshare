@@ -1408,11 +1408,15 @@ body {
     margin-right: 0;
     flex: 1;
 }
+.contact-detail-actions .btn-share-with-contact,
+.contact-detail-actions .btn-vouch-with-contact {
+    padding: 0.6rem 0.7rem;
+}
 .btn-vouch-with-contact {
-    background: #d63384;
+    background: var(--primary-color);
     color: var(--white);
 }
-.btn-vouch-with-contact:hover:not(:disabled) { background: #b02a6e; }
+.btn-vouch-with-contact:hover:not(:disabled) { background: var(--accent-color); }
 .contact-shared-details {
     margin-top: 0.9rem;
     padding: 0.55rem 0.75rem;
