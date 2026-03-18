@@ -57,13 +57,22 @@ async function loadAndRenderContactList() {
                 }
             });
         });
-        content.addEventListener('click', (e) => {
-            const btn = e.target.closest('.btn-share-with-contact');
-            if (btn) {
-                e.stopPropagation();
-                openShareWithContact(btn.dataset.contactId || '', btn.dataset.contactName || 'contact');
-            }
-        });
+        if (!content.dataset.contactActionBound) {
+            content.addEventListener('click', (e) => {
+                const shareBtn = e.target.closest('.btn-share-with-contact');
+                if (shareBtn) {
+                    e.stopPropagation();
+                    openShareWithContact(shareBtn.dataset.contactId || '', shareBtn.dataset.contactName || 'contact');
+                    return;
+                }
+                const vouchBtn = e.target.closest('.btn-vouch-with-contact');
+                if (vouchBtn) {
+                    e.stopPropagation();
+                    openVouchWithContact(vouchBtn.dataset.contactId || '', vouchBtn.dataset.contactName || 'contact');
+                }
+            });
+            content.dataset.contactActionBound = '1';
+        }
     } catch (e) {
         console.error('Load contacts error:', e);
         content.innerHTML = '<p style="color:var(--red);text-align:center;padding:2rem;">Failed to load contacts.</p>';
@@ -96,6 +105,9 @@ function renderContactRow(contact, profile, shared) {
     const avatarHtml = avatarUrl
         ? `<img class="contact-row-avatar" src="${esc(avatarUrl)}" alt="">`
         : '<div class="contact-row-avatar-placeholder">👤</div>';
+    const largeAvatarHtml = avatarUrl
+        ? `<img class="contact-detail-profile-photo" src="${esc(avatarUrl)}" alt="${esc(name)} profile">`
+        : '<div class="contact-detail-profile-placeholder">👤</div>';
     const selfieHtml = selfieUrl
         ? `<img src="${esc(selfieUrl)}" alt="Selfie">`
         : '<span title="Tap to take a selfie">📷</span>';
@@ -108,17 +120,22 @@ function renderContactRow(contact, profile, shared) {
                 <span class="contact-row-chevron">›</span>
             </div>
             <div class="contact-detail">
-                ${phone ? `<div class="contact-detail-line">📞 <a href="tel:${esc(phone)}">${esc(phone)}</a></div>` : ''}
-                ${email ? `<div class="contact-detail-line">✉ <a href="mailto:${esc(email)}">${esc(email)}</a></div>` : ''}
-                <div class="contact-detail-line">Selfie</div>
-                <div class="contact-selfie-wrap" onclick="event.stopPropagation();openContactSelfie('${cid}')">${selfieHtml}</div>
+                <div class="contact-detail-media-row">
+                    <div class="contact-detail-profile-media">${largeAvatarHtml}</div>
+                    <div class="contact-selfie-wrap contact-detail-selfie" onclick="event.stopPropagation();openContactSelfie('${cid}')">${selfieHtml}</div>
+                </div>
                 <div class="contact-detail-actions">
                     <button type="button" class="btn btn-primary btn-small btn-share-with-contact" data-contact-id="${cid}" data-contact-name="${esc(name)}">Share</button>
-                    <button type="button" class="btn btn-small btn-trust" onclick="event.stopPropagation();sendAttestation('${cid}','trust')">Trust</button>
-                    <button type="button" class="btn btn-small btn-love" onclick="event.stopPropagation();sendAttestation('${cid}','love')">Love</button>
+                    <button type="button" class="btn btn-small btn-vouch-with-contact" data-contact-id="${cid}" data-contact-name="${esc(name)}">Vouch</button>
+                </div>
+                <div class="contact-shared-details">
+                    <div class="contact-shared-title">Shared with you</div>
+                    ${phone ? `<div class="contact-detail-line">📞 <a href="tel:${esc(phone)}">${esc(phone)}</a></div>` : ''}
+                    ${email ? `<div class="contact-detail-line">✉ <a href="mailto:${esc(email)}">${esc(email)}</a></div>` : ''}
+                    ${!phone && !email ? '<div class="contact-detail-line contact-detail-muted">No phone or email shared with you yet.</div>' : ''}
                 </div>
                 <div class="family-tree" id="ft-${cid}">
-                    <div class="family-tree-title">Shared Sponsor Tree</div>
+                    <div class="family-tree-title">Family Tree</div>
                     <div class="family-tree-loading">Loading…</div>
                 </div>
             </div>
@@ -151,41 +168,52 @@ async function loadFamilyTree(contactId) {
         renderFamilyTree(container, myChain, theirChain, contactId);
     } catch (e) {
         console.error('Family tree error:', e);
-        container.innerHTML = '<div class="family-tree-title">Shared Sponsor Tree</div><div class="family-tree-loading">Could not load tree.</div>';
+        container.innerHTML = '<div class="family-tree-title">Family Tree</div><div class="family-tree-loading">Could not load tree.</div>';
     }
 }
 
 function renderFamilyTree(container, myChain, theirChain, contactId) {
-    // Find LCA: the first ID that appears in both chains
-    const theirIdSet = new Set(theirChain.map(n => n.id));
+    const normalizeAncestorChain = (chain) => {
+        const out = [];
+        const seen = new Set();
+        for (const node of (chain || [])) {
+            if (!node || !node.id) continue;
+            // Stop at first cycle so repeating sponsor loops do not render forever.
+            if (seen.has(node.id)) break;
+            seen.add(node.id);
+            out.push(node);
+        }
+        return out;
+    };
+
+    const safeMyChain = normalizeAncestorChain(myChain);
+    const safeTheirChain = normalizeAncestorChain(theirChain);
+    const theirIdSet = new Set(safeTheirChain.map(n => n.id));
     let lcaIndex = -1;
-    for (let i = 0; i < myChain.length; i++) {
-        if (theirIdSet.has(myChain[i].id)) {
+    for (let i = 0; i < safeMyChain.length; i++) {
+        if (theirIdSet.has(safeMyChain[i].id)) {
             lcaIndex = i;
             break;
         }
     }
 
-    // Build the path from contact to LCA
-    let theirLcaIndex = -1;
-    if (lcaIndex >= 0) {
-        const lcaId = myChain[lcaIndex].id;
-        theirLcaIndex = theirChain.findIndex(n => n.id === lcaId);
-    }
-
-    if (lcaIndex < 0 || theirLcaIndex < 0) {
-        container.innerHTML = '<div class="family-tree-title">Shared Sponsor Tree</div><div class="family-tree-loading" style="font-style:italic;">No shared sponsors found.</div>';
+    if (lcaIndex < 0) {
+        container.innerHTML = '<div class="family-tree-title">Family Tree</div><div class="family-tree-loading" style="font-style:italic;">No shared sponsors found.</div>';
         return;
     }
 
-    // myPath: from me up to (but not including) LCA
-    const myPath = myChain.slice(0, lcaIndex);
-    // theirPath: from contact up to (but not including) LCA
-    const theirPath = theirChain.slice(0, theirLcaIndex);
-    const lca = myChain[lcaIndex];
+    const lcaId = safeMyChain[lcaIndex].id;
+    const theirLcaIndex = safeTheirChain.findIndex(n => n.id === lcaId);
+    if (theirLcaIndex < 0) {
+        container.innerHTML = '<div class="family-tree-title">Family Tree</div><div class="family-tree-loading" style="font-style:italic;">No shared sponsors found.</div>';
+        return;
+    }
 
-    // Shared ancestors above LCA (optional, show a few)
-    const sharedAbove = myChain.slice(lcaIndex + 1, lcaIndex + 4);
+    // Build root -> ... -> LCA vertical chain
+    const sharedTopPath = safeMyChain.slice(lcaIndex).reverse();
+    // Build LCA child -> ... -> leaves (you/contact)
+    const myDescPath = safeMyChain.slice(0, lcaIndex).reverse();
+    const theirDescPath = safeTheirChain.slice(0, theirLcaIndex).reverse();
 
     const nodeHtml = (node, cls = '') => {
         const name = esc(node.display_name || 'Unknown');
@@ -193,69 +221,59 @@ function renderFamilyTree(container, myChain, theirChain, contactId) {
     };
 
     const connectorHtml = '<div class="ft-connector"></div>';
+    const buildPathHtml = (pathNodes, leafClass) => {
+        if (!pathNodes.length) return '';
+        let html = '';
+        for (let i = 0; i < pathNodes.length; i++) {
+            if (i > 0) html += connectorHtml;
+            const cls = i === pathNodes.length - 1 ? leafClass : '';
+            html += nodeHtml(pathNodes[i], cls);
+        }
+        return html;
+    };
 
-    // Build left branch (me to LCA)
-    let leftBranch = '';
-    for (let i = 0; i < myPath.length; i++) {
-        const cls = i === 0 ? 'ft-you' : '';
-        leftBranch += nodeHtml(myPath[i], cls) + connectorHtml;
-    }
-
-    // Build right branch (contact to LCA)
-    let rightBranch = '';
-    for (let i = 0; i < theirPath.length; i++) {
-        const cls = i === 0 ? 'ft-them' : '';
-        rightBranch += nodeHtml(theirPath[i], cls) + connectorHtml;
-    }
-
-    // If both paths are empty, they share the same direct sponsor
-    const hasLeftPath = myPath.length > 0;
-    const hasRightPath = theirPath.length > 0;
-
-    // Build shared ancestors above LCA
     let sharedHtml = '';
-    for (const node of sharedAbove) {
-        sharedHtml += connectorHtml + nodeHtml(node);
-    }
-    if (myChain.length > lcaIndex + 4) {
-        sharedHtml += connectorHtml + '<div class="ft-node" style="color:var(--dark-gray);">⋮</div>';
+    for (let i = 0; i < sharedTopPath.length; i++) {
+        if (i > 0) sharedHtml += connectorHtml;
+        const cls = i === sharedTopPath.length - 1 ? 'ft-lca' : '';
+        sharedHtml += nodeHtml(sharedTopPath[i], cls);
     }
 
-    let treeHtml = '<div class="family-tree-title">Shared Sponsor Tree</div>';
+    const leftBranch = buildPathHtml(myDescPath, 'ft-you');
+    const rightBranch = buildPathHtml(theirDescPath, 'ft-them');
+    const hasLeft = myDescPath.length > 0;
+    const hasRight = theirDescPath.length > 0;
+    const branchStem = (hasLeft || hasRight)
+        ? `${connectorHtml}<div class="ft-split-bar"><div></div><div></div></div>`
+        : '';
 
-    if (!hasLeftPath && !hasRightPath) {
-        // Both are directly sponsored by the LCA
-        treeHtml += `<div class="family-tree-diagram">
-            <div class="ft-branch">${nodeHtml(lca, 'ft-lca')}${sharedHtml}</div>
+    // Special-case root->descendant: only show right branch below root chain.
+    let branchHtml = '';
+    if (hasLeft || hasRight) {
+        if (!hasLeft && hasRight) {
+            branchHtml = `<div class="ft-branches ft-single-right">
+                <div class="ft-branch ft-branch-empty"></div>
+                <div class="ft-branch">${rightBranch}</div>
+            </div>`;
+        } else if (hasLeft && !hasRight) {
+            branchHtml = `<div class="ft-branches ft-single-left">
+                <div class="ft-branch">${leftBranch}</div>
+                <div class="ft-branch ft-branch-empty"></div>
+            </div>`;
+        } else {
+            branchHtml = `<div class="ft-branches">
+                <div class="ft-branch">${leftBranch}</div>
+                <div class="ft-branch">${rightBranch}</div>
+            </div>`;
+        }
+    }
+
+    const treeHtml = `<div class="family-tree-title">Family Tree</div>
+        <div class="family-tree-diagram">
+            <div class="ft-branch">${sharedHtml}</div>
+            ${branchStem}
+            ${branchHtml}
         </div>`;
-    } else {
-        // Render V-shaped tree
-        const maxLen = Math.max(myPath.length, theirPath.length);
-        const leftPad = maxLen - myPath.length;
-        const rightPad = maxLen - theirPath.length;
-
-        let leftCol = '';
-        for (let i = 0; i < leftPad; i++) leftCol += '<div class="ft-connector" style="visibility:hidden;"></div><div class="ft-node" style="visibility:hidden;">.</div>';
-        leftCol += leftBranch;
-
-        let rightCol = '';
-        for (let i = 0; i < rightPad; i++) rightCol += '<div class="ft-connector" style="visibility:hidden;"></div><div class="ft-node" style="visibility:hidden;">.</div>';
-        rightCol += rightBranch;
-
-        treeHtml += `<div class="family-tree-diagram" style="flex-direction:column;align-items:center;">
-            <div class="ft-branches">
-                <div class="ft-branch">${leftCol}</div>
-                <div class="ft-branch">${rightCol}</div>
-            </div>
-            <div style="display:flex;align-items:flex-end;width:100%;max-width:200px;">
-                <div style="flex:1;height:2px;background:var(--medium-gray);"></div>
-                <div style="flex:1;height:2px;background:var(--medium-gray);"></div>
-            </div>
-            <div class="ft-connector"></div>
-            ${nodeHtml(lca, 'ft-lca')}
-            ${sharedHtml}
-        </div>`;
-    }
 
     container.innerHTML = treeHtml;
 }
@@ -341,38 +359,62 @@ async function captureContactSelfie() {
 function openShareWithContact(contactId, contactName) {
     shareWithContactId = contactId;
     shareWithContactName = contactName || 'contact';
-    showModal('shareWithContact');
+    showModal('shareChoice');
 }
 
-async function submitShareWithContact(e) {
-    e.preventDefault();
-    if (!shareWithContactId) { closeModal(); return; }
-    const sharePhone = document.getElementById('sharePhone').checked;
-    const shareEmail = document.getElementById('shareEmail').checked;
-    const phone = sharePhone ? (currentProfile?.phone || '') : null;
-    const email = shareEmail ? (currentProfile?.email || '') : null;
+async function shareWithContactChoice(sharedType) {
+    if (!shareWithContactId || !currentUser) { closeModal(); return; }
+    const isPhone = sharedType === 'phone';
+    const myValue = isPhone ? (currentProfile?.phone || '') : (currentProfile?.email || '');
+    if (!myValue) {
+        showToast(isPhone ? 'Add your phone in Profile first.' : 'Add your email in Profile first.', 'error');
+        return;
+    }
     try {
+        const { data: existing } = await db
+            .from('contact_shared')
+            .select('shared_phone, shared_email')
+            .eq('user_id', currentUser.id)
+            .eq('contact_id', shareWithContactId)
+            .maybeSingle();
+
+        const phone = isPhone ? myValue : (existing?.shared_phone || null);
+        const email = isPhone ? (existing?.shared_email || null) : myValue;
+
         await db.from('contact_shared').upsert({
             user_id: currentUser.id,
             contact_id: shareWithContactId,
             shared_phone: phone,
             shared_email: email
         }, { onConflict: 'user_id,contact_id' });
-        if (sharePhone) {
-            await db.from('contact_shares').insert({ from_user_id: currentUser.id, to_user_id: shareWithContactId, shared_type: 'phone' });
-        }
-        if (shareEmail) {
-            await db.from('contact_shares').insert({ from_user_id: currentUser.id, to_user_id: shareWithContactId, shared_type: 'email' });
-        }
-        showToast('Shared.', 'success');
+
+        await db.from('contact_shares').insert({
+            from_user_id: currentUser.id,
+            to_user_id: shareWithContactId,
+            shared_type: isPhone ? 'phone' : 'email'
+        });
+
+        showToast(isPhone ? 'Phone number shared.' : 'Email shared.', 'success');
     } catch (err) {
         console.error('Share with contact error:', err);
         showToast('Could not save: ' + (err.message || 'error'), 'error');
+        return;
     }
     closeModal();
     shareWithContactId = null;
     shareWithContactName = '';
-    if (document.getElementById('contactsListContent') && !document.getElementById('contactsOverlay').classList.contains('hidden')) {
-        await loadAndRenderContactList();
-    }
+}
+
+function openVouchWithContact(contactId, contactName) {
+    vouchWithContactId = contactId;
+    vouchWithContactName = contactName || 'contact';
+    showModal('vouchChoice');
+}
+
+async function vouchWithContactChoice(attestationType) {
+    if (!vouchWithContactId) { closeModal(); return; }
+    await sendAttestation(vouchWithContactId, attestationType);
+    closeModal();
+    vouchWithContactId = null;
+    vouchWithContactName = '';
 }

@@ -6,7 +6,13 @@ async function sendAttestation(contactId, type) {
             p_attestation_type: type
         });
         if (error) throw error;
-        showToast(type === 'love' ? 'Love Recorded' : 'Trust Recorded', 'info');
+        const messageMap = {
+            profile_picture_accurate: 'Profile picture accuracy recorded',
+            respect: 'Respect recorded',
+            trust: 'Trust recorded',
+            love: 'Love recorded'
+        };
+        showToast(messageMap[type] || 'Attestation recorded', 'info');
     } catch (e) {
         console.error('Attestation error:', e);
         showToast(e.message || 'Could not send attestation', 'error');

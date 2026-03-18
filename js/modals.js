@@ -174,28 +174,40 @@ function showModal(type) {
             }
             break;
 
-        case 'shareWithContact':
+        case 'shareChoice':
             body.innerHTML = `
                 <h3>Share with ${esc(shareWithContactName || 'contact')}</h3>
-                <p style="font-size:0.9rem;color:var(--dark-gray);margin-bottom:1rem;">Choose what to share. They will be notified.</p>
-                <form id="shareWithContactForm" style="min-width:0;overflow-wrap:break-word;">
-                    <div class="form-group" style="display:flex;align-items:flex-start;gap:0.5rem;max-width:100%;min-width:0;">
-                        <input type="checkbox" id="sharePhone" style="flex-shrink:0;margin-top:0.2rem;" ${(currentProfile?.phone) ? '' : 'disabled'}>
-                        <label for="sharePhone" style="margin:0;flex:1;min-width:0;overflow-wrap:break-word;word-break:break-word;">Share my phone number</label>
+                <p style="font-size:0.9rem;color:var(--dark-gray);margin-bottom:1rem;">Choose one item to share now.</p>
+                <div class="choice-list" style="min-width:0;overflow-wrap:break-word;">
+                    <div class="choice-item">
+                        <button type="button" class="btn btn-outline choice-button" ${(currentProfile?.phone) ? '' : 'disabled'} onclick="shareWithContactChoice('phone')">Phone Number</button>
                     </div>
                     ${!(currentProfile?.phone) ? '<p style="font-size:0.8rem;color:var(--dark-gray);">Add your phone in Profile first.</p>' : ''}
-                    <div class="form-group" style="display:flex;align-items:flex-start;gap:0.5rem;max-width:100%;min-width:0;">
-                        <input type="checkbox" id="shareEmail" style="flex-shrink:0;margin-top:0.2rem;" ${(currentProfile?.email) ? '' : 'disabled'}>
-                        <label for="shareEmail" style="margin:0;flex:1;min-width:0;overflow-wrap:break-word;word-break:break-word;">Share my email</label>
+                    <div class="choice-item">
+                        <button type="button" class="btn btn-outline choice-button" ${(currentProfile?.email) ? '' : 'disabled'} onclick="shareWithContactChoice('email')">Email</button>
                     </div>
                     ${!(currentProfile?.email) ? '<p style="font-size:0.8rem;color:var(--dark-gray);">Add your email in Profile first.</p>' : ''}
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Share</button>
                     </div>
-                </form>
+                </div>
             `;
-            document.getElementById('shareWithContactForm').addEventListener('submit', (e) => submitShareWithContact(e));
+            break;
+
+        case 'vouchChoice':
+            body.innerHTML = `
+                <h3>Vouch for ${esc(vouchWithContactName || 'contact')}</h3>
+                <p style="font-size:0.9rem;color:var(--dark-gray);margin-bottom:1rem;">Choose one statement.</p>
+                <div class="choice-list">
+                    <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="vouchWithContactChoice('profile_picture_accurate')">Profile picture is accurate</button></div>
+                    <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="vouchWithContactChoice('respect')">I respect you</button></div>
+                    <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="vouchWithContactChoice('trust')">I trust you</button></div>
+                    <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="vouchWithContactChoice('love')">I love you</button></div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                    </div>
+                </div>
+            `;
             break;
 
         case 'contactSelfie':
@@ -247,6 +259,10 @@ function showModal(type) {
 
 function closeModal() {
     if (heartDialogTimer) { clearTimeout(heartDialogTimer); heartDialogTimer = null; }
+    shareWithContactId = null;
+    shareWithContactName = '';
+    vouchWithContactId = null;
+    vouchWithContactName = '';
     if (contactSelfieStream) {
         stopContactSelfieStream();
         contactSelfieId = null;

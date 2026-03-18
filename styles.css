@@ -1205,6 +1205,31 @@ body {
 .contact-row.expanded .contact-detail { display: block; }
 .contact-detail-line { padding: 0.4rem 0; font-size: 0.9rem; color: var(--dark-gray); }
 .contact-detail-line a { color: var(--primary-color); text-decoration: none; }
+.contact-detail-muted { font-style: italic; }
+.contact-detail-media-row {
+    display: flex;
+    gap: 0.6rem;
+    margin-top: 0.75rem;
+}
+.contact-detail-profile-media {
+    flex: 1;
+    aspect-ratio: 1 / 1;
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--medium-gray);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.contact-detail-profile-photo {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.contact-detail-profile-placeholder {
+    font-size: 2rem;
+    color: var(--dark-gray);
+}
 .contact-selfie-wrap {
     margin: 0.75rem 0;
     width: 120px;
@@ -1220,12 +1245,40 @@ body {
     color: var(--dark-gray);
 }
 .contact-selfie-wrap img { width: 100%; height: 100%; object-fit: cover; }
-.contact-detail-actions { margin-top: 1rem; }
-.contact-detail-actions .btn { margin-right: 0.5rem; }
-.btn-trust { background: var(--primary-color); color: var(--white); }
-.btn-trust:hover:not(:disabled) { background: var(--accent-color); }
-.btn-love { background: #d63384; color: var(--white); }
-.btn-love:hover:not(:disabled) { background: #b02a6e; }
+.contact-detail-selfie {
+    flex: 1;
+    width: auto;
+    height: auto;
+    aspect-ratio: 1 / 1;
+    margin: 0;
+}
+.contact-detail-actions {
+    margin-top: 0.9rem;
+    display: flex;
+    gap: 0.6rem;
+}
+.contact-detail-actions .btn {
+    margin-right: 0;
+    flex: 1;
+}
+.btn-vouch-with-contact {
+    background: #d63384;
+    color: var(--white);
+}
+.btn-vouch-with-contact:hover:not(:disabled) { background: #b02a6e; }
+.contact-shared-details {
+    margin-top: 0.9rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: 8px;
+    background: var(--light-gray);
+}
+.contact-shared-title {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--dark-gray);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
 .header-heart-btn { color: #ff4d6d !important; font-size: 1.32rem !important; }
 
 /* Family tree in contact details */
@@ -1234,9 +1287,10 @@ body {
 .family-tree-loading { font-size: 0.8rem; color: var(--dark-gray); }
 .family-tree-diagram {
     display: flex;
+    flex-direction: column;
     gap: 0;
     justify-content: center;
-    align-items: flex-end;
+    align-items: center;
     font-size: 0.8rem;
 }
 .ft-branch {
@@ -1286,6 +1340,25 @@ body {
     gap: 1.5rem;
     align-items: flex-start;
 }
+.ft-branches.ft-single-right,
+.ft-branches.ft-single-left {
+    width: 100%;
+    max-width: 230px;
+    justify-content: space-between;
+}
+.ft-branch-empty {
+    min-width: 100px;
+}
+.ft-split-bar {
+    display: flex;
+    width: 100%;
+    max-width: 210px;
+}
+.ft-split-bar div {
+    flex: 1;
+    height: 2px;
+    background: var(--medium-gray);
+}
 .ft-branch-connector {
     width: 2px;
     height: 10px;
@@ -1304,4 +1377,16 @@ body {
     width: 2px;
     height: 10px;
     background: var(--medium-gray);
+}
+.choice-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.choice-item {
+    display: flex;
+}
+.choice-button {
+    width: 100%;
+    justify-content: center;
 }
