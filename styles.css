@@ -1402,12 +1402,23 @@ body {
     border-radius: 8px;
     background: var(--light-gray);
 }
+.contact-shared-trust {
+    margin-top: 0.75rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: 8px;
+    background: var(--light-gray);
+}
 .contact-shared-title {
     font-size: 0.78rem;
     font-weight: 600;
     color: var(--dark-gray);
     text-transform: uppercase;
     letter-spacing: 0.04em;
+}
+.contact-shared-trust .contact-detail-line { margin-top: 0.2rem; }
+.contact-shared-key {
+    font-weight: 600;
+    color: var(--dark-gray);
 }
 .header-heart-btn { color: #ff4d6d !important; font-size: 1.32rem !important; }
 

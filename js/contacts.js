@@ -63,6 +63,7 @@ function expandContactRow(contactId) {
         if (expandedRow !== row) expandedRow.classList.remove('expanded');
     });
     row.classList.add('expanded');
+    loadSharedTrust(contactId);
     loadFamilyTree(contactId);
     return true;
 }
@@ -110,7 +111,10 @@ function bindContactRowEvents(content) {
             });
             row.classList.add('expanded');
             const cid = row.dataset.contactId;
-            if (cid) loadFamilyTree(cid);
+            if (cid) {
+                loadSharedTrust(cid);
+                loadFamilyTree(cid);
+            }
         });
     });
 }
@@ -333,12 +337,72 @@ function renderContactRow(contact, profile, shared) {
                     ${email ? `<div class="contact-detail-line">✉ <a href="mailto:${esc(email)}">${esc(email)}</a></div>` : ''}
                     ${!phone && !email ? '<div class="contact-detail-line contact-detail-muted">No phone or email shared with you yet.</div>' : ''}
                 </div>
+                <div class="contact-shared-trust" id="shared-${cid}">
+                    <div class="contact-shared-title">Shared</div>
+                    <div class="contact-detail-line contact-detail-muted">Loading shared trust…</div>
+                </div>
                 <div class="family-tree" id="ft-${cid}">
                     <div class="family-tree-title">Family Tree</div>
                     <div class="family-tree-loading">Loading…</div>
                 </div>
             </div>
         </div>`;
+}
+
+const sharedTrustCache = {};
+function renderSharedTrust(container, trustData) {
+    const contactsCount = Number.isFinite(Number(trustData?.contactsCount)) ? Number(trustData.contactsCount) : 0;
+    const attestersCount = Number.isFinite(Number(trustData?.attestersCount)) ? Number(trustData.attestersCount) : 0;
+    const groupNames = Array.isArray(trustData?.groups) ? trustData.groups.filter(Boolean) : [];
+    const groupsText = groupNames.length > 0 ? groupNames.map(name => esc(name)).join(', ') : 'None';
+    container.innerHTML = `
+        <div class="contact-shared-title">Shared</div>
+        <div class="contact-detail-line"><span class="contact-shared-key">Contacts:</span> ${contactsCount}</div>
+        <div class="contact-detail-line"><span class="contact-shared-key">Groups:</span> ${groupsText}</div>
+        <div class="contact-detail-line"><span class="contact-shared-key">Attested both:</span> ${attestersCount}</div>
+    `;
+}
+
+async function loadSharedTrust(contactId) {
+    const container = document.getElementById('shared-' + contactId);
+    if (!container || !currentUser) return;
+
+    if (container.dataset.loaded === '1') return;
+
+    if (sharedTrustCache[contactId]) {
+        container.dataset.loaded = '1';
+        renderSharedTrust(container, sharedTrustCache[contactId]);
+        return;
+    }
+
+    try {
+        const [sharedContactsRes, sharedGroupsRes, sharedAttestersRes] = await Promise.all([
+            db.rpc('get_shared_contacts_count', { p_contact_id: contactId }),
+            db.rpc('get_shared_groups', { p_contact_id: contactId }),
+            db.rpc('get_shared_attesters_count', { p_contact_id: contactId })
+        ]);
+        if (sharedContactsRes.error) throw sharedContactsRes.error;
+        if (sharedGroupsRes.error) throw sharedGroupsRes.error;
+        if (sharedAttestersRes.error) throw sharedAttestersRes.error;
+
+        const trustData = {
+            contactsCount: Number.isFinite(Number(sharedContactsRes.data)) ? Number(sharedContactsRes.data) : 0,
+            groups: Array.isArray(sharedGroupsRes.data)
+                ? sharedGroupsRes.data.map(row => row.name).filter(Boolean)
+                : [],
+            attestersCount: Number.isFinite(Number(sharedAttestersRes.data)) ? Number(sharedAttestersRes.data) : 0
+        };
+        sharedTrustCache[contactId] = trustData;
+        container.dataset.loaded = '1';
+        renderSharedTrust(container, trustData);
+    } catch (e) {
+        console.error('Shared trust error:', e);
+        container.dataset.loaded = '1';
+        container.innerHTML = `
+            <div class="contact-shared-title">Shared</div>
+            <div class="contact-detail-line contact-detail-muted">Could not load shared trust yet.</div>
+        `;
+    }
 }
 
 // Family tree: loads ancestor chains for both users and renders the shared tree
