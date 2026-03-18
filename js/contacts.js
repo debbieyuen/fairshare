@@ -50,11 +50,17 @@ async function loadAndRenderContactList() {
             row.addEventListener('click', (e) => {
                 if (e.target.closest('.contact-detail-actions') || e.target.closest('.contact-selfie-wrap') || e.target.closest('input') || e.target.closest('button')) return;
                 const wasExpanded = row.classList.contains('expanded');
-                row.classList.toggle('expanded');
-                if (!wasExpanded) {
-                    const cid = row.dataset.contactId;
-                    if (cid) loadFamilyTree(cid);
+                if (wasExpanded) {
+                    row.classList.remove('expanded');
+                    return;
                 }
+
+                content.querySelectorAll('.contact-row.expanded').forEach((expandedRow) => {
+                    expandedRow.classList.remove('expanded');
+                });
+                row.classList.add('expanded');
+                const cid = row.dataset.contactId;
+                if (cid) loadFamilyTree(cid);
             });
         });
         if (!content.dataset.contactActionBound) {
