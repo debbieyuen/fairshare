@@ -1,9 +1,52 @@
+let contactsSearchQuery = '';
+let contactsLoadedRows = [];
+
+function getContactsSearchInput() {
+    return document.getElementById('contactsSearchInput');
+}
+
+function normalizeContactsSearchQuery(query) {
+    return (query || '').trim().toLowerCase();
+}
+
+function setContactsSearchQuery(query, options = {}) {
+    const { syncInput = true } = options;
+    contactsSearchQuery = normalizeContactsSearchQuery(query);
+    if (syncInput) {
+        const input = getContactsSearchInput();
+        if (input) input.value = query || '';
+    }
+}
+
+function clearContactSearchState() {
+    setContactsSearchQuery('');
+}
+
+function bindContactsSearchInput() {
+    const input = getContactsSearchInput();
+    if (!input || input.dataset.bound === '1') return;
+    input.addEventListener('input', () => {
+        setContactsSearchQuery(input.value, { syncInput: false });
+        renderContactsForCurrentQuery();
+    });
+    input.dataset.bound = '1';
+}
+
+function getNoContactsHtml() {
+    return '<p style="color:var(--dark-gray);text-align:center;padding:2rem;">No contacts yet. Use the handshake icon to add someone.</p>';
+}
+
+function getNoMatchingContactsHtml() {
+    return '<p style="color:var(--dark-gray);text-align:center;padding:2rem;">No matching contacts.</p>';
+}
+
 async function openContactListScreen() {
     if (!currentUser) return;
     const overlay = document.getElementById('contactsOverlay');
     const content = document.getElementById('contactsListContent');
     overlay.classList.remove('hidden');
     content.innerHTML = '<p style="color:var(--dark-gray);text-align:center;padding:2rem;">Loading…</p>';
+    bindContactsSearchInput();
     await loadAndRenderContactList();
 }
 
@@ -36,15 +79,100 @@ function updateContactSelfieInList(contactId, selfieUrl) {
     return true;
 }
 
+function matchesContactSearch(row) {
+    if (!contactsSearchQuery) return true;
+    const name = (row.profile?.display_name || '').toLowerCase();
+    const profileEmail = (row.profile?.email || '').toLowerCase();
+    const profilePhone = (row.profile?.phone || '').toLowerCase();
+    const sharedEmail = (row.shared?.shared_email || '').toLowerCase();
+    const sharedPhone = (row.shared?.shared_phone || '').toLowerCase();
+    return (
+        name.includes(contactsSearchQuery)
+        || profileEmail.includes(contactsSearchQuery)
+        || profilePhone.includes(contactsSearchQuery)
+        || sharedEmail.includes(contactsSearchQuery)
+        || sharedPhone.includes(contactsSearchQuery)
+    );
+}
+
+function bindContactRowEvents(content) {
+    content.querySelectorAll('.contact-row').forEach((row) => {
+        row.addEventListener('click', (e) => {
+            if (e.target.closest('.contact-detail-actions') || e.target.closest('.contact-selfie-wrap') || e.target.closest('input') || e.target.closest('button')) return;
+            const wasExpanded = row.classList.contains('expanded');
+            if (wasExpanded) {
+                row.classList.remove('expanded');
+                return;
+            }
+
+            content.querySelectorAll('.contact-row.expanded').forEach((expandedRow) => {
+                expandedRow.classList.remove('expanded');
+            });
+            row.classList.add('expanded');
+            const cid = row.dataset.contactId;
+            if (cid) loadFamilyTree(cid);
+        });
+    });
+}
+
+function bindContactActionEvents(content) {
+    if (content.dataset.contactActionBound) return;
+    content.addEventListener('click', (e) => {
+        const shareBtn = e.target.closest('.btn-share-with-contact');
+        if (shareBtn) {
+            e.stopPropagation();
+            openShareWithContact(shareBtn.dataset.contactId || '', shareBtn.dataset.contactName || 'contact');
+            return;
+        }
+        const vouchBtn = e.target.closest('.btn-vouch-with-contact');
+        if (vouchBtn) {
+            e.stopPropagation();
+            openVouchWithContact(vouchBtn.dataset.contactId || '', vouchBtn.dataset.contactName || 'contact');
+        }
+    });
+    content.dataset.contactActionBound = '1';
+}
+
+function renderContactRows(rows) {
+    const content = document.getElementById('contactsListContent');
+    if (!content) return;
+    content.innerHTML = rows.map(({ contact, profile, shared }) => (
+        renderContactRow(contact, profile, shared)
+    )).join('');
+    bindContactRowEvents(content);
+    bindContactActionEvents(content);
+}
+
+function renderContactsForCurrentQuery() {
+    const content = document.getElementById('contactsListContent');
+    if (!content) return;
+
+    if (!contactsLoadedRows.length) {
+        content.innerHTML = getNoContactsHtml();
+        return;
+    }
+
+    const filteredRows = contactsLoadedRows.filter(matchesContactSearch);
+    if (!filteredRows.length) {
+        content.innerHTML = getNoMatchingContactsHtml();
+        return;
+    }
+
+    renderContactRows(filteredRows);
+}
+
 async function openContactDetailsById(contactId) {
     if (!contactId || !currentUser) return false;
     const overlay = document.getElementById('contactsOverlay');
     const content = document.getElementById('contactsListContent');
     if (!overlay || !content) return false;
+    bindContactsSearchInput();
 
     if (overlay.classList.contains('hidden')) {
         overlay.classList.remove('hidden');
     }
+
+    clearContactSearchState();
 
     if (!getContactRow(contactId)) {
         await loadAndRenderContactList();
@@ -66,9 +194,11 @@ async function openContactDetailsById(contactId) {
 async function openNewestContactDetails() {
     if (!currentUser) return false;
     const overlay = document.getElementById('contactsOverlay');
+    bindContactsSearchInput();
     if (overlay && overlay.classList.contains('hidden')) {
         overlay.classList.remove('hidden');
     }
+    clearContactSearchState();
     await loadAndRenderContactList();
     const firstRow = document.querySelector('.contact-row');
     const contactId = firstRow?.dataset?.contactId || '';
@@ -90,6 +220,7 @@ async function openPendingContactDetailsIfAny() {
 }
 
 function closeContactListScreen() {
+    clearContactSearchState();
     document.getElementById('contactsOverlay').classList.add('hidden');
 }
 
@@ -105,7 +236,8 @@ async function loadAndRenderContactList() {
         if (error) throw error;
 
         if (!contacts || contacts.length === 0) {
-            content.innerHTML = '<p style="color:var(--dark-gray);text-align:center;padding:2rem;">No contacts yet. Use the handshake icon to add someone.</p>';
+            contactsLoadedRows = [];
+            content.innerHTML = getNoContactsHtml();
             return;
         }
 
@@ -122,47 +254,15 @@ async function loadAndRenderContactList() {
             if (sharedRows) sharedRows.forEach(r => { sharedByThemMap[r.user_id] = r; });
         } catch (_) { /* contact_shared table may not exist yet */ }
 
-        content.innerHTML = contacts.map(c => {
-            const profile = profileMap[c.contact_id] || {};
-            const shared = sharedByThemMap[c.contact_id] || {};
-            return renderContactRow(c, profile, shared);
-        }).join('');
-
-        content.querySelectorAll('.contact-row').forEach((row) => {
-            row.addEventListener('click', (e) => {
-                if (e.target.closest('.contact-detail-actions') || e.target.closest('.contact-selfie-wrap') || e.target.closest('input') || e.target.closest('button')) return;
-                const wasExpanded = row.classList.contains('expanded');
-                if (wasExpanded) {
-                    row.classList.remove('expanded');
-                    return;
-                }
-
-                content.querySelectorAll('.contact-row.expanded').forEach((expandedRow) => {
-                    expandedRow.classList.remove('expanded');
-                });
-                row.classList.add('expanded');
-                const cid = row.dataset.contactId;
-                if (cid) loadFamilyTree(cid);
-            });
-        });
-        if (!content.dataset.contactActionBound) {
-            content.addEventListener('click', (e) => {
-                const shareBtn = e.target.closest('.btn-share-with-contact');
-                if (shareBtn) {
-                    e.stopPropagation();
-                    openShareWithContact(shareBtn.dataset.contactId || '', shareBtn.dataset.contactName || 'contact');
-                    return;
-                }
-                const vouchBtn = e.target.closest('.btn-vouch-with-contact');
-                if (vouchBtn) {
-                    e.stopPropagation();
-                    openVouchWithContact(vouchBtn.dataset.contactId || '', vouchBtn.dataset.contactName || 'contact');
-                }
-            });
-            content.dataset.contactActionBound = '1';
-        }
+        contactsLoadedRows = contacts.map((contact) => ({
+            contact,
+            profile: profileMap[contact.contact_id] || {},
+            shared: sharedByThemMap[contact.contact_id] || {}
+        }));
+        renderContactsForCurrentQuery();
     } catch (e) {
         console.error('Load contacts error:', e);
+        contactsLoadedRows = [];
         content.innerHTML = '<p style="color:var(--red);text-align:center;padding:2rem;">Failed to load contacts.</p>';
     }
 }

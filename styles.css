@@ -871,6 +871,9 @@ body {
 
     /* Contacts overlay */
     .contacts-overlay .contacts-header { padding: 0.8rem 1rem; }
+    .contacts-search-wrap { padding: 0.65rem 0.8rem 0; }
+    .contacts-search-icon { left: 1.55rem; top: calc(0.65rem + 36%); transform: translateY(-36%); }
+    .contacts-search-input { padding: 0.6rem 0.75rem 0.6rem 2.05rem; }
     .contact-row-header { padding: 0.7rem 0.8rem; }
 }
 
@@ -1151,10 +1154,41 @@ body {
     justify-content: center;
 }
 .contacts-overlay .contacts-close:hover { background: rgba(255,255,255,0.35); }
+.contacts-search-wrap {
+    position: relative;
+    padding: 0.75rem 1rem 0;
+    max-width: 700px;
+    margin: 0 auto;
+    width: 100%;
+}
+.contacts-search-icon {
+    position: absolute;
+    left: 1.8rem;
+    top: calc(0.75rem + 36%);
+    transform: translateY(-36%);
+    color: var(--dark-gray);
+    font-size: 1.27rem;
+    pointer-events: none;
+}
+.contacts-search-input {
+    width: 100%;
+    padding: 0.65rem 0.85rem 0.65rem 2.25rem;
+    border: 1px solid var(--medium-gray);
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 16px;
+    background: #edf1f4;
+    color: var(--text-color);
+}
+.contacts-search-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(58, 124, 165, 0.15);
+}
 .contacts-overlay .contacts-list-wrap {
     flex: 1;
     overflow-y: auto;
-    padding: 1rem;
+    padding: 0.85rem 1rem 1rem;
     max-width: 700px;
     margin: 0 auto;
     width: 100%;

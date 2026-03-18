@@ -180,6 +180,16 @@
         <h2>Contacts</h2>
         <button type="button" class="contacts-close" onclick="closeContactListScreen()" aria-label="Close">✕</button>
     </div>
+    <div class="contacts-search-wrap">
+        <span class="contacts-search-icon" aria-hidden="true">🔍</span>
+        <input
+            type="search"
+            id="contactsSearchInput"
+            class="contacts-search-input"
+            placeholder="Search name, email, or phone"
+            aria-label="Search contacts"
+            autocomplete="off">
+    </div>
     <div class="contacts-list-wrap" id="contactsListContent">
         <p style="color:var(--dark-gray);text-align:center;padding:2rem;">Loading…</p>
     </div>
