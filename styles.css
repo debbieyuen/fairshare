@@ -234,6 +234,23 @@ body {
     padding: 2rem;
     min-height: calc(100vh - 60px);
 }
+.screen-version {
+    margin-top: 1.25rem;
+    font-size: 0.68rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: rgba(22, 66, 91, 0.45);
+    text-align: left;
+    user-select: text;
+}
+.screen-version-overlay {
+    position: absolute;
+    left: 1rem;
+    bottom: 0.85rem;
+    margin-top: 0;
+    color: rgba(255, 255, 255, 0.42);
+    pointer-events: none;
+}
 
 /* Groups screen */
 .group-card {

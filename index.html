@@ -89,6 +89,7 @@
             </div>
         </div>
     </form>
+    <div class="screen-version" aria-hidden="true">__BUILD_VERSION__</div>
 </div>
 
 <!-- ===== APP (hidden until logged in) ===== -->
@@ -152,6 +153,7 @@
             </div>
         </div>
 
+        <div class="screen-version" aria-hidden="true">__BUILD_VERSION__</div>
     </div>
 </div>
 
@@ -172,6 +174,7 @@
         <canvas id="meetCanvas" style="display:none;"></canvas>
         <div class="meet-scan-hint" id="meetScanHint">Show your phones to each other</div>
     </div>
+    <div class="screen-version screen-version-overlay" aria-hidden="true">__BUILD_VERSION__</div>
 </div>
 
 <!-- ===== CONTACT LIST OVERLAY ===== -->
@@ -190,8 +193,11 @@
             aria-label="Search contacts"
             autocomplete="off">
     </div>
-    <div class="contacts-list-wrap" id="contactsListContent">
-        <p style="color:var(--dark-gray);text-align:center;padding:2rem;">Loading…</p>
+    <div class="contacts-list-wrap">
+        <div id="contactsListContent">
+            <p style="color:var(--dark-gray);text-align:center;padding:2rem;">Loading…</p>
+        </div>
+        <div class="screen-version" aria-hidden="true">__BUILD_VERSION__</div>
     </div>
 </div>
 
