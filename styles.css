@@ -958,7 +958,8 @@ body {
     .contacts-overlay .contacts-header { padding: 0.8rem 1rem; }
     .contacts-search-wrap { padding: 0.65rem 0.8rem 0; }
     .contacts-search-icon { left: 1.55rem; top: calc(0.65rem + 36%); transform: translateY(-36%); }
-    .contacts-search-input { padding: 0.6rem 0.75rem 0.6rem 2.05rem; }
+    .contacts-search-input { padding: 0.6rem 2.45rem 0.6rem 2.05rem; }
+    .contacts-search-clear { display: inline-flex; }
     .contact-row-header { padding: 0.7rem 0.8rem; }
 }
 
@@ -1257,13 +1258,35 @@ body {
 }
 .contacts-search-input {
     width: 100%;
-    padding: 0.65rem 0.85rem 0.65rem 2.25rem;
+    padding: 0.65rem 2.65rem 0.65rem 2.25rem;
     border: 1px solid var(--medium-gray);
     border-radius: 8px;
     font-family: inherit;
     font-size: 16px;
     background: #edf1f4;
     color: var(--text-color);
+}
+.contacts-search-clear {
+    position: absolute;
+    right: 1.45rem;
+    top: calc(0.75rem + 50%);
+    transform: translateY(-50%);
+    border: none;
+    background: transparent;
+    color: var(--dark-gray);
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    display: none;
+}
+.contacts-search-clear:hover {
+    background: rgba(0, 0, 0, 0.08);
 }
 .contacts-search-input:focus {
     outline: none;

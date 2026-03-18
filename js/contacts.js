@@ -5,6 +5,16 @@ function getContactsSearchInput() {
     return document.getElementById('contactsSearchInput');
 }
 
+function getContactsSearchClearBtn() {
+    return document.getElementById('contactsSearchClearBtn');
+}
+
+function updateContactsSearchClearVisibility() {
+    const clearBtn = getContactsSearchClearBtn();
+    if (!clearBtn) return;
+    clearBtn.classList.toggle('hidden', !contactsSearchQuery);
+}
+
 function normalizeContactsSearchQuery(query) {
     return (query || '').trim().toLowerCase();
 }
@@ -16,6 +26,7 @@ function setContactsSearchQuery(query, options = {}) {
         const input = getContactsSearchInput();
         if (input) input.value = query || '';
     }
+    updateContactsSearchClearVisibility();
 }
 
 function clearContactSearchState() {
@@ -24,11 +35,20 @@ function clearContactSearchState() {
 
 function bindContactsSearchInput() {
     const input = getContactsSearchInput();
+    const clearBtn = getContactsSearchClearBtn();
     if (!input || input.dataset.bound === '1') return;
     input.addEventListener('input', () => {
         setContactsSearchQuery(input.value, { syncInput: false });
         renderContactsForCurrentQuery();
     });
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            setContactsSearchQuery('');
+            renderContactsForCurrentQuery();
+            input.focus();
+        });
+    }
+    updateContactsSearchClearVisibility();
     input.dataset.bound = '1';
 }
 
