@@ -57,6 +57,10 @@ async function logout() {
         db.removeChannel(contactSharesChannel);
         contactSharesChannel = null;
     }
+    if (contactEventsChannel) {
+        db.removeChannel(contactEventsChannel);
+        contactEventsChannel = null;
+    }
     // Reset client state
     selectedGroup = null;
     myGroups = [];
@@ -95,8 +99,10 @@ async function showApp(navigateToGroupId) {
     document.getElementById('userDisplay').textContent = currentProfile?.display_name || currentUser.email;
     setHeaderAvatar(currentProfile?.profile_image_url || null);
     subscribeToContactShares();
+    subscribeToContactEvents();
     if (currentProfile?.push_notifications !== false) subscribeToPush();
     await loadMyGroups(navigateToGroupId || null);
+    await openPendingContactDetailsIfAny();
 }
 
 function subscribeToContactShares() {
@@ -119,6 +125,50 @@ function subscribeToContactShares() {
             const name = profile?.display_name || 'Someone';
             const msg = sharedType === 'phone' ? (name + ' shared phone number with you.') : (name + ' shared email with you.');
             showToast(msg, 'info');
+        })
+        .subscribe();
+}
+
+function subscribeToContactEvents() {
+    if (contactEventsChannel) {
+        db.removeChannel(contactEventsChannel);
+        contactEventsChannel = null;
+    }
+    if (!currentUser) return;
+
+    contactEventsChannel = db.channel('contact-events')
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'contacts',
+            filter: 'user_id=eq.' + currentUser.id
+        }, async (payload) => {
+            const contactId = payload.new?.contact_id;
+            if (!contactId) return;
+            await openContactDetailsById(contactId);
+        })
+        .on('postgres_changes', {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'contacts',
+            filter: 'user_id=eq.' + currentUser.id
+        }, async (payload) => {
+            const contactId = payload.new?.contact_id;
+            const oldSelfie = payload.old?.selfie_url || '';
+            const newSelfie = payload.new?.selfie_url || '';
+            if (!contactId || !newSelfie || oldSelfie === newSelfie) return;
+
+            updateContactSelfieInList(contactId, newSelfie);
+
+            const recentUploadAt = recentSelfieUploads[contactId] || 0;
+            if (Date.now() - recentUploadAt < 15000) {
+                delete recentSelfieUploads[contactId];
+                return;
+            }
+
+            const { data: profile } = await db.from('profiles').select('display_name').eq('id', contactId).single();
+            const name = profile?.display_name || 'Someone';
+            showToast(name + ' took a new selfie with you.', 'info');
         })
         .subscribe();
 }

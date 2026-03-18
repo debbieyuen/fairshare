@@ -257,7 +257,8 @@ function showModal(type) {
     }
 }
 
-function closeModal() {
+function closeModal(options = {}) {
+    const { refreshContactList = true } = options;
     if (heartDialogTimer) { clearTimeout(heartDialogTimer); heartDialogTimer = null; }
     shareWithContactId = null;
     shareWithContactName = '';
@@ -266,7 +267,7 @@ function closeModal() {
     if (contactSelfieStream) {
         stopContactSelfieStream();
         contactSelfieId = null;
-        if (document.getElementById('contactsListContent') && document.getElementById('contactsOverlay') && !document.getElementById('contactsOverlay').classList.contains('hidden')) {
+        if (refreshContactList && document.getElementById('contactsListContent') && document.getElementById('contactsOverlay') && !document.getElementById('contactsOverlay').classList.contains('hidden')) {
             loadAndRenderContactList();
         }
     }

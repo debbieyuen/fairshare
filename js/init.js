@@ -149,6 +149,7 @@ async function handlePendingInvite() {
             showToast('Invite: ' + error.message, 'error');
         } else if (data?.success) {
             claimedGroupId = data.group_id;
+            pendingOpenNewestContact = true;
             if (data.admitted) {
                 showToast(`Welcome to "${data.group_name}"! You've been admitted as a member.`, 'success');
             } else {
@@ -230,6 +231,7 @@ async function handlePendingMeet() {
             showToast('Meet: ' + error.message, 'error');
         } else {
             const contactName = data?.contact_name || 'New contact';
+            if (data?.contact_id) pendingOpenContactId = data.contact_id;
             showToast(`Connected with ${contactName}!`, 'success');
         }
     } catch (e) {

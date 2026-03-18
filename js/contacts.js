@@ -7,6 +7,88 @@ async function openContactListScreen() {
     await loadAndRenderContactList();
 }
 
+function getContactRow(contactId) {
+    if (!contactId) return null;
+    return Array.from(document.querySelectorAll('.contact-row')).find((el) => el.dataset.contactId === contactId) || null;
+}
+
+function expandContactRow(contactId) {
+    const content = document.getElementById('contactsListContent');
+    const row = getContactRow(contactId);
+    if (!content || !row) return false;
+    content.querySelectorAll('.contact-row.expanded').forEach((expandedRow) => {
+        if (expandedRow !== row) expandedRow.classList.remove('expanded');
+    });
+    row.classList.add('expanded');
+    loadFamilyTree(contactId);
+    return true;
+}
+
+function updateContactSelfieInList(contactId, selfieUrl) {
+    const row = getContactRow(contactId);
+    const wrap = row?.querySelector('.contact-selfie-wrap');
+    if (!wrap) return false;
+    if (selfieUrl) {
+        wrap.innerHTML = `<img src="${esc(selfieUrl)}" alt="Selfie">`;
+    } else {
+        wrap.innerHTML = '<span title="Tap to take a selfie">📷</span>';
+    }
+    return true;
+}
+
+async function openContactDetailsById(contactId) {
+    if (!contactId || !currentUser) return false;
+    const overlay = document.getElementById('contactsOverlay');
+    const content = document.getElementById('contactsListContent');
+    if (!overlay || !content) return false;
+
+    if (overlay.classList.contains('hidden')) {
+        overlay.classList.remove('hidden');
+    }
+
+    if (!getContactRow(contactId)) {
+        await loadAndRenderContactList();
+    }
+
+    if (expandContactRow(contactId)) {
+        return true;
+    }
+
+    // Contact row can arrive a moment later via realtime after meet/invite completion.
+    for (let i = 0; i < 3; i++) {
+        await new Promise(resolve => setTimeout(resolve, 250));
+        await loadAndRenderContactList();
+        if (expandContactRow(contactId)) return true;
+    }
+    return false;
+}
+
+async function openNewestContactDetails() {
+    if (!currentUser) return false;
+    const overlay = document.getElementById('contactsOverlay');
+    if (overlay && overlay.classList.contains('hidden')) {
+        overlay.classList.remove('hidden');
+    }
+    await loadAndRenderContactList();
+    const firstRow = document.querySelector('.contact-row');
+    const contactId = firstRow?.dataset?.contactId || '';
+    if (!contactId) return false;
+    return expandContactRow(contactId);
+}
+
+async function openPendingContactDetailsIfAny() {
+    if (pendingOpenContactId) {
+        const cid = pendingOpenContactId;
+        pendingOpenContactId = null;
+        await openContactDetailsById(cid);
+        return;
+    }
+    if (pendingOpenNewestContact) {
+        pendingOpenNewestContact = false;
+        await openNewestContactDetails();
+    }
+}
+
 function closeContactListScreen() {
     document.getElementById('contactsOverlay').classList.add('hidden');
 }
@@ -289,13 +371,11 @@ function openContactSelfie(contactId) {
     showModal('contactSelfie');
 }
 
-function closeContactSelfieModal() {
+function closeContactSelfieModal(options = {}) {
+    const { refreshContacts = true } = options;
     stopContactSelfieStream();
     contactSelfieId = null;
-    closeModal();
-    if (document.getElementById('contactsListContent') && !document.getElementById('contactsOverlay').classList.contains('hidden')) {
-        loadAndRenderContactList();
-    }
+    closeModal({ refreshContactList: refreshContacts });
 }
 
 async function startContactSelfieStream() {
@@ -334,6 +414,8 @@ async function captureContactSelfie() {
     }
     const btn = document.getElementById('contactSelfieCaptureBtn');
     if (btn) btn.disabled = true;
+    let selfieSaved = false;
+    let savedSelfieUrl = '';
     try {
         const canvas = document.createElement('canvas');
         canvas.width = video.videoWidth;
@@ -353,12 +435,20 @@ async function captureContactSelfie() {
             p_selfie_url: selfieUrl
         });
         if (rpcErr) throw rpcErr;
+        recentSelfieUploads[cid] = Date.now();
+        selfieSaved = true;
+        savedSelfieUrl = selfieUrl;
         showToast('Selfie saved!', 'success');
     } catch (e) {
         console.error('Capture selfie error:', e);
         showToast('Could not save selfie: ' + (e.message || 'error'), 'error');
     }
     if (btn) btn.disabled = false;
+    if (selfieSaved) {
+        updateContactSelfieInList(cid, savedSelfieUrl);
+        closeContactSelfieModal({ refreshContacts: false });
+        return;
+    }
     closeContactSelfieModal();
 }
 

@@ -75,7 +75,7 @@ async function openMeetScreen() {
         db.from('profiles').select('display_name').eq('id', contactId).single()
             .then(({ data: profile }) => {
                 const name = profile?.display_name || 'someone';
-                meetSuccess(name);
+                meetSuccess(name, contactId);
             });
     };
     meetChannel = db.channel('meet-contacts')
@@ -156,7 +156,8 @@ async function handleMeetScan(token) {
         }
 
         const contactName = data?.contact_name || 'New contact';
-        meetSuccess(contactName);
+        const contactId = data?.contact_id || null;
+        meetSuccess(contactName, contactId);
     } catch (e) {
         showToast('Meet error: ' + e.message, 'error');
         meetHandled = false;
@@ -164,7 +165,7 @@ async function handleMeetScan(token) {
     }
 }
 
-function meetSuccess(contactName) {
+function meetSuccess(contactName, contactId = null) {
     // Vibrate the phone
     if (navigator.vibrate) {
         navigator.vibrate([200, 100, 200]);
@@ -185,10 +186,14 @@ function meetSuccess(contactName) {
 
     showToast('Contact added: ' + contactName, 'success');
 
-    // Auto-close after a short delay, then open contact list so user sees new contact at top
+    // Auto-close after a short delay, then open this contact's details.
     setTimeout(() => {
         closeMeetScreen();
-        openContactListScreen();
+        if (contactId) {
+            openContactDetailsById(contactId);
+            return;
+        }
+        openNewestContactDetails();
     }, 2500);
 }
 
