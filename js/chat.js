@@ -15,6 +15,9 @@ async function renderChatTab() {
             <div class="chat-input-bar">
                 <input type="text" id="chatInput" placeholder="Type a message…" maxlength="2000"
                        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMessage();}">
+                <button class="btn-icon chat-map-btn" onclick="openMapPicker()" title="Share location" type="button">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 1 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                </button>
                 <button class="btn btn-primary" onclick="sendChatMessage()">Send</button>
             </div>
         </div>
@@ -164,8 +167,11 @@ async function createMessageElement(msg) {
     const isToday = date.toDateString() === today.toDateString();
     const timeStr = isToday ? time : date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + time;
 
+    const loc = parseLocationBody(msg.body);
+    const bubbleContent = loc ? '<div class="chat-location-wrap"></div>' : esc(msg.body);
+
     if (isMine) {
-        div.innerHTML = `<div class="chat-bubble">${esc(msg.body)}</div><div class="chat-msg-time">${timeStr}</div>`;
+        div.innerHTML = `<div class="chat-bubble">${bubbleContent}</div><div class="chat-msg-time">${timeStr}</div>`;
     } else {
         const avatarHtml = avatar
             ? `<img class="chat-avatar" src="${esc(avatar)}" alt="">`
@@ -175,11 +181,17 @@ async function createMessageElement(msg) {
             <div class="chat-msg-row">
                 ${avatarHtml}
                 <div>
-                    <div class="chat-bubble">${esc(msg.body)}</div>
+                    <div class="chat-bubble">${bubbleContent}</div>
                     <div class="chat-msg-time">${timeStr}</div>
                 </div>
             </div>`;
     }
+
+    if (loc) {
+        const wrap = div.querySelector('.chat-location-wrap');
+        if (wrap) renderLocationPreview(wrap, loc.lat, loc.lng, loc.radius);
+    }
+
     return div;
 }
 

@@ -875,6 +875,94 @@ body {
     box-shadow: 0 0 0 3px rgba(58, 124, 165, 0.15);
 }
 
+/* Map location button in chat input bar */
+.chat-map-btn {
+    background: none;
+    border: 1px solid var(--medium-gray);
+    border-radius: 6px;
+    padding: 0.45rem 0.5rem;
+    cursor: pointer;
+    color: var(--dark-gray);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: color 0.2s, border-color 0.2s;
+}
+.chat-map-btn:hover {
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+/* Map picker overlay */
+.map-picker-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 5000;
+}
+.map-picker-modal {
+    background: var(--white);
+    border-radius: 12px;
+    width: 92%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+}
+.map-picker-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--light-gray);
+}
+.map-picker-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--accent-color);
+}
+.map-picker-radius {
+    font-size: 0.85rem;
+    color: var(--dark-gray);
+    font-weight: 500;
+}
+.map-picker-map {
+    width: 100%;
+    height: 350px;
+}
+.map-picker-actions {
+    display: flex;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
+    border-top: 1px solid var(--light-gray);
+    justify-content: flex-end;
+}
+
+/* Inline location preview in chat bubbles */
+.chat-location-wrap {
+    min-width: 220px;
+}
+.chat-location-preview {
+    width: 250px;
+    height: 150px;
+    border-radius: 8px;
+    overflow: hidden;
+}
+.chat-location-label {
+    font-size: 0.8rem;
+    margin-top: 0.35rem;
+    opacity: 0.85;
+}
+.chat-msg-mine .chat-location-label {
+    color: rgba(255, 255, 255, 0.85);
+}
+
 /* Stats grid */
 .stats-grid {
     display: grid;
