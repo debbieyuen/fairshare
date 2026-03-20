@@ -97,12 +97,10 @@ async function handleGroupEvent(event) {
         case 'group_logo_changed': {
             const { data: updatedGroup } = await db.from('groups').select('*').eq('id', selectedGroup.id).single();
             if (updatedGroup) {
-                const bust = Date.now();
-                updatedGroup._logoBust = bust;
                 selectedGroup = updatedGroup;
                 const membership = myGroups.find(m => m.group_id === selectedGroup.id);
                 if (membership) membership.groups = updatedGroup;
-                setGroupAvatar(updatedGroup.logo_url || null, bust);
+                setGroupAvatar(updatedGroup.logo_url || null, updatedGroup.logo_updated_at);
                 renderGroupList();
             }
             break;

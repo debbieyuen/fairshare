@@ -59,9 +59,9 @@ async function loadMyGroups(autoNavigateGroupId) {
     }
 }
 
-function renderGroupCardLogo(logoUrl, groupName, logoBust) {
+function renderGroupCardLogo(logoUrl, groupName, logoUpdatedAt) {
     if (logoUrl) {
-        const src = esc(withImageCacheBust(logoUrl, logoBust));
+        const src = esc(withImageCacheBust(logoUrl, logoUpdatedAt));
         return `<img class="group-card-logo" src="${src}" alt="${esc(groupName)} logo">`;
     }
     return '<div class="group-card-logo-placeholder" aria-hidden="true">👥</div>';
@@ -79,7 +79,7 @@ function renderGroupList() {
     el.innerHTML = myGroups.map(m => `
         <div class="group-card" onclick="selectGroupById('${m.group_id}')">
             <div class="group-card-main">
-                ${renderGroupCardLogo(m.groups.logo_url, m.groups.name, m.groups._logoBust)}
+                ${renderGroupCardLogo(m.groups.logo_url, m.groups.name, m.groups.logo_updated_at)}
                 <div>
                 <div class="group-card-name">
                     ${esc(m.groups.name)}
@@ -114,7 +114,7 @@ async function selectGroup(group, membership) {
 
     // Show group name at top
     document.getElementById('groupNameDisplay').textContent = group.name;
-    setGroupAvatar(group.logo_url || null, group._logoBust);
+    setGroupAvatar(group.logo_url || null, group.logo_updated_at);
     bindGroupLogoInput();
     updateGroupLogoControl(membership?.status === 'active');
 
@@ -216,18 +216,20 @@ async function onGroupLogoSelected(event) {
         const logoUrl = urlData?.publicUrl;
         if (!logoUrl) throw new Error('Could not create logo URL');
 
-        const { error: rpcErr } = await db.rpc('update_group_logo', {
+        const { data: rpcData, error: rpcErr } = await db.rpc('update_group_logo', {
             p_group_id: selectedGroup.id,
             p_logo_url: logoUrl
         });
         if (rpcErr) throw rpcErr;
 
-        const bust = Date.now();
+        const logoUpdatedAt = rpcData?.logo_updated_at;
         selectedGroup.logo_url = logoUrl;
         membership.groups.logo_url = logoUrl;
-        selectedGroup._logoBust = bust;
-        membership.groups._logoBust = bust;
-        setGroupAvatar(logoUrl, bust);
+        if (logoUpdatedAt) {
+            selectedGroup.logo_updated_at = logoUpdatedAt;
+            membership.groups.logo_updated_at = logoUpdatedAt;
+        }
+        setGroupAvatar(logoUrl, logoUpdatedAt);
         renderGroupList();
         showToast('Group logo updated.', 'success');
     } catch (err) {
