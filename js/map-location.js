@@ -19,6 +19,50 @@ function formatRadius(meters) {
     return Math.round(meters) + ' m';
 }
 
+/** Open coordinates in the platform default maps app (or browser fallback). */
+function openLocationInExternalMaps(lat, lng) {
+    const ua = navigator.userAgent || '';
+    const isAndroid = /Android/i.test(ua);
+    const isApple = /(iPhone|iPad|iPod)/i.test(ua)
+        || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+    if (isApple) {
+        const url = `https://maps.apple.com/?ll=${encodeURIComponent(lat)},${encodeURIComponent(lng)}&q=${encodeURIComponent('Location')}`;
+        window.open(url, '_blank', 'noopener,noreferrer');
+        return;
+    }
+    if (isAndroid) {
+        window.location.href = `geo:${lat},${lng}?q=${lat},${lng}`;
+        return;
+    }
+    window.open(
+        `https://www.openstreetmap.org/?mlat=${encodeURIComponent(lat)}&mlon=${encodeURIComponent(lng)}&zoom=15`,
+        '_blank',
+        'noopener,noreferrer'
+    );
+}
+
+function attachLocationPreviewOpenHandler(container, lat, lng) {
+    container.classList.add('chat-location-clickable');
+    container.setAttribute('role', 'button');
+    container.setAttribute('tabindex', '0');
+    container.setAttribute('aria-label', 'Open location in Maps');
+
+    function openIt(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        openLocationInExternalMaps(lat, lng);
+    }
+
+    container.addEventListener('click', openIt);
+    container.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            openLocationInExternalMaps(lat, lng);
+        }
+    });
+}
+
 function openMapPicker() {
     if (!selectedGroup || !currentUser) return;
 
@@ -153,8 +197,10 @@ function renderLocationPreview(container, lat, lng, radius) {
 
     container.innerHTML = `
         <div class="chat-location-preview" id="${mapId}"></div>
-        <div class="chat-location-label">📍 Location (${formatRadius(radius)} radius)</div>
+        <div class="chat-location-label">📍 Location (${formatRadius(radius)} radius) · Tap to open in Maps</div>
     `;
+
+    attachLocationPreviewOpenHandler(container, lat, lng);
 
     requestAnimationFrame(function () {
         const el = document.getElementById(mapId);

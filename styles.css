@@ -974,6 +974,18 @@ body {
     height: 100% !important;
     border-radius: 8px;
 }
+/* Static preview: let taps reach the clickable wrapper to open the system Maps app */
+.chat-location-clickable .chat-location-preview .leaflet-container {
+    pointer-events: none;
+}
+.chat-location-clickable {
+    cursor: pointer;
+    -webkit-tap-highlight-color: rgba(58, 124, 165, 0.25);
+}
+.chat-location-clickable:focus {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
 .chat-location-label {
     font-size: 0.8rem;
     margin-top: 0.35rem;
