@@ -59,9 +59,10 @@ async function loadMyGroups(autoNavigateGroupId) {
     }
 }
 
-function renderGroupCardLogo(logoUrl, groupName) {
+function renderGroupCardLogo(logoUrl, groupName, logoBust) {
     if (logoUrl) {
-        return `<img class="group-card-logo" src="${esc(logoUrl)}" alt="${esc(groupName)} logo">`;
+        const src = esc(withImageCacheBust(logoUrl, logoBust));
+        return `<img class="group-card-logo" src="${src}" alt="${esc(groupName)} logo">`;
     }
     return '<div class="group-card-logo-placeholder" aria-hidden="true">👥</div>';
 }
@@ -78,7 +79,7 @@ function renderGroupList() {
     el.innerHTML = myGroups.map(m => `
         <div class="group-card" onclick="selectGroupById('${m.group_id}')">
             <div class="group-card-main">
-                ${renderGroupCardLogo(m.groups.logo_url, m.groups.name)}
+                ${renderGroupCardLogo(m.groups.logo_url, m.groups.name, m.groups._logoBust)}
                 <div>
                 <div class="group-card-name">
                     ${esc(m.groups.name)}
@@ -113,7 +114,7 @@ async function selectGroup(group, membership) {
 
     // Show group name at top
     document.getElementById('groupNameDisplay').textContent = group.name;
-    setGroupAvatar(group.logo_url || null);
+    setGroupAvatar(group.logo_url || null, group._logoBust);
     bindGroupLogoInput();
     updateGroupLogoControl(membership?.status === 'active');
 
@@ -221,9 +222,12 @@ async function onGroupLogoSelected(event) {
         });
         if (rpcErr) throw rpcErr;
 
+        const bust = Date.now();
         selectedGroup.logo_url = logoUrl;
         membership.groups.logo_url = logoUrl;
-        setGroupAvatar(logoUrl);
+        selectedGroup._logoBust = bust;
+        membership.groups._logoBust = bust;
+        setGroupAvatar(logoUrl, bust);
         renderGroupList();
         showToast('Group logo updated.', 'success');
     } catch (err) {

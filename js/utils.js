@@ -5,6 +5,13 @@ function esc(str) {
     return div.innerHTML;
 }
 
+/** Appends a query param so replaced storage objects (same public URL) still load fresh bytes. */
+function withImageCacheBust(url, token) {
+    if (!url || token == null || token === '') return url;
+    const sep = url.includes('?') ? '&' : '?';
+    return url + sep + 'v=' + encodeURIComponent(String(token));
+}
+
 let _versionFloaterTimeout = null;
 function toggleVersionFloater(e) {
     e.preventDefault();

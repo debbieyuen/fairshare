@@ -1,13 +1,14 @@
-function setGroupAvatar(url) {
+function setGroupAvatar(url, cacheBust) {
     const el = document.getElementById('groupAvatarImg');
     if (!el) return;
+    const displayUrl = url && cacheBust != null ? withImageCacheBust(url, cacheBust) : url;
     if (url) {
         // Replace placeholder with actual img
         const parent = el.parentElement;
         const img = document.createElement('img');
         img.className = 'group-avatar';
         img.id = 'groupAvatarImg';
-        img.src = url;
+        img.src = displayUrl;
         img.alt = 'Group logo';
         parent.replaceChild(img, el);
     } else {
