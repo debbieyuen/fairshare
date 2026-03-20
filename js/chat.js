@@ -188,6 +188,8 @@ async function createMessageElement(msg) {
     }
 
     if (loc) {
+        const bubble = div.querySelector('.chat-bubble');
+        if (bubble) bubble.classList.add('chat-bubble-location');
         const wrap = div.querySelector('.chat-location-wrap');
         if (wrap) renderLocationPreview(wrap, loc.lat, loc.lng, loc.radius);
     }
