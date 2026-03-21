@@ -336,6 +336,48 @@ function formatLastSeen(isoStr) {
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
 }
 
+function formatKnownDuration(dateStr) {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    const now = new Date();
+    let years = now.getFullYear() - d.getFullYear();
+    let months = now.getMonth() - d.getMonth();
+    if (months < 0) { years--; months += 12; }
+    if (years * 12 + months < 1) return '';
+    const parts = [];
+    if (years > 0) parts.push(years === 1 ? '1 year' : `${years} years`);
+    if (months > 0) parts.push(months === 1 ? '1 month' : `${months} months`);
+    return parts.join(', ');
+}
+
+async function saveFirstMetAt(contactId, dateValue) {
+    if (!currentUser) return;
+    const isoDate = dateValue ? new Date(dateValue + 'T12:00:00').toISOString() : null;
+    try {
+        const { error } = await db
+            .from('contacts')
+            .update({ first_met_at: isoDate })
+            .eq('user_id', currentUser.id)
+            .eq('contact_id', contactId);
+        if (error) throw error;
+        const row = contactsLoadedRows.find(r => r.contact.contact_id === contactId);
+        if (row) {
+            row.contact.first_met_at = isoDate;
+            const rowEl = document.querySelector(`.contact-row[data-contact-id="${contactId}"]`);
+            if (rowEl) {
+                const durationEl = rowEl.querySelector('.contact-row-known-duration');
+                const newDuration = formatKnownDuration(isoDate || row.contact.created_at);
+                if (durationEl) {
+                    durationEl.textContent = newDuration;
+                    durationEl.style.display = newDuration ? '' : 'none';
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Failed to save first met date:', e);
+    }
+}
+
 function renderContactRow(contact, profile, shared) {
     const name = profile.display_name || 'Unknown';
     const avatarUrl = profile.profile_image_url || null;
@@ -345,6 +387,9 @@ function renderContactRow(contact, profile, shared) {
     const hasSharedEmail = !!email;
     const cid = esc(contact.contact_id);
     const lastSeen = formatLastSeen(contact.met_at);
+    const knownSinceDateStr = contact.first_met_at || contact.created_at || null;
+    const knownDuration = formatKnownDuration(knownSinceDateStr);
+    const firstMetValue = knownSinceDateStr ? new Date(knownSinceDateStr).toISOString().slice(0, 10) : '';
     const avatarHtml = avatarUrl
         ? `<img class="contact-row-avatar" src="${esc(avatarUrl)}" alt="">`
         : '<div class="contact-row-avatar-placeholder">👤</div>';
@@ -362,8 +407,11 @@ function renderContactRow(contact, profile, shared) {
             <div class="contact-row-header">
                 ${avatarHtml}
                 <span class="contact-row-name">
-                    <span class="contact-row-name-text">${esc(name)}</span>
-                    ${sharedIconHtml}
+                    <span class="contact-row-name-top">
+                        <span class="contact-row-name-text">${esc(name)}</span>
+                        ${sharedIconHtml}
+                    </span>
+                    <span class="contact-row-known-duration"${!knownDuration ? ' style="display:none"' : ''}>${knownDuration}</span>
                 </span>
                 ${lastSeen ? `<span class="contact-row-lastseen">${lastSeen}</span>` : ''}
                 <span class="contact-row-chevron">›</span>
@@ -375,6 +423,12 @@ function renderContactRow(contact, profile, shared) {
                         <button type="button" class="btn btn-small btn-vouch-with-contact" data-contact-id="${cid}" data-contact-name="${esc(name)}">Vouch</button>
                         <button type="button" class="btn btn-primary btn-small btn-share-with-contact" data-contact-id="${cid}" data-contact-name="${esc(name)}">Share</button>
                     </div>
+                </div>
+                <div class="contact-detail-met-on">
+                    <label class="contact-detail-met-on-label">Met on</label>
+                    <input type="date" class="contact-detail-met-on-input" id="met-on-${cid}"
+                        value="${firstMetValue}"
+                        onchange="event.stopPropagation(); saveFirstMetAt('${cid}', this.value)">
                 </div>
                 <div class="contact-detail-selfies-section">
                     <div class="contact-shared-title">Selfies Together</div>

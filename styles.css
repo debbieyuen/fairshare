@@ -1460,9 +1460,25 @@ body {
     font-size: 1rem;
     flex: 1;
     min-width: 0;
-    display: inline-flex;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.05rem;
+}
+.contact-row-name-top {
+    display: flex;
     align-items: center;
     gap: 0.35rem;
+    min-width: 0;
+    width: 100%;
+}
+.contact-row-known-duration {
+    font-size: 0.72rem;
+    font-weight: 400;
+    color: var(--dark-gray);
+    opacity: 0.7;
+    line-height: 1.2;
+    white-space: nowrap;
 }
 .contact-row-name-text {
     min-width: 0;
@@ -1540,6 +1556,37 @@ body {
     font-size: 2rem;
     color: var(--dark-gray);
 }
+/* ---- Met on date field ---- */
+.contact-detail-met-on {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 0;
+    border-top: 1px solid var(--light-gray);
+    margin-top: 0.6rem;
+}
+.contact-detail-met-on-label {
+    font-size: 0.85rem;
+    color: var(--dark-gray);
+    font-weight: 500;
+    white-space: nowrap;
+}
+.contact-detail-met-on-input {
+    border: none;
+    background: transparent;
+    font-size: 0.85rem;
+    color: var(--primary-color);
+    cursor: pointer;
+    padding: 0;
+    outline: none;
+    font-family: inherit;
+}
+.contact-detail-met-on-input:focus {
+    outline: 1px solid var(--primary-color);
+    border-radius: 3px;
+    padding: 1px 3px;
+}
+
 /* ---- Selfies horizontal strip ---- */
 .contact-detail-selfies-section {
     margin-top: 0.9rem;
