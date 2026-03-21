@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Union Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #3a7ca5;
+            --secondary-color: #2f6690;
+            --accent-color: #16425b;
+            --text-color: #333;
+            --light-gray: #f5f5f5;
+            --medium-gray: #e0e0e0;
+            --dark-gray: #666;
+            --white: #fff;
+            --green: #28a745;
+            --red: #dc3545;
+            --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background-color: var(--light-gray);
+            min-height: 100vh;
+        }
+        .header {
+            background-color: var(--accent-color);
+            color: var(--white);
+            padding: 1rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: var(--shadow);
+        }
+        .header h1 { font-size: 1.25rem; font-weight: 600; }
+        .header-right { display: flex; align-items: center; gap: 1rem; }
+        .header .user-info { font-size: 0.85rem; opacity: 0.85; }
+        .btn {
+            padding: 0.5rem 1.2rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+            font-family: inherit;
+            transition: opacity 0.2s;
+        }
+        .btn:hover { opacity: 0.85; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary { background: var(--primary-color); color: var(--white); }
+        .btn-danger { background: var(--red); color: var(--white); }
+        .btn-sm { padding: 0.35rem 0.8rem; font-size: 0.8rem; }
+        .btn-outline {
+            background: transparent;
+            color: var(--white);
+            border: 1px solid rgba(255,255,255,0.4);
+        }
+        .container { max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+        .card {
+            background: var(--white);
+            border-radius: 10px;
+            box-shadow: var(--shadow);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .card h2 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--accent-color);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .input-row {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+        }
+        .input-row input {
+            flex: 1;
+            padding: 0.5rem 0.75rem;
+            border: 1px solid var(--medium-gray);
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-family: inherit;
+        }
+        .input-row input:focus { outline: none; border-color: var(--primary-color); }
+        .result-box {
+            background: var(--light-gray);
+            border-radius: 6px;
+            padding: 0.75rem 1rem;
+            font-size: 0.85rem;
+            line-height: 1.7;
+            margin-bottom: 0.75rem;
+            display: none;
+        }
+        .result-box.visible { display: block; }
+        .result-box .label { color: var(--dark-gray); }
+        .result-box .value { font-weight: 500; }
+        .result-box.error { background: #fdecea; color: var(--red); }
+        .result-box.success { background: #e8f5e9; color: var(--green); }
+        .confirm-row {
+            display: none;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .confirm-row.visible { display: flex; }
+        .confirm-row .warning {
+            font-size: 0.82rem;
+            color: var(--red);
+            font-weight: 500;
+        }
+        .confirm-row .confirm-input-row { display: flex; gap: 0.5rem; }
+        .confirm-row input {
+            flex: 1;
+            padding: 0.5rem 0.75rem;
+            border: 1px solid var(--medium-gray);
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-family: inherit;
+        }
+        .confirm-row input:focus { outline: none; border-color: var(--red); }
+
+        /* Auth screen */
+        .auth-container {
+            max-width: 360px;
+            margin: 4rem auto;
+            padding: 0 1rem;
+            text-align: center;
+        }
+        .auth-container h2 {
+            color: var(--accent-color);
+            margin-bottom: 1.5rem;
+            font-size: 1.4rem;
+        }
+        .form-group { margin-bottom: 1rem; text-align: left; }
+        .form-group label { display: block; font-size: 0.85rem; font-weight: 500; margin-bottom: 0.3rem; color: var(--dark-gray); }
+        .form-group input {
+            width: 100%;
+            padding: 0.6rem 0.75rem;
+            border: 1px solid var(--medium-gray);
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-family: inherit;
+        }
+        .form-group input:focus { outline: none; border-color: var(--primary-color); }
+
+        /* Unauthorized */
+        .unauthorized {
+            max-width: 400px;
+            margin: 4rem auto;
+            text-align: center;
+            padding: 2rem;
+        }
+        .unauthorized h2 { color: var(--red); margin-bottom: 0.5rem; }
+        .unauthorized p { color: var(--dark-gray); margin-bottom: 1.5rem; }
+
+        .hidden { display: none !important; }
+
+        .toast {
+            position: fixed;
+            bottom: 1.5rem;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            color: var(--white);
+            font-size: 0.85rem;
+            z-index: 9999;
+            animation: toastIn 0.25s ease;
+        }
+        .toast.error { background: var(--red); }
+        .toast.success { background: var(--green); }
+        .toast.info { background: var(--primary-color); }
+        @keyframes toastIn {
+            from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+            to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+    <h1>Union Admin</h1>
+    <div class="header-right">
+        <span class="user-info" id="headerUser"></span>
+        <button class="btn btn-outline btn-sm hidden" id="logoutBtn" onclick="doLogout()">Log out</button>
+    </div>
+</div>
+
+<!-- Auth screen -->
+<div id="authScreen" class="auth-container">
+    <h2>Admin Login</h2>
+    <form id="loginForm" onsubmit="handleLogin(event)">
+        <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="loginEmail" required placeholder="you@example.com">
+        </div>
+        <div class="form-group">
+            <label>Password</label>
+            <input type="password" id="loginPassword" required placeholder="Your password" minlength="6">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;margin-top:0.5rem;">Log In</button>
+    </form>
+</div>
+
+<!-- Unauthorized screen -->
+<div id="unauthorizedScreen" class="unauthorized hidden">
+    <h2>Unauthorized</h2>
+    <p>Your account does not have admin access.</p>
+    <button class="btn btn-primary" onclick="doLogout()">Log out</button>
+</div>
+
+<!-- Admin panel -->
+<div id="adminPanel" class="container hidden">
+
+    <!-- Delete Profile -->
+    <div class="card">
+        <h2>Delete Profile</h2>
+        <div class="input-row">
+            <input type="text" id="profileNameInput" placeholder="Display name" autocomplete="off">
+            <button class="btn btn-primary btn-sm" onclick="lookupProfile()">Look up</button>
+        </div>
+        <div class="result-box" id="profileResult"></div>
+        <div class="confirm-row" id="profileConfirm">
+            <div class="warning">This will permanently delete this user and all their data (memberships, transactions, messages, etc.).</div>
+            <div class="confirm-input-row">
+                <input type="text" id="profileConfirmInput" placeholder="Type the display name to confirm" autocomplete="off">
+                <button class="btn btn-danger btn-sm" onclick="deleteProfile()">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Group -->
+    <div class="card">
+        <h2>Delete Group</h2>
+        <div class="input-row">
+            <input type="text" id="groupNameInput" placeholder="Group name" autocomplete="off">
+            <button class="btn btn-primary btn-sm" onclick="lookupGroup()">Look up</button>
+        </div>
+        <div class="result-box" id="groupResult"></div>
+        <div class="confirm-row" id="groupConfirm">
+            <div class="warning">This will permanently delete this group and all its data (members, transactions, documents, chat, etc.).</div>
+            <div class="confirm-input-row">
+                <input type="text" id="groupConfirmInput" placeholder="Type the group name to confirm" autocomplete="off">
+                <button class="btn btn-danger btn-sm" onclick="deleteGroup()">Delete</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+const SUPABASE_URL = 'https://vdpqgmrfvlaieqpvpdcr.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkcHFnbXJmdmxhaWVxcHZwZGNyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2MjUzNjcsImV4cCI6MjA4NzIwMTM2N30.ORvkYqcrDjnhdpCvXaIBzjRLyzi3WSIqMmIxWecpgl8';
+const ADMIN_USER_ID = 'a8253eea-e76a-46d1-a92d-6fe36911f038';
+
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let currentUser = null;
+let _lookupProfileId = null;
+let _lookupProfileName = null;
+let _lookupGroupId = null;
+let _lookupGroupName = null;
+
+function esc(str) {
+    if (!str) return '';
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+}
+
+function showToast(message, type) {
+    const t = document.createElement('div');
+    t.className = 'toast ' + (type || 'info');
+    t.textContent = message;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 4000);
+}
+
+function showScreen(id) {
+    ['authScreen', 'unauthorizedScreen', 'adminPanel'].forEach(s =>
+        document.getElementById(s).classList.toggle('hidden', s !== id)
+    );
+}
+
+async function handleLogin(e) {
+    e.preventDefault();
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+    const { error } = await db.auth.signInWithPassword({ email, password });
+    if (error) showToast(error.message, 'error');
+}
+
+async function doLogout() {
+    await db.auth.signOut({ scope: 'local' });
+    currentUser = null;
+    document.getElementById('headerUser').textContent = '';
+    document.getElementById('logoutBtn').classList.add('hidden');
+    showScreen('authScreen');
+}
+
+async function onAuth(session) {
+    if (!session) {
+        currentUser = null;
+        document.getElementById('headerUser').textContent = '';
+        document.getElementById('logoutBtn').classList.add('hidden');
+        showScreen('authScreen');
+        return;
+    }
+    currentUser = session.user;
+
+    if (currentUser.id !== ADMIN_USER_ID) {
+        document.getElementById('headerUser').textContent = currentUser.email;
+        document.getElementById('logoutBtn').classList.remove('hidden');
+        showScreen('unauthorizedScreen');
+        return;
+    }
+
+    const { data: profile } = await db
+        .from('profiles').select('display_name').eq('id', currentUser.id).single();
+    document.getElementById('headerUser').textContent = profile?.display_name || currentUser.email;
+    document.getElementById('logoutBtn').classList.remove('hidden');
+    showScreen('adminPanel');
+}
+
+// --- Profile lookup & delete ---
+
+async function lookupProfile() {
+    const name = document.getElementById('profileNameInput').value.trim();
+    if (!name) return;
+
+    _lookupProfileId = null;
+    _lookupProfileName = null;
+    const resultBox = document.getElementById('profileResult');
+    const confirmRow = document.getElementById('profileConfirm');
+    confirmRow.classList.remove('visible');
+    document.getElementById('profileConfirmInput').value = '';
+
+    const { data: profile, error } = await db
+        .from('profiles')
+        .select('id, display_name, created_at')
+        .eq('display_name', name)
+        .maybeSingle();
+
+    if (error) {
+        resultBox.className = 'result-box visible error';
+        resultBox.textContent = 'Error: ' + error.message;
+        return;
+    }
+    if (!profile) {
+        resultBox.className = 'result-box visible error';
+        resultBox.textContent = 'No profile found with that display name.';
+        return;
+    }
+
+    const { count: groupCount } = await db
+        .from('members')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', profile.id)
+        .in('status', ['active', 'pending']);
+
+    _lookupProfileId = profile.id;
+    _lookupProfileName = profile.display_name;
+
+    resultBox.className = 'result-box visible';
+    resultBox.innerHTML =
+        `<span class="label">Name:</span> <span class="value">${esc(profile.display_name)}</span><br>` +
+        `<span class="label">ID:</span> <span class="value">${esc(profile.id)}</span><br>` +
+        `<span class="label">Created:</span> <span class="value">${new Date(profile.created_at).toLocaleDateString()}</span><br>` +
+        `<span class="label">Group memberships:</span> <span class="value">${groupCount ?? '?'}</span>`;
+    confirmRow.classList.add('visible');
+}
+
+async function deleteProfile() {
+    if (!_lookupProfileName) return;
+    const typed = document.getElementById('profileConfirmInput').value.trim();
+    if (typed !== _lookupProfileName) {
+        showToast('Confirmation name does not match.', 'error');
+        return;
+    }
+
+    const { data, error } = await db.rpc('admin_delete_profile', { p_display_name: _lookupProfileName });
+    const resultBox = document.getElementById('profileResult');
+    const confirmRow = document.getElementById('profileConfirm');
+
+    if (error) {
+        resultBox.className = 'result-box visible error';
+        resultBox.textContent = 'RPC error: ' + error.message;
+        return;
+    }
+    if (data?.error) {
+        resultBox.className = 'result-box visible error';
+        resultBox.textContent = data.error;
+        return;
+    }
+
+    resultBox.className = 'result-box visible success';
+    resultBox.textContent = 'Deleted profile: ' + (data?.deleted_name || _lookupProfileName);
+    confirmRow.classList.remove('visible');
+    _lookupProfileId = null;
+    _lookupProfileName = null;
+    document.getElementById('profileNameInput').value = '';
+    document.getElementById('profileConfirmInput').value = '';
+}
+
+// --- Group lookup & delete ---
+
+async function lookupGroup() {
+    const name = document.getElementById('groupNameInput').value.trim();
+    if (!name) return;
+
+    _lookupGroupId = null;
+    _lookupGroupName = null;
+    const resultBox = document.getElementById('groupResult');
+    const confirmRow = document.getElementById('groupConfirm');
+    confirmRow.classList.remove('visible');
+    document.getElementById('groupConfirmInput').value = '';
+
+    const { data: group, error } = await db
+        .from('groups')
+        .select('id, name, currency_name, created_by, created_at')
+        .eq('name', name)
+        .maybeSingle();
+
+    if (error) {
+        resultBox.className = 'result-box visible error';
+        resultBox.textContent = 'Error: ' + error.message;
+        return;
+    }
+    if (!group) {
+        resultBox.className = 'result-box visible error';
+        resultBox.textContent = 'No group found with that name.';
+        return;
+    }
+
+    const { count: memberCount } = await db
+        .from('members')
+        .select('id', { count: 'exact', head: true })
+        .eq('group_id', group.id)
+        .in('status', ['active', 'pending']);
+
+    let creatorName = '?';
+    if (group.created_by) {
+        const { data: creator } = await db
+            .from('profiles').select('display_name').eq('id', group.created_by).maybeSingle();
+        if (creator) creatorName = creator.display_name;
+    }
+
+    _lookupGroupId = group.id;
+    _lookupGroupName = group.name;
+
+    resultBox.className = 'result-box visible';
+    resultBox.innerHTML =
+        `<span class="label">Name:</span> <span class="value">${esc(group.name)}</span><br>` +
+        `<span class="label">ID:</span> <span class="value">${esc(group.id)}</span><br>` +
+        `<span class="label">Currency:</span> <span class="value">${esc(group.currency_name)}</span><br>` +
+        `<span class="label">Created by:</span> <span class="value">${esc(creatorName)}</span><br>` +
+        `<span class="label">Created:</span> <span class="value">${new Date(group.created_at).toLocaleDateString()}</span><br>` +
+        `<span class="label">Members:</span> <span class="value">${memberCount ?? '?'}</span>`;
+    confirmRow.classList.add('visible');
+}
+
+async function deleteGroup() {
+    if (!_lookupGroupName) return;
+    const typed = document.getElementById('groupConfirmInput').value.trim();
+    if (typed !== _lookupGroupName) {
+        showToast('Confirmation name does not match.', 'error');
+        return;
+    }
+
+    const { data, error } = await db.rpc('admin_delete_group', { p_group_name: _lookupGroupName });
+    const resultBox = document.getElementById('groupResult');
+    const confirmRow = document.getElementById('groupConfirm');
+
+    if (error) {
+        resultBox.className = 'result-box visible error';
+        resultBox.textContent = 'RPC error: ' + error.message;
+        return;
+    }
+    if (data?.error) {
+        resultBox.className = 'result-box visible error';
+        resultBox.textContent = data.error;
+        return;
+    }
+
+    resultBox.className = 'result-box visible success';
+    resultBox.textContent = 'Deleted group: ' + (data?.deleted_name || _lookupGroupName);
+    confirmRow.classList.remove('visible');
+    _lookupGroupId = null;
+    _lookupGroupName = null;
+    document.getElementById('groupNameInput').value = '';
+    document.getElementById('groupConfirmInput').value = '';
+}
+
+// --- Init ---
+
+(async () => {
+    const { data: { session } } = await db.auth.getSession();
+    if (session) await onAuth(session);
+
+    db.auth.onAuthStateChange((event, session) => {
+        if (event === 'SIGNED_IN' && session) {
+            setTimeout(() => onAuth(session), 0);
+        } else if (event === 'SIGNED_OUT') {
+            onAuth(null);
+        }
+    });
+})();
+</script>
+
+</body>
+</html>
