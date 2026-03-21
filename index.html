@@ -30,13 +30,11 @@
 
 <!-- ===== HEADER ===== -->
 <div class="header">
-    <img id="headerAvatar" class="header-avatar hidden" src="" alt="Your profile photo" onclick="openPreferences()" title="Profile &amp; preferences">
+    <img id="headerAvatar" class="header-avatar hidden" src="" alt="Your profile photo" onclick="navigateTo('profile')" title="My Profile">
     <span id="versionFloater" class="version-floater hidden">__BUILD_VERSION__</span>
-    <span class="user-name" id="userDisplay" onclick="openPreferences()" title="Profile &amp; preferences"></span>
+    <span class="user-name" id="userDisplay" onclick="navigateTo('profile')" title="My Profile"></span>
     <div class="header-right">
-        <button type="button" class="header-icon-btn" onclick="openContactListScreen()" title="Contacts" aria-label="Contacts">👥</button>
         <button type="button" class="header-icon-btn header-heart-btn" onclick="openHeartDialog()" title="Love &amp; Trust" aria-label="Love and Trust">❤️</button>
-        <button type="button" class="header-icon-btn" onclick="openMeetScreen()" title="Exchange contacts (show QR)" aria-label="Exchange contacts">🤝</button>
     </div>
 </div>
 
@@ -98,64 +96,114 @@
 <div id="appScreen" class="hidden">
     <div class="main-content">
 
-        <!-- My Groups screen (full-page list) -->
-        <div id="groupsScreen">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
-                <h2 style="color:var(--accent-color);">My Groups</h2>
-                <button class="btn btn-primary" onclick="showModal('createGroup')">+ Create Group</button>
+        <!-- ===== CONTACTS VIEW (default) ===== -->
+        <div id="contactsScreen">
+            <div class="contacts-search-wrap">
+                <span class="contacts-search-icon" aria-hidden="true">🔍</span>
+                <input
+                    type="search"
+                    id="contactsSearchInput"
+                    class="contacts-search-input"
+                    placeholder="Search name, email, or phone"
+                    aria-label="Search contacts"
+                    autocomplete="off">
+                <button
+                    type="button"
+                    id="contactsSearchClearBtn"
+                    class="contacts-search-clear hidden"
+                    aria-label="Clear search">
+                    ✕
+                </button>
             </div>
-            <div id="groupList">
-                <!-- Populated dynamically -->
+            <div class="contacts-list-wrap">
+                <div id="contactsListContent">
+                    <p style="color:var(--dark-gray);text-align:center;padding:2rem;">Loading…</p>
+                </div>
             </div>
-            <p id="groupsEmptyHint" class="hidden" style="text-align:center;color:var(--dark-gray);margin-top:2rem;">
-                Create a new group to get started, or ask an existing member to sponsor you.
-            </p>
         </div>
 
-        <!-- Group view (hidden until group selected) -->
-        <div id="groupView" class="hidden">
-            <!-- Group name header — click to go back to groups list -->
-            <div class="card balance-card group-name-link" onclick="showGroupsList()" style="display:flex;align-items:center;">
-                <div class="group-header-center">
-                    <div class="group-avatar-wrap group-header-avatar-wrap" onclick="onGroupLogoClick(event)" title="Click to change group logo">
-                        <div id="groupAvatarImg" class="group-avatar-placeholder" aria-label="Group logo">👥</div>
-                    </div>
-                    <div class="balance-amount" id="groupNameDisplay"></div>
+        <!-- ===== GROUPS VIEW ===== -->
+        <div id="groupsContent" class="hidden">
+            <!-- My Groups screen (full-page list) -->
+            <div id="groupsScreen">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+                    <h2 style="color:var(--accent-color);">My Groups</h2>
+                    <button class="btn btn-primary" onclick="showModal('createGroup')">+ Create Group</button>
                 </div>
-            </div>
-            <input type="file" id="groupLogoInput" accept="image/*" class="hidden">
-
-            <!-- Tab bar -->
-            <div class="tab-bar" id="tabBar">
-                <button class="tab-btn active" data-tab="money" onclick="switchTab('money')">
-                    <span class="tab-icon">💲</span><span class="tab-label"> Money</span>
-                </button>
-                <button class="tab-btn" data-tab="members" onclick="switchTab('members')">
-                    <span class="tab-icon">👥</span><span class="tab-label"> Members</span>
-                </button>
-                <button class="tab-btn" data-tab="constitution" onclick="switchTab('constitution')">
-                    <span class="tab-icon">📄</span><span class="tab-label"> Docs</span>
-                </button>
-                <button class="tab-btn" data-tab="chat" onclick="switchTab('chat')">
-                    <span class="tab-icon">💬</span><span class="tab-label"> Chat</span>
-                </button>
-            </div>
-
-            <!-- Tab content -->
-            <div class="tab-content-card" id="tabContent">
-                <!-- Populated dynamically per active tab -->
-            </div>
-
-            <!-- Activity log (always visible below tabs) -->
-            <div class="card" id="activityLog">
-                <h3>Activity</h3>
-                <div id="activityContent">
+                <div id="groupList">
                     <!-- Populated dynamically -->
                 </div>
+                <p id="groupsEmptyHint" class="hidden" style="text-align:center;color:var(--dark-gray);margin-top:2rem;">
+                    Create a new group to get started, or ask an existing member to sponsor you.
+                </p>
+            </div>
+
+            <!-- Group view (hidden until group selected) -->
+            <div id="groupView" class="hidden">
+                <div class="card balance-card group-name-link" onclick="showGroupsList()" style="display:flex;align-items:center;">
+                    <div class="group-header-center">
+                        <div class="group-avatar-wrap group-header-avatar-wrap" onclick="onGroupLogoClick(event)" title="Click to change group logo">
+                            <div id="groupAvatarImg" class="group-avatar-placeholder" aria-label="Group logo">👥</div>
+                        </div>
+                        <div class="balance-amount" id="groupNameDisplay"></div>
+                    </div>
+                </div>
+                <input type="file" id="groupLogoInput" accept="image/*" class="hidden">
+
+                <!-- Tab bar -->
+                <div class="tab-bar" id="tabBar">
+                    <button class="tab-btn active" data-tab="money" onclick="switchTab('money')">
+                        <span class="tab-icon">💲</span><span class="tab-label"> Money</span>
+                    </button>
+                    <button class="tab-btn" data-tab="members" onclick="switchTab('members')">
+                        <span class="tab-icon">👥</span><span class="tab-label"> Members</span>
+                    </button>
+                    <button class="tab-btn" data-tab="constitution" onclick="switchTab('constitution')">
+                        <span class="tab-icon">📄</span><span class="tab-label"> Docs</span>
+                    </button>
+                    <button class="tab-btn" data-tab="chat" onclick="switchTab('chat')">
+                        <span class="tab-icon">💬</span><span class="tab-label"> Chat</span>
+                    </button>
+                </div>
+
+                <!-- Tab content -->
+                <div class="tab-content-card" id="tabContent">
+                    <!-- Populated dynamically per active tab -->
+                </div>
+
+                <!-- Activity log (always visible below tabs) -->
+                <div class="card" id="activityLog">
+                    <h3>Activity</h3>
+                    <div id="activityContent">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== PROFILE VIEW ===== -->
+        <div id="profileScreen" class="hidden">
+            <div id="profileScreenContent">
+                <!-- Populated dynamically by renderProfileScreen() -->
             </div>
         </div>
 
         <div class="screen-version" aria-hidden="true">__BUILD_VERSION__</div>
+    </div>
+
+    <!-- ===== BOTTOM BAR ===== -->
+    <div class="bottom-bar" id="bottomBar">
+        <button type="button" class="bottom-bar-btn active" data-view="contacts" onclick="navigateTo('contacts')" aria-label="Contacts">
+            <svg class="bottom-bar-icon" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
+            <span class="bottom-bar-label">Contacts</span>
+        </button>
+        <button type="button" class="bottom-bar-btn bottom-bar-btn-center" onclick="openMeetScreen()" aria-label="Handshake">
+            <span class="bottom-bar-handshake">🤝</span>
+        </button>
+        <button type="button" class="bottom-bar-btn" data-view="groups" onclick="navigateTo('groups')" aria-label="Groups">
+            <svg class="bottom-bar-icon" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><circle cx="8" cy="10" r="5" opacity="0.45"/><circle cx="16" cy="10" r="5" opacity="0.45"/><circle cx="12" cy="7" r="5" opacity="0.7"/></svg>
+            <span class="bottom-bar-label">Groups</span>
+        </button>
     </div>
 </div>
 
@@ -179,36 +227,6 @@
     <div class="screen-version screen-version-overlay" aria-hidden="true">__BUILD_VERSION__</div>
 </div>
 
-<!-- ===== CONTACT LIST OVERLAY ===== -->
-<div id="contactsOverlay" class="contacts-overlay hidden">
-    <div class="contacts-header">
-        <h2>Contacts</h2>
-        <button type="button" class="contacts-close" onclick="closeContactListScreen()" aria-label="Close">✕</button>
-    </div>
-    <div class="contacts-search-wrap">
-        <span class="contacts-search-icon" aria-hidden="true">🔍</span>
-        <input
-            type="search"
-            id="contactsSearchInput"
-            class="contacts-search-input"
-            placeholder="Search name, email, or phone"
-            aria-label="Search contacts"
-            autocomplete="off">
-        <button
-            type="button"
-            id="contactsSearchClearBtn"
-            class="contacts-search-clear hidden"
-            aria-label="Clear search">
-            ✕
-        </button>
-    </div>
-    <div class="contacts-list-wrap">
-        <div id="contactsListContent">
-            <p style="color:var(--dark-gray);text-align:center;padding:2rem;">Loading…</p>
-        </div>
-        <div class="screen-version" aria-hidden="true">__BUILD_VERSION__</div>
-    </div>
-</div>
 
 <!-- ===== MODAL CONTAINER ===== -->
 <div id="modalOverlay" class="modal-overlay hidden" onclick="if(event.target===this)closeModal()">
@@ -253,6 +271,7 @@
 <script src="js/send-currency.js"></script>
 <script src="js/vote.js"></script>
 <script src="js/realtime.js"></script>
+<script src="js/navigation.js"></script>
 <script src="js/meet.js"></script>
 <script src="js/contacts.js"></script>
 <script src="js/preferences.js"></script>

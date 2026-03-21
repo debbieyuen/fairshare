@@ -6,6 +6,7 @@ let groupChannel = null; // Supabase Realtime channel for current group
 let contactSharesChannel = null; // Realtime for "X shared Y with you" toasts
 let contactEventsChannel = null; // Realtime for new contacts + selfie updates
 let activeTab = 'money'; // Current tab: 'money', 'members', 'constitution', 'chat'
+let activeMainView = 'contacts'; // Current main view: 'contacts', 'groups', 'profile'
 let shareWithContactId = null;
 let shareWithContactName = '';
 let vouchWithContactId = null;

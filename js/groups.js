@@ -32,26 +32,17 @@ async function loadMyGroups(autoNavigateGroupId) {
 
     renderGroupList();
 
-    // If a specific group was requested (e.g. from sponsorship), navigate there
     if (autoNavigateGroupId) {
         const target = myGroups.find(m => m.group_id === autoNavigateGroupId);
         if (target) { selectGroup(target.groups, target); return; }
     }
 
-    // Re-select current group if still valid, or restore last viewed group
     if (selectedGroup) {
         const still = myGroups.find(m => m.group_id === selectedGroup.id);
         if (still) {
             selectGroup(still.groups, still);
         } else {
             selectedGroup = null;
-            showGroupsList();
-        }
-    } else if (currentProfile?.last_group_id) {
-        const last = myGroups.find(m => m.group_id === currentProfile.last_group_id);
-        if (last) {
-            selectGroup(last.groups, last);
-        } else {
             showGroupsList();
         }
     } else {

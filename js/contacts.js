@@ -62,12 +62,7 @@ function getNoMatchingContactsHtml() {
 
 async function openContactListScreen() {
     if (!currentUser) return;
-    const overlay = document.getElementById('contactsOverlay');
-    const content = document.getElementById('contactsListContent');
-    overlay.classList.remove('hidden');
-    content.innerHTML = '<p style="color:var(--dark-gray);text-align:center;padding:2rem;">Loading…</p>';
-    bindContactsSearchInput();
-    await loadAndRenderContactList();
+    navigateTo('contacts');
 }
 
 function getContactRow(contactId) {
@@ -187,15 +182,10 @@ function renderContactsForCurrentQuery() {
 
 async function openContactDetailsById(contactId) {
     if (!contactId || !currentUser) return false;
-    const overlay = document.getElementById('contactsOverlay');
     const content = document.getElementById('contactsListContent');
-    if (!overlay || !content) return false;
-    bindContactsSearchInput();
+    if (!content) return false;
 
-    if (overlay.classList.contains('hidden')) {
-        overlay.classList.remove('hidden');
-    }
-
+    navigateTo('contacts');
     clearContactSearchState();
 
     if (!getContactRow(contactId)) {
@@ -206,7 +196,6 @@ async function openContactDetailsById(contactId) {
         return true;
     }
 
-    // Contact row can arrive a moment later via realtime after meet/invite completion.
     for (let i = 0; i < 3; i++) {
         await new Promise(resolve => setTimeout(resolve, 250));
         await loadAndRenderContactList();
@@ -217,11 +206,7 @@ async function openContactDetailsById(contactId) {
 
 async function openNewestContactDetails() {
     if (!currentUser) return false;
-    const overlay = document.getElementById('contactsOverlay');
-    bindContactsSearchInput();
-    if (overlay && overlay.classList.contains('hidden')) {
-        overlay.classList.remove('hidden');
-    }
+    navigateTo('contacts');
     clearContactSearchState();
     await loadAndRenderContactList();
     const firstRow = document.querySelector('.contact-row');
@@ -245,7 +230,6 @@ async function openPendingContactDetailsIfAny() {
 
 function closeContactListScreen() {
     clearContactSearchState();
-    document.getElementById('contactsOverlay').classList.add('hidden');
 }
 
 async function loadAndRenderContactList() {

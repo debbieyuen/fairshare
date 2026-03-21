@@ -105,6 +105,11 @@ async function showApp(navigateToGroupId) {
     maybeShowInstallHintFloater();
     if (currentProfile?.push_notifications !== false) subscribeToPush();
     await loadMyGroups(navigateToGroupId || null);
+    if (navigateToGroupId) {
+        navigateTo('groups');
+    } else {
+        navigateTo('contacts');
+    }
     await openPendingContactDetailsIfAny();
 }
 
