@@ -1587,6 +1587,60 @@ body {
     padding: 1px 3px;
 }
 
+/* ---- Image lightbox ---- */
+.img-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    background: rgba(0, 0, 0, 0.88);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+}
+.img-lightbox.active {
+    opacity: 1;
+    pointer-events: all;
+}
+.img-lightbox-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: rgba(255,255,255,0.15);
+    border: none;
+    color: #fff;
+    font-size: 1.25rem;
+    line-height: 1;
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+}
+.img-lightbox-close:hover { background: rgba(255,255,255,0.3); }
+.img-lightbox-img {
+    max-width: min(90vw, 560px);
+    max-height: 70vh;
+    object-fit: contain;
+    border-radius: 10px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+    display: block;
+}
+.img-lightbox-caption {
+    margin-top: 0.85rem;
+    text-align: center;
+    color: rgba(255,255,255,0.85);
+    font-size: 0.9rem;
+    line-height: 1.55;
+}
+
 /* ---- Selfies horizontal strip ---- */
 .contact-detail-selfies-section {
     margin-top: 0.9rem;

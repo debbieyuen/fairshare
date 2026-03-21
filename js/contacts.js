@@ -123,14 +123,55 @@ function buildSelfiesStripHtml(selfies, contactId) {
         return `<div class="selfies-strip">${addTileHtml}</div>`;
     }
     const tilesHtml = selfies.map(s => {
-        const caption = [formatSelfieDate(s.captured_at), s.location_label].filter(Boolean).join('\n');
+        const dateStr = formatSelfieDate(s.captured_at);
+        const locStr = s.location_label || '';
+        const caption = [dateStr, locStr].filter(Boolean).join('\n');
         return `
-            <div class="selfie-tile">
+            <div class="selfie-tile"
+                 data-lightbox-url="${esc(s.selfie_url)}"
+                 ${dateStr ? `data-lightbox-date="${esc(dateStr)}"` : ''}
+                 ${locStr ? `data-lightbox-location="${esc(locStr)}"` : ''}>
                 <img src="${esc(s.selfie_url)}" alt="Selfie" loading="lazy">
-                ${caption ? `<div class="selfie-caption">${esc(formatSelfieDate(s.captured_at))}${s.location_label ? `<br><span class="selfie-caption-location">${esc(s.location_label)}</span>` : ''}</div>` : ''}
+                ${caption ? `<div class="selfie-caption">${esc(dateStr)}${locStr ? `<br><span class="selfie-caption-location">${esc(locStr)}</span>` : ''}</div>` : ''}
             </div>`;
     }).join('');
     return `<div class="selfies-strip">${tilesHtml}${addTileHtml}</div>`;
+}
+
+function ensureLightbox() {
+    if (document.getElementById('img-lightbox')) return;
+    const el = document.createElement('div');
+    el.id = 'img-lightbox';
+    el.className = 'img-lightbox';
+    el.innerHTML = `
+        <button class="img-lightbox-close" aria-label="Close">✕</button>
+        <img class="img-lightbox-img" id="img-lightbox-img" alt="">
+        <div class="img-lightbox-caption" id="img-lightbox-caption"></div>`;
+    el.addEventListener('click', (e) => {
+        if (!e.target.closest('.img-lightbox-img') && !e.target.closest('.img-lightbox-caption')) {
+            closeLightbox();
+        }
+    });
+    el.querySelector('.img-lightbox-close').addEventListener('click', closeLightbox);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLightbox(); });
+    document.body.appendChild(el);
+}
+
+function openLightbox(url, dateStr, locationStr) {
+    ensureLightbox();
+    document.getElementById('img-lightbox-img').src = url;
+    const cap = document.getElementById('img-lightbox-caption');
+    const parts = [dateStr, locationStr].filter(Boolean);
+    cap.innerHTML = parts.map(p => `<span>${esc(p)}</span>`).join('<br>');
+    cap.style.display = parts.length ? '' : 'none';
+    document.getElementById('img-lightbox').classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+    const lb = document.getElementById('img-lightbox');
+    if (lb) lb.classList.remove('active');
+    document.body.style.overflow = '';
 }
 
 async function reloadContactSelfiesStrip(contactId) {
@@ -159,7 +200,7 @@ function matchesContactSearch(row) {
 function bindContactRowEvents(content) {
     content.querySelectorAll('.contact-row').forEach((row) => {
         row.addEventListener('click', (e) => {
-            if (e.target.closest('.contact-detail-actions') || e.target.closest('.selfies-strip-container') || e.target.closest('input') || e.target.closest('button')) return;
+            if (e.target.closest('.contact-detail-actions') || e.target.closest('.selfies-strip-container') || e.target.closest('.contact-detail-profile-media') || e.target.closest('input') || e.target.closest('button')) return;
             const wasExpanded = row.classList.contains('expanded');
             if (wasExpanded) {
                 row.classList.remove('expanded');
@@ -183,6 +224,16 @@ function bindContactRowEvents(content) {
 function bindContactActionEvents(content) {
     if (content.dataset.contactActionBound) return;
     content.addEventListener('click', (e) => {
+        const selfieTile = e.target.closest('.selfie-tile[data-lightbox-url]');
+        if (selfieTile) {
+            e.stopPropagation();
+            openLightbox(
+                selfieTile.dataset.lightboxUrl,
+                selfieTile.dataset.lightboxDate || '',
+                selfieTile.dataset.lightboxLocation || ''
+            );
+            return;
+        }
         const shareBtn = e.target.closest('.btn-share-with-contact');
         if (shareBtn) {
             e.stopPropagation();
@@ -394,7 +445,9 @@ function renderContactRow(contact, profile, shared) {
         ? `<img class="contact-row-avatar" src="${esc(avatarUrl)}" alt="">`
         : '<div class="contact-row-avatar-placeholder">👤</div>';
     const largeAvatarHtml = avatarUrl
-        ? `<img class="contact-detail-profile-photo" src="${esc(avatarUrl)}" alt="${esc(name)} profile">`
+        ? `<img class="contact-detail-profile-photo" src="${esc(avatarUrl)}" alt="${esc(name)} profile"
+               style="cursor:pointer"
+               onclick="event.stopPropagation(); openLightbox('${esc(avatarUrl)}')">`
         : '<div class="contact-detail-profile-placeholder">👤</div>';
     const sharedIconHtml = (hasSharedPhone || hasSharedEmail)
         ? `<span class="contact-row-shared-icons" aria-label="Contact details shared with you">
