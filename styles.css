@@ -286,6 +286,28 @@ body {
     background: var(--yellow);
     color: #333;
 }
+.group-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+.btn-leave-group {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 4px;
+    border: 1px solid var(--dark-gray);
+    background: transparent;
+    color: var(--dark-gray);
+    cursor: pointer;
+    transition: var(--transition);
+    white-space: nowrap;
+}
+.btn-leave-group:hover {
+    background: var(--red, #e74c3c);
+    border-color: var(--red, #e74c3c);
+    color: var(--white);
+}
 .group-card .group-card-arrow {
     font-size: 1.2rem;
     color: var(--dark-gray);

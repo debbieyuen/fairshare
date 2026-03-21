@@ -88,9 +88,32 @@ function renderGroupList() {
                 <div class="group-card-meta">${m._memberCount || 0} member${m._memberCount === 1 ? '' : 's'}</div>
                 </div>
             </div>
-            <div class="group-card-arrow">›</div>
+            <div class="group-card-actions">
+                <button class="btn-leave-group" onclick="leaveGroup('${m.group_id}', '${esc(m.groups.name)}', event)" title="Leave group">Leave</button>
+                <span class="group-card-arrow">›</span>
+            </div>
         </div>
     `).join('');
+}
+
+async function leaveGroup(groupId, groupName, event) {
+    event.stopPropagation();
+    if (!confirm(`Are you sure you want to leave group ${groupName}?`)) return;
+
+    try {
+        const { error } = await db.rpc('leave_group', { p_group_id: groupId });
+        if (error) throw error;
+
+        if (selectedGroup?.id === groupId) {
+            selectedGroup = null;
+            showGroupsList();
+        }
+        await loadMyGroups();
+        showToast(`You have left ${groupName}.`, 'success');
+    } catch (err) {
+        console.error('Leave group error:', err);
+        showToast('Failed to leave group: ' + (err.message || 'error'), 'error');
+    }
 }
 
 function selectGroupById(groupId) {

@@ -88,8 +88,8 @@ async function handleGroupEvent(event) {
             break;
         }
         case 'member_joined':
-        case 'member_sponsored': {
-            // Refresh member count / candidates
+        case 'member_sponsored':
+        case 'member_left': {
             await loadMyGroups();
             if (activeTab === 'members') await renderMembersTab();
             break;
