@@ -31,6 +31,7 @@ const APP_SHELL = [
   './js/send-currency.js',
   './js/vote.js',
   './js/realtime.js',
+  './js/navigation.js',
   './js/meet.js',
   './js/contacts.js',
   './js/preferences.js',

@@ -104,12 +104,17 @@ async function showApp(navigateToGroupId) {
     subscribeToContactEvents();
     maybeShowInstallHintFloater();
     if (currentProfile?.push_notifications !== false) subscribeToPush();
-    await loadMyGroups(navigateToGroupId || null);
-    if (navigateToGroupId) {
-        navigateTo('groups');
-    } else {
+
+    if (!navigateToGroupId) {
         navigateTo('contacts');
     }
+
+    await loadMyGroups(navigateToGroupId || null);
+
+    if (navigateToGroupId) {
+        navigateTo('groups');
+    }
+
     await openPendingContactDetailsIfAny();
 }
 
