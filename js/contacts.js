@@ -80,19 +80,64 @@ function expandContactRow(contactId) {
     row.classList.add('expanded');
     loadSharedTrust(contactId);
     loadFamilyTree(contactId);
+    reloadContactSelfiesStrip(contactId);
     return true;
 }
 
 function updateContactSelfieInList(contactId, selfieUrl) {
-    const row = getContactRow(contactId);
-    const wrap = row?.querySelector('.contact-selfie-wrap');
-    if (!wrap) return false;
-    if (selfieUrl) {
-        wrap.innerHTML = `<img src="${esc(selfieUrl)}" alt="Selfie">`;
-    } else {
-        wrap.innerHTML = '<span title="Tap to take a selfie">📷</span>';
-    }
+    // Legacy helper kept for compatibility; now delegates to strip reload
+    delete contactSelfiesCache[contactId];
+    reloadContactSelfiesStrip(contactId);
     return true;
+}
+
+async function loadContactSelfies(contactId) {
+    if (contactSelfiesCache[contactId]) return contactSelfiesCache[contactId];
+    try {
+        const { data, error } = await db
+            .from('contact_selfies')
+            .select('id, selfie_url, captured_at, location_label')
+            .eq('contact_id', contactId)
+            .order('captured_at', { ascending: false });
+        if (error) throw error;
+        contactSelfiesCache[contactId] = data || [];
+    } catch (e) {
+        console.error('loadContactSelfies error:', e);
+        contactSelfiesCache[contactId] = [];
+    }
+    return contactSelfiesCache[contactId];
+}
+
+function formatSelfieDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+function buildSelfiesStripHtml(selfies, contactId) {
+    const addTileHtml = `
+        <div class="selfie-tile selfie-tile-add" onclick="event.stopPropagation();openContactSelfie('${contactId}')" title="Add a selfie">
+            <div class="selfie-tile-add-icon">📷</div>
+        </div>`;
+    if (!selfies || selfies.length === 0) {
+        return `<div class="selfies-strip">${addTileHtml}</div>`;
+    }
+    const tilesHtml = selfies.map(s => {
+        const caption = [formatSelfieDate(s.captured_at), s.location_label].filter(Boolean).join('\n');
+        return `
+            <div class="selfie-tile">
+                <img src="${esc(s.selfie_url)}" alt="Selfie" loading="lazy">
+                ${caption ? `<div class="selfie-caption">${esc(formatSelfieDate(s.captured_at))}${s.location_label ? `<br><span class="selfie-caption-location">${esc(s.location_label)}</span>` : ''}</div>` : ''}
+            </div>`;
+    }).join('');
+    return `<div class="selfies-strip">${tilesHtml}${addTileHtml}</div>`;
+}
+
+async function reloadContactSelfiesStrip(contactId) {
+    const container = document.getElementById('selfies-strip-' + contactId);
+    if (!container) return;
+    const selfies = await loadContactSelfies(contactId);
+    container.innerHTML = buildSelfiesStripHtml(selfies, contactId);
 }
 
 function matchesContactSearch(row) {
@@ -114,7 +159,7 @@ function matchesContactSearch(row) {
 function bindContactRowEvents(content) {
     content.querySelectorAll('.contact-row').forEach((row) => {
         row.addEventListener('click', (e) => {
-            if (e.target.closest('.contact-detail-actions') || e.target.closest('.contact-selfie-wrap') || e.target.closest('input') || e.target.closest('button')) return;
+            if (e.target.closest('.contact-detail-actions') || e.target.closest('.selfies-strip-container') || e.target.closest('input') || e.target.closest('button')) return;
             const wasExpanded = row.classList.contains('expanded');
             if (wasExpanded) {
                 row.classList.remove('expanded');
@@ -129,6 +174,7 @@ function bindContactRowEvents(content) {
             if (cid) {
                 loadSharedTrust(cid);
                 loadFamilyTree(cid);
+                reloadContactSelfiesStrip(cid);
             }
         });
     });
@@ -298,7 +344,6 @@ function renderContactRow(contact, profile, shared) {
     const hasSharedPhone = !!phone;
     const hasSharedEmail = !!email;
     const cid = esc(contact.contact_id);
-    const selfieUrl = contact.selfie_url || null;
     const lastSeen = formatLastSeen(contact.met_at);
     const avatarHtml = avatarUrl
         ? `<img class="contact-row-avatar" src="${esc(avatarUrl)}" alt="">`
@@ -306,9 +351,6 @@ function renderContactRow(contact, profile, shared) {
     const largeAvatarHtml = avatarUrl
         ? `<img class="contact-detail-profile-photo" src="${esc(avatarUrl)}" alt="${esc(name)} profile">`
         : '<div class="contact-detail-profile-placeholder">👤</div>';
-    const selfieHtml = selfieUrl
-        ? `<img src="${esc(selfieUrl)}" alt="Selfie">`
-        : '<span title="Tap to take a selfie">📷</span>';
     const sharedIconHtml = (hasSharedPhone || hasSharedEmail)
         ? `<span class="contact-row-shared-icons" aria-label="Contact details shared with you">
                 ${hasSharedPhone ? '<span class="contact-row-shared-icon" title="Phone shared">📞</span>' : ''}
@@ -327,23 +369,32 @@ function renderContactRow(contact, profile, shared) {
                 <span class="contact-row-chevron">›</span>
             </div>
             <div class="contact-detail">
-                <div class="contact-detail-media-row">
+                <div class="contact-detail-top-row">
                     <div class="contact-detail-profile-media">${largeAvatarHtml}</div>
-                    <div class="contact-selfie-wrap contact-detail-selfie" onclick="event.stopPropagation();openContactSelfie('${cid}')">${selfieHtml}</div>
+                    <div class="contact-detail-top-actions">
+                        <button type="button" class="btn btn-small btn-vouch-with-contact" data-contact-id="${cid}" data-contact-name="${esc(name)}">Vouch</button>
+                        <button type="button" class="btn btn-primary btn-small btn-share-with-contact" data-contact-id="${cid}" data-contact-name="${esc(name)}">Share</button>
+                    </div>
                 </div>
-                <div class="contact-detail-actions">
-                    <button type="button" class="btn btn-primary btn-small btn-share-with-contact" data-contact-id="${cid}" data-contact-name="${esc(name)}">Share</button>
-                    <button type="button" class="btn btn-small btn-vouch-with-contact" data-contact-id="${cid}" data-contact-name="${esc(name)}">Vouch</button>
+                <div class="contact-detail-selfies-section">
+                    <div class="contact-shared-title">Selfies Together</div>
+                    <div id="selfies-strip-${cid}" class="selfies-strip-container">
+                        <div class="selfies-strip">
+                            <div class="selfie-tile selfie-tile-add" onclick="event.stopPropagation();openContactSelfie('${cid}')" title="Add a selfie">
+                                <div class="selfie-tile-add-icon">📷</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="contact-shared-trust" id="shared-${cid}">
+                    <div class="contact-shared-title">Trust</div>
+                    <div class="contact-detail-line contact-detail-muted">Loading shared trust…</div>
                 </div>
                 <div class="contact-shared-details">
                     <div class="contact-shared-title">Shared with you</div>
                     ${phone ? `<div class="contact-detail-line">📞 <a href="tel:${esc(phone)}">${esc(phone)}</a></div>` : ''}
                     ${email ? `<div class="contact-detail-line">✉ <a href="mailto:${esc(email)}">${esc(email)}</a></div>` : ''}
                     ${!phone && !email ? '<div class="contact-detail-line contact-detail-muted">No phone or email shared with you yet.</div>' : ''}
-                </div>
-                <div class="contact-shared-trust" id="shared-${cid}">
-                    <div class="contact-shared-title">Trust</div>
-                    <div class="contact-detail-line contact-detail-muted">Loading shared trust…</div>
                 </div>
                 <div class="family-tree" id="ft-${cid}">
                     <div class="family-tree-title">Family Tree</div>
@@ -607,6 +658,49 @@ function closeContactSelfieModal(options = {}) {
     closeModal({ refreshContactList: refreshContacts });
 }
 
+async function openNewContactSelfieOverlay(contactId, contactName) {
+    newContactSelfieId = contactId;
+    newContactSelfieContactName = contactName || 'your new contact';
+    const overlay = document.getElementById('newContactSelfieOverlay');
+    const banner = document.getElementById('newContactSelfieBanner');
+    const video = document.getElementById('newContactSelfieVideo');
+    if (!overlay || !video) return;
+    if (banner) banner.textContent = `Take a selfie with ${newContactSelfieContactName}!`;
+    overlay.classList.remove('hidden');
+    try {
+        newContactSelfieStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: false
+        });
+        video.srcObject = newContactSelfieStream;
+        await video.play();
+    } catch (e) {
+        console.error('New-contact selfie camera error:', e);
+        showToast('Camera unavailable: ' + (e.message || 'error'), 'error');
+        closeNewContactSelfieOverlay({ navigate: true });
+    }
+}
+
+function closeNewContactSelfieOverlay(options = {}) {
+    const { navigate = false } = options;
+    const overlay = document.getElementById('newContactSelfieOverlay');
+    if (overlay) overlay.classList.add('hidden');
+    if (newContactSelfieStream) {
+        newContactSelfieStream.getTracks().forEach(t => t.stop());
+        newContactSelfieStream = null;
+    }
+    const video = document.getElementById('newContactSelfieVideo');
+    if (video) video.srcObject = null;
+    const cid = newContactSelfieId;
+    newContactSelfieId = null;
+    newContactSelfieContactName = '';
+    if (navigate && cid) {
+        openContactDetailsById(cid);
+    } else if (navigate) {
+        openNewestContactDetails();
+    }
+}
+
 async function startContactSelfieStream() {
     stopContactSelfieStream();
     const video = document.getElementById('contactSelfieVideo');
@@ -634,18 +728,27 @@ function stopContactSelfieStream() {
 }
 
 async function captureContactSelfie() {
-    const cid = contactSelfieId;
+    const cid = contactSelfieId || newContactSelfieId;
     if (!cid || !currentUser) return;
-    const video = document.getElementById('contactSelfieVideo');
+    const video = document.getElementById('contactSelfieVideo') || document.getElementById('newContactSelfieVideo');
     if (!video || video.readyState < 2) {
         showToast('Camera not ready — please wait a moment and try again.', 'error');
         return;
     }
-    const btn = document.getElementById('contactSelfieCaptureBtn');
+    const btn = document.getElementById('contactSelfieCaptureBtn') || document.getElementById('newContactSelfieCaptureBtn');
     if (btn) btn.disabled = true;
     let selfieSaved = false;
     let savedSelfieUrl = '';
     try {
+        // Grab GPS in parallel with image capture (non-blocking; falls back gracefully)
+        let lat = null, lng = null, locationLabel = '';
+        const gpsResult = await getGPSLocation();
+        if (gpsResult) {
+            lat = gpsResult.lat;
+            lng = gpsResult.lng;
+            locationLabel = await reverseGeocode(lat, lng);
+        }
+
         const canvas = document.createElement('canvas');
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
@@ -655,16 +758,23 @@ async function captureContactSelfie() {
         if (!blob) throw new Error('Could not capture image from camera');
         const file = new File([blob], 'selfie.jpg', { type: 'image/jpeg' });
         const filePath = `${currentUser.id}/selfie_${cid}_${Date.now()}.jpg`;
-        const { error: upErr } = await db.storage.from('avatars').upload(filePath, file, { upsert: true });
+        const { error: upErr } = await db.storage.from('avatars').upload(filePath, file, { upsert: false });
         if (upErr) throw upErr;
         const { data: urlData } = db.storage.from('avatars').getPublicUrl(filePath);
         const selfieUrl = urlData.publicUrl;
-        const { error: rpcErr } = await db.rpc('set_contact_selfie', {
+        const capturedAt = new Date().toISOString();
+        const { error: rpcErr } = await db.rpc('add_contact_selfie', {
             p_contact_id: cid,
-            p_selfie_url: selfieUrl
+            p_selfie_url: selfieUrl,
+            p_captured_at: capturedAt,
+            p_lat: lat,
+            p_lng: lng,
+            p_location_label: locationLabel || null
         });
         if (rpcErr) throw rpcErr;
         recentSelfieUploads[cid] = Date.now();
+        // Invalidate cache so the strip reloads
+        delete contactSelfiesCache[cid];
         selfieSaved = true;
         savedSelfieUrl = selfieUrl;
         showToast('Selfie saved!', 'success');
@@ -674,11 +784,50 @@ async function captureContactSelfie() {
     }
     if (btn) btn.disabled = false;
     if (selfieSaved) {
-        updateContactSelfieInList(cid, savedSelfieUrl);
+        // If triggered from the new-contact fullscreen overlay, close it and navigate
+        if (newContactSelfieId) {
+            closeNewContactSelfieOverlay({ navigate: true });
+            return;
+        }
+        // Otherwise reload the selfies strip inline
+        reloadContactSelfiesStrip(cid);
         closeContactSelfieModal({ refreshContacts: false });
         return;
     }
+    if (newContactSelfieId) {
+        closeNewContactSelfieOverlay({ navigate: true });
+        return;
+    }
     closeContactSelfieModal();
+}
+
+function getGPSLocation() {
+    return new Promise(resolve => {
+        if (!('geolocation' in navigator)) { resolve(null); return; }
+        navigator.geolocation.getCurrentPosition(
+            pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+            () => resolve(null),
+            { enableHighAccuracy: true, timeout: 6000, maximumAge: 60000 }
+        );
+    });
+}
+
+async function reverseGeocode(lat, lng) {
+    try {
+        const resp = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+            { headers: { 'Accept-Language': 'en' } }
+        );
+        if (!resp.ok) return '';
+        const data = await resp.json();
+        const addr = data.address || {};
+        const city = addr.city || addr.town || addr.village || addr.county || '';
+        const state = addr.state || '';
+        const parts = [city, state].filter(Boolean);
+        return parts.join(', ');
+    } catch {
+        return '';
+    }
 }
 
 function openShareWithContact(contactId, contactName) {

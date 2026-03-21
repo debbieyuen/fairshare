@@ -1501,15 +1501,35 @@ body {
     gap: 0.6rem;
     margin-top: 0.75rem;
 }
+.contact-detail-top-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+}
 .contact-detail-profile-media {
-    flex: 1;
-    aspect-ratio: 1 / 1;
+    flex-shrink: 0;
+    width: 90px;
+    height: 90px;
     border-radius: 12px;
     overflow: hidden;
     background: var(--medium-gray);
     display: flex;
     align-items: center;
     justify-content: center;
+}
+.contact-detail-top-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    width: 90px;
+    height: 90px;
+}
+.contact-detail-top-actions .btn {
+    flex: 1;
+    width: 100%;
+    text-align: center;
+    padding: 0;
 }
 .contact-detail-profile-photo {
     width: 100%;
@@ -1520,28 +1540,135 @@ body {
     font-size: 2rem;
     color: var(--dark-gray);
 }
-.contact-selfie-wrap {
-    margin: 0.75rem 0;
-    width: 120px;
-    height: 120px;
-    border-radius: 12px;
+/* ---- Selfies horizontal strip ---- */
+.contact-detail-selfies-section {
+    margin-top: 0.9rem;
+}
+.selfies-strip-container {
+    overflow: hidden;
+}
+.selfies-strip {
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.4rem;
+    /* hide scrollbar but keep scroll */
+    scrollbar-width: none;
+}
+.selfies-strip::-webkit-scrollbar { display: none; }
+.selfie-tile {
+    flex: 0 0 110px;
+    scroll-snap-align: start;
+    border-radius: 10px;
     overflow: hidden;
     background: var(--medium-gray);
+    display: flex;
+    flex-direction: column;
+}
+.selfie-tile img {
+    width: 110px;
+    height: 110px;
+    object-fit: cover;
+    display: block;
+}
+.selfie-caption {
+    padding: 3px 5px 4px;
+    font-size: 0.67rem;
+    color: var(--dark-gray);
+    line-height: 1.3;
+    background: var(--light-gray, #f5f5f5);
+}
+.selfie-caption-location {
+    font-size: 0.62rem;
+    opacity: 0.75;
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.selfie-tile-add {
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    height: 110px;
+    border: 2px dashed var(--dark-gray);
+    background: transparent;
+    opacity: 0.55;
+    transition: opacity 0.15s;
+}
+.selfie-tile-add:hover, .selfie-tile-add:active { opacity: 0.85; }
+.selfie-tile-add-icon { font-size: 1.8rem; }
+/* ---- New-contact fullscreen selfie overlay ---- */
+.new-contact-selfie-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9900;
+    background: #000;
+    display: flex;
+    align-items: stretch;
+}
+.new-contact-selfie-overlay.hidden { display: none; }
+.new-contact-selfie-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.new-contact-selfie-banner {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 1rem 1.5rem;
+    padding-top: calc(env(safe-area-inset-top, 0px) + 1rem);
+    background: linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, transparent 100%);
+    color: #fff;
+    font-size: 1.1rem;
+    font-weight: 600;
+    text-align: center;
+    pointer-events: none;
+}
+.new-contact-selfie-skip {
+    position: absolute;
+    top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+    right: 1rem;
+    background: rgba(0,0,0,0.45);
+    color: #fff;
+    border: none;
+    border-radius: 50%;
+    width: 2.2rem;
+    height: 2.2rem;
+    font-size: 1.1rem;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
+    z-index: 1;
+}
+.new-contact-selfie-capture {
+    position: absolute;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 2rem);
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255,255,255,0.9);
+    border: none;
+    border-radius: 50%;
+    width: 4.5rem;
+    height: 4.5rem;
     font-size: 2rem;
-    color: var(--dark-gray);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.4);
 }
-.contact-selfie-wrap img { width: 100%; height: 100%; object-fit: cover; }
-.contact-detail-selfie {
-    flex: 1;
-    width: auto;
-    height: auto;
-    aspect-ratio: 1 / 1;
-    margin: 0;
-}
+.new-contact-selfie-capture:active { transform: translateX(-50%) scale(0.93); }
+/* Hide small avatar in header when row is expanded */
+.contact-row.expanded .contact-row-avatar,
+.contact-row.expanded .contact-row-avatar-placeholder { display: none; }
+
 .contact-detail-actions {
     margin-top: 0.9rem;
     display: flex;

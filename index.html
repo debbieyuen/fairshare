@@ -210,6 +210,14 @@
 <!-- Full-screen flash for successful handshake -->
 <div id="handshakeFlash" class="handshake-flash"></div>
 
+<!-- ===== NEW-CONTACT FULLSCREEN SELFIE OVERLAY ===== -->
+<div id="newContactSelfieOverlay" class="new-contact-selfie-overlay hidden">
+    <video id="newContactSelfieVideo" autoplay playsinline muted class="new-contact-selfie-video"></video>
+    <div class="new-contact-selfie-banner" id="newContactSelfieBanner">Take a selfie with your new contact!</div>
+    <button class="new-contact-selfie-skip" id="newContactSelfieSkipBtn" onclick="closeNewContactSelfieOverlay({navigate:true})">✕</button>
+    <button class="new-contact-selfie-capture" id="newContactSelfieCaptureBtn" onclick="captureContactSelfie()">📸</button>
+</div>
+
 <!-- ===== MEET / QR CONTACT EXCHANGE OVERLAY ===== -->
 <div id="meetOverlay" class="meet-overlay hidden">
     <button class="meet-close" onclick="closeMeetScreen()" aria-label="Close">✕</button>

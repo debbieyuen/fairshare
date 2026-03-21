@@ -186,14 +186,10 @@ function meetSuccess(contactName, contactId = null) {
 
     showToast('Contact added: ' + contactName, 'success');
 
-    // Auto-close after a short delay, then open this contact's details.
+    // Auto-close after a short delay, then open selfie overlay for new contact.
     setTimeout(() => {
         closeMeetScreen();
-        if (contactId) {
-            openContactDetailsById(contactId);
-            return;
-        }
-        openNewestContactDetails();
+        openNewContactSelfieOverlay(contactId, contactName);
     }, 2500);
 }
 
