@@ -200,7 +200,7 @@ function matchesContactSearch(row) {
 function bindContactRowEvents(content) {
     content.querySelectorAll('.contact-row').forEach((row) => {
         row.addEventListener('click', (e) => {
-            if (e.target.closest('.contact-detail-actions') || e.target.closest('.selfies-strip-container') || e.target.closest('.contact-detail-profile-media') || e.target.closest('input') || e.target.closest('button')) return;
+            if (e.target.closest('.contact-detail-actions') || e.target.closest('.selfies-strip-container') || e.target.closest('.contact-detail-profile-media') || e.target.closest('.contact-detail-met-on') || e.target.closest('input') || e.target.closest('button')) return;
             const wasExpanded = row.classList.contains('expanded');
             if (wasExpanded) {
                 row.classList.remove('expanded');
@@ -387,6 +387,22 @@ function formatLastSeen(isoStr) {
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
 }
 
+function formatFirstMetDisplay(isoStr) {
+    if (!isoStr) return 'tap to set';
+    const d = new Date(isoStr);
+    return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+function openMetOnPicker(cid) {
+    const inp = document.getElementById('met-on-' + cid);
+    if (!inp) return;
+    try {
+        if (inp.showPicker) inp.showPicker();
+    } catch (e) {
+        console.warn('showPicker failed:', e);
+    }
+}
+
 function formatKnownDuration(dateStr) {
     if (!dateStr) return '';
     const d = new Date(dateStr);
@@ -422,6 +438,8 @@ async function saveFirstMetAt(contactId, dateValue) {
                     durationEl.textContent = newDuration;
                     durationEl.style.display = newDuration ? '' : 'none';
                 }
+                const displayEl = rowEl.querySelector(`#met-on-display-${contactId}`);
+                if (displayEl) displayEl.textContent = formatFirstMetDisplay(isoDate);
             }
         }
     } catch (e) {
@@ -441,6 +459,7 @@ function renderContactRow(contact, profile, shared) {
     const knownSinceDateStr = contact.first_met_at || contact.created_at || null;
     const knownDuration = formatKnownDuration(knownSinceDateStr);
     const firstMetValue = knownSinceDateStr ? new Date(knownSinceDateStr).toISOString().slice(0, 10) : '';
+    const firstMetDisplayValue = formatFirstMetDisplay(knownSinceDateStr);
     const avatarHtml = avatarUrl
         ? `<img class="contact-row-avatar" src="${esc(avatarUrl)}" alt="">`
         : '<div class="contact-row-avatar-placeholder">👤</div>';
@@ -477,11 +496,14 @@ function renderContactRow(contact, profile, shared) {
                         <button type="button" class="btn btn-primary btn-small btn-share-with-contact" data-contact-id="${cid}" data-contact-name="${esc(name)}">Share</button>
                     </div>
                 </div>
-                <div class="contact-detail-met-on">
-                    <label class="contact-detail-met-on-label">Met on</label>
-                    <input type="date" class="contact-detail-met-on-input" id="met-on-${cid}"
-                        value="${firstMetValue}"
-                        onchange="event.stopPropagation(); saveFirstMetAt('${cid}', this.value)">
+                <div class="contact-detail-met-on" onclick="event.stopPropagation(); openMetOnPicker('${cid}')">
+                    <span class="contact-detail-met-on-label">We met on</span>
+                    <span class="contact-detail-met-on-value">
+                        <span class="contact-detail-met-on-display" id="met-on-display-${cid}">${firstMetDisplayValue}</span>
+                        <input type="date" class="contact-detail-met-on-input" id="met-on-${cid}"
+                            value="${firstMetValue}"
+                            onchange="event.stopPropagation(); saveFirstMetAt('${cid}', this.value)">
+                    </span>
                 </div>
                 <div class="contact-detail-selfies-section">
                     <div class="contact-shared-title">Selfies Together</div>

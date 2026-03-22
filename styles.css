@@ -1571,20 +1571,31 @@ body {
     font-weight: 500;
     white-space: nowrap;
 }
-.contact-detail-met-on-input {
-    border: none;
-    background: transparent;
+.contact-detail-met-on-value {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+.contact-detail-met-on-display {
     font-size: 0.85rem;
     color: var(--primary-color);
     cursor: pointer;
-    padding: 0;
-    outline: none;
-    font-family: inherit;
+    text-decoration: underline dotted;
+    text-underline-offset: 2px;
+    pointer-events: none;
 }
-.contact-detail-met-on-input:focus {
-    outline: 1px solid var(--primary-color);
-    border-radius: 3px;
-    padding: 1px 3px;
+.contact-detail-met-on-input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0.001;
+    pointer-events: none;
+    border: none;
+    background: transparent;
+    color: transparent;
+    padding: 0;
+    margin: 0;
 }
 
 /* ---- Image lightbox ---- */
