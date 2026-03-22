@@ -184,7 +184,8 @@ async function savePreferences(e) {
         const email = document.getElementById('prefEmail').value.trim();
         const phone = document.getElementById('prefPhone').value.trim();
         const prefPreview = document.getElementById('prefPhotoPreview');
-        let profileImageUrl = currentProfile?.profile_image_url || null;
+        const prevProfileImageUrl = currentProfile?.profile_image_url || null;
+        let profileImageUrl = prevProfileImageUrl;
         if (prefPreview?._pendingFile) {
             try {
                 const file = prefPreview._pendingFile;
@@ -233,6 +234,12 @@ async function savePreferences(e) {
         if (userDisplay) userDisplay.textContent = payload.display_name;
         setHeaderAvatar(profileImageUrl || null);
         showToast('Preferences saved.', 'success');
+
+        // Notify contacts if the profile picture changed
+        if (profileImageUrl && profileImageUrl !== prevProfileImageUrl) {
+            db.rpc('notify_contacts_of_profile_picture_change', { p_actor_id: currentUser.id })
+                .then(({ error }) => { if (error) console.warn('notify profile pic error:', error); });
+        }
     } catch (err) {
         console.error('savePreferences failed:', err);
         showToast('Could not save preferences.', 'error');

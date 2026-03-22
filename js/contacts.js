@@ -442,6 +442,14 @@ async function saveFirstMetAt(contactId, dateValue) {
                 if (displayEl) displayEl.textContent = formatFirstMetDisplay(isoDate);
             }
         }
+        // Notify the contact that this user recorded a met date
+        if (isoDate) {
+            db.rpc('notify_contact_of_met_date', {
+                p_actor_id: currentUser.id,
+                p_contact_id: contactId,
+                p_met_date: isoDate
+            }).then(({ error: rpcErr }) => { if (rpcErr) console.warn('notify met date error:', rpcErr); });
+        }
     } catch (e) {
         console.error('Failed to save first met date:', e);
     }

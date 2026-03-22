@@ -102,6 +102,7 @@ async function showApp(navigateToGroupId) {
     setHeaderAvatar(currentProfile?.profile_image_url || null);
     subscribeToContactShares();
     subscribeToContactEvents();
+    subscribeToContactNotifications();
     maybeShowInstallHintFloater();
     if (currentProfile?.push_notifications !== false) subscribeToPush();
 
@@ -138,6 +139,25 @@ function subscribeToContactShares() {
             const name = profile?.display_name || 'Someone';
             const msg = sharedType === 'phone' ? (name + ' shared phone number with you.') : (name + ' shared email with you.');
             showToast(msg, 'info');
+        })
+        .subscribe();
+}
+
+function subscribeToContactNotifications() {
+    if (contactNotificationsChannel) {
+        db.removeChannel(contactNotificationsChannel);
+        contactNotificationsChannel = null;
+    }
+    if (!currentUser) return;
+    contactNotificationsChannel = db.channel('contact-notifications')
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'contact_notifications',
+            filter: 'to_user_id=eq.' + currentUser.id
+        }, (payload) => {
+            const msg = payload.new?.message;
+            if (msg) showToast(msg, 'info');
         })
         .subscribe();
 }
