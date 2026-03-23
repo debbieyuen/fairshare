@@ -88,6 +88,7 @@ function showModal(type) {
                     <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="vouchWithContactChoice('respect')">I respect you</button></div>
                     <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="vouchWithContactChoice('trust')">I trust you</button></div>
                     <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="vouchWithContactChoice('love')">I love you</button></div>
+                    <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="vouchWithContactChoice('help')">I will help you</button></div>
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
                     </div>
