@@ -1494,11 +1494,13 @@ body {
     color: var(--dark-gray);
 }
 .contact-row-shared-icon {
-    font-size: 0.78rem;
+    font-size: 0.39rem;
     line-height: 1;
+    filter: grayscale(100%);
+    opacity: 0.7;
 }
 .contact-row-shared-icon-email {
-    font-size: 1.56rem;
+    font-size: 0.78rem;
 }
 .contact-row-lastseen { font-size: 0.78rem; color: var(--dark-gray); white-space: nowrap; }
 .contact-row-chevron { font-size: 0.9rem; color: var(--dark-gray); transition: transform 0.2s; }
