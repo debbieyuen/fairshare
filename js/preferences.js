@@ -23,16 +23,15 @@ function renderProfileScreen() {
                         <p class="pref-help-text">Shared with contacts, who will vouch for its accuracy.</p>
                     </div>
                 </div>
-                <div class="form-group">
+                <div class="form-group pref-contact-field">
                     <label for="prefEmail">Email</label>
-                    <p class="pref-help-text">(not shared by default)</p>
                     <input type="email" id="prefEmail" placeholder="you@example.com">
                 </div>
-                <div class="form-group">
+                <div class="form-group pref-contact-field">
                     <label for="prefPhone">Phone</label>
-                    <p class="pref-help-text">(not shared by default)</p>
                     <input type="tel" id="prefPhone" placeholder="+1 234 567 8900">
                 </div>
+                <p class="pref-help-text pref-contact-hint">(You choose when to share these)</p>
                 <div class="pref-sponsor-card">
                     <div id="prefSponsorAvatar" class="pref-sponsor-avatar">👤</div>
                     <div>
@@ -49,9 +48,6 @@ function renderProfileScreen() {
                 </div>
                 <p id="prefPushHint" class="pref-help-text pref-push-hint"></p>
                 ` : ''}
-                <div class="form-actions">
-                    <button type="button" id="prefSaveBtn" class="btn btn-primary" onclick="savePreferences(event)">Save</button>
-                </div>
             </form>
         </div>
     `;
@@ -81,9 +77,17 @@ function renderProfileScreen() {
         img.style.objectFit = 'cover';
         prefPreview.appendChild(img);
         prefPreview._pendingFile = file;
+        savePreferences();
     });
 
     document.getElementById('preferencesForm').addEventListener('submit', (e) => savePreferences(e));
+
+    document.getElementById('prefDisplayName').addEventListener('change', () => savePreferences());
+    document.getElementById('prefEmail').addEventListener('change', () => savePreferences());
+    document.getElementById('prefPhone').addEventListener('change', () => savePreferences());
+
+    const pushCheck = document.getElementById('prefPushNotifications');
+    if (pushCheck) pushCheck.addEventListener('change', () => savePreferences());
 
     (async () => {
         const sponsorNameEl = document.getElementById('prefSponsorName');

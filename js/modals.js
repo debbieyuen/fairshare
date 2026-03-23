@@ -163,12 +163,8 @@ function closeModal(options = {}) {
 
 async function savePreferences(e) {
     e?.preventDefault();
-    const saveBtn = document.getElementById('prefSaveBtn');
-    const originalSaveLabel = saveBtn?.textContent || 'Save';
-    if (saveBtn) {
-        saveBtn.disabled = true;
-        saveBtn.textContent = 'Saving...';
-    }
+    if (savePreferences._running) return;
+    savePreferences._running = true;
     try {
         if (!currentUser) {
             showToast('Session expired — please log in again.', 'error');
@@ -234,7 +230,7 @@ async function savePreferences(e) {
         const userDisplay = document.getElementById('userDisplay');
         if (userDisplay) userDisplay.textContent = payload.display_name;
         setHeaderAvatar(profileImageUrl || null);
-        showToast('Preferences saved.', 'success');
+        showToast('Saved.', 'success');
 
         // Notify contacts if the profile picture changed
         if (profileImageUrl && profileImageUrl !== prevProfileImageUrl) {
@@ -245,10 +241,7 @@ async function savePreferences(e) {
         console.error('savePreferences failed:', err);
         showToast('Could not save preferences.', 'error');
     } finally {
-        if (saveBtn) {
-            saveBtn.disabled = false;
-            saveBtn.textContent = originalSaveLabel;
-        }
+        savePreferences._running = false;
     }
 }
 
