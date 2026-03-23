@@ -393,22 +393,6 @@ function formatFirstMetDisplay(isoStr) {
     return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 }
 
-function openMetOnPicker(cid) {
-    const inp = document.getElementById('met-on-' + cid);
-    if (!inp) return;
-    try {
-        if (typeof inp.showPicker === 'function') {
-            inp.showPicker();
-            return;
-        }
-    } catch (e) {
-        console.warn('showPicker failed:', e);
-    }
-    // iOS Safari does not reliably support showPicker() for date inputs.
-    // Fallback to direct focus/click in the same user gesture.
-    inp.focus();
-    inp.click();
-}
 
 function formatKnownDuration(dateStr) {
     if (!dateStr) return '';
@@ -511,14 +495,14 @@ function renderContactRow(contact, profile, shared) {
                         <button type="button" class="btn btn-primary btn-small btn-share-with-contact" data-contact-id="${cid}" data-contact-name="${esc(name)}">Share</button>
                     </div>
                 </div>
-                <div class="contact-detail-met-on" onclick="event.stopPropagation(); openMetOnPicker('${cid}')">
+                <div class="contact-detail-met-on">
                     <span class="contact-detail-met-on-label">We met on</span>
                     <span class="contact-detail-met-on-value">
                         <span class="contact-detail-met-on-display" id="met-on-display-${cid}">${firstMetDisplayValue}</span>
-                        <input type="date" class="contact-detail-met-on-input" id="met-on-${cid}"
-                            value="${firstMetValue}"
-                            onchange="event.stopPropagation(); saveFirstMetAt('${cid}', this.value)">
                     </span>
+                    <input type="date" class="contact-detail-met-on-input" id="met-on-${cid}"
+                        value="${firstMetValue}"
+                        onchange="event.stopPropagation(); saveFirstMetAt('${cid}', this.value)">
                 </div>
                 <div class="contact-detail-selfies-section">
                     <div class="contact-shared-title">Selfies Together</div>
