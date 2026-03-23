@@ -397,10 +397,17 @@ function openMetOnPicker(cid) {
     const inp = document.getElementById('met-on-' + cid);
     if (!inp) return;
     try {
-        if (inp.showPicker) inp.showPicker();
+        if (typeof inp.showPicker === 'function') {
+            inp.showPicker();
+            return;
+        }
     } catch (e) {
         console.warn('showPicker failed:', e);
     }
+    // iOS Safari does not reliably support showPicker() for date inputs.
+    // Fallback to direct focus/click in the same user gesture.
+    inp.focus();
+    inp.click();
 }
 
 function formatKnownDuration(dateStr) {
