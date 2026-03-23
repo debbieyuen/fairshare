@@ -520,7 +520,7 @@ function renderContactRow(contact, profile, shared) {
                 </div>
                 <div class="contact-shared-details">
                     <div class="contact-shared-title">Shared with you</div>
-                    ${phone ? `<div class="contact-detail-line">📞 <a href="tel:${esc(phone)}">${esc(phone)}</a></div>` : ''}
+                    ${phone ? `<div class="contact-detail-line">📞 <a href="tel:${esc(phone)}">${esc(phone)}</a> <a href="sms:${esc(phone)}" class="contact-action-icon" title="Send message">💬</a></div>` : ''}
                     ${email ? `<div class="contact-detail-line">✉ <a href="mailto:${esc(email)}">${esc(email)}</a></div>` : ''}
                     ${!phone && !email ? '<div class="contact-detail-line contact-detail-muted">No phone or email shared with you yet.</div>' : ''}
                 </div>

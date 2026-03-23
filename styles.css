@@ -1531,6 +1531,15 @@ body {
 .contact-row.expanded .contact-detail { display: block; }
 .contact-detail-line { padding: 0.4rem 0; font-size: 0.9rem; color: var(--dark-gray); }
 .contact-detail-line a { color: var(--primary-color); text-decoration: none; }
+.contact-action-icon {
+    margin-left: 0.5rem;
+    font-size: 1.1rem;
+    vertical-align: middle;
+    cursor: pointer;
+    opacity: 0.85;
+    transition: opacity 0.15s;
+}
+.contact-action-icon:hover { opacity: 1; }
 .contact-detail-muted { font-style: italic; }
 .contact-detail-media-row {
     display: flex;
