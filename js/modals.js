@@ -182,6 +182,8 @@ async function savePreferences(e) {
         const phone = document.getElementById('prefPhone').value.trim();
         const prefPreview = document.getElementById('prefPhotoPreview');
         const prevProfileImageUrl = currentProfile?.profile_image_url || null;
+        const prevEmail = currentProfile?.email || '';
+        const prevPhone = currentProfile?.phone || '';
         let profileImageUrl = prevProfileImageUrl;
         if (prefPreview?._pendingFile) {
             try {
@@ -232,10 +234,15 @@ async function savePreferences(e) {
         setHeaderAvatar(profileImageUrl || null);
         showToast('Saved.', 'success');
 
-        // Notify contacts if the profile picture changed
-        if (profileImageUrl && profileImageUrl !== prevProfileImageUrl) {
-            db.rpc('notify_contacts_of_profile_picture_change', { p_actor_id: currentUser.id })
-                .then(({ error }) => { if (error) console.warn('notify profile pic error:', error); });
+        // Notify contacts of profile changes (photo, email, phone)
+        const changes = [];
+        if (profileImageUrl && profileImageUrl !== prevProfileImageUrl) changes.push('profile picture');
+        if ((email || '') !== prevEmail) changes.push('email');
+        if ((phone || '') !== prevPhone) changes.push('phone number');
+        if (changes.length > 0) {
+            const msg = payload.display_name + ' updated their ' + changes.join(' and ') + '.';
+            db.rpc('notify_contacts_of_profile_update', { p_actor_id: currentUser.id, p_message: msg })
+                .then(({ error }) => { if (error) console.warn('notify profile update error:', error); });
         }
     } catch (err) {
         console.error('savePreferences failed:', err);

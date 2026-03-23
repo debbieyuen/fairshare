@@ -15,7 +15,7 @@ function canUsePush() {
 async function subscribeToPush() {
     if (!canUsePush()) return;
     try {
-        const reg = await navigator.serviceWorker.getRegistration();
+        const reg = await navigator.serviceWorker.ready;
         if (!reg) return;
         let sub = await reg.pushManager.getSubscription();
         if (!sub) {
@@ -41,7 +41,7 @@ async function subscribeToPush() {
 async function unsubscribePush() {
     if (!canUsePush()) return;
     try {
-        const reg = await navigator.serviceWorker.getRegistration();
+        const reg = await navigator.serviceWorker.ready;
         if (!reg) return;
         const sub = await reg.pushManager.getSubscription();
         if (sub) {
@@ -60,7 +60,7 @@ async function unsubscribePush() {
 async function isPushSubscribed() {
     if (!canUsePush()) return false;
     try {
-        const reg = await navigator.serviceWorker.getRegistration();
+        const reg = await navigator.serviceWorker.ready;
         if (!reg) return false;
         const sub = await reg.pushManager.getSubscription();
         return !!sub;
