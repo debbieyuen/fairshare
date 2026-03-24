@@ -216,6 +216,7 @@ function bindContactRowEvents(content) {
                 loadSharedTrust(cid);
                 loadFamilyTree(cid);
                 reloadContactSelfiesStrip(cid);
+                loadContactSponsor(cid);
             }
         });
     });
@@ -349,7 +350,7 @@ async function loadAndRenderContactList() {
         const contactIds = [...new Set(contacts.map(c => c.contact_id))];
         let profileMap = {};
         if (contactIds.length > 0) {
-            const { data: profiles } = await db.from('profiles').select('id, display_name, profile_image_url, phone, email').in('id', contactIds);
+            const { data: profiles } = await db.from('profiles').select('id, display_name, profile_image_url, phone, email, sponsor_id, created_at').in('id', contactIds);
             if (profiles) profiles.forEach(p => { profileMap[p.id] = p; });
         }
 
@@ -524,6 +525,13 @@ function renderContactRow(contact, profile, shared) {
                     ${email ? `<div class="contact-detail-line">✉ <a href="mailto:${esc(email)}">${esc(email)}</a></div>` : ''}
                     ${!phone && !email ? '<div class="contact-detail-line contact-detail-muted">No phone or email shared with you yet.</div>' : ''}
                 </div>
+                <div class="pref-sponsor-card" id="contact-sponsor-${cid}">
+                    <div id="contactSponsorAvatar-${cid}" class="pref-sponsor-avatar">👤</div>
+                    <div>
+                        <div class="pref-sponsor-label">${sponsoredAgoLabel(profile.created_at)}</div>
+                        <div id="contactSponsorName-${cid}" class="pref-sponsor-name">${profile.sponsor_id ? 'Loading sponsor...' : 'Root user (no sponsor)'}</div>
+                    </div>
+                </div>
                 <div class="family-tree" id="ft-${cid}">
                     <div class="family-tree-title">Family Tree</div>
                     <div class="family-tree-loading">Loading…</div>
@@ -571,6 +579,33 @@ function renderSharedTrust(container, trustData) {
         <div class="contact-detail-line">${attestersText}</div>
         <div class="contact-detail-line">${profileMatchesText}</div>
     `;
+}
+
+async function loadContactSponsor(contactId) {
+    const nameEl = document.getElementById('contactSponsorName-' + contactId);
+    const avatarEl = document.getElementById('contactSponsorAvatar-' + contactId);
+    if (!nameEl || !avatarEl || nameEl.dataset.loaded === '1') return;
+    nameEl.dataset.loaded = '1';
+    const row = contactsLoadedRows.find(r => r.contact.contact_id === contactId);
+    const sponsorId = row?.profile?.sponsor_id;
+    if (!sponsorId) {
+        nameEl.textContent = 'Root user (no sponsor)';
+        avatarEl.textContent = '\u2605';
+        return;
+    }
+    try {
+        const { data: sp } = await db.from('profiles').select('display_name, profile_image_url').eq('id', sponsorId).single();
+        const sponsorName = sp?.display_name || 'Unknown';
+        nameEl.textContent = sponsorName;
+        if (sp?.profile_image_url) {
+            avatarEl.innerHTML = `<img src="${esc(sp.profile_image_url)}" alt="${esc(sponsorName)}">`;
+        } else {
+            avatarEl.textContent = sponsorName.charAt(0).toUpperCase() || '\uD83D\uDC64';
+        }
+    } catch (_) {
+        nameEl.textContent = '';
+        avatarEl.textContent = '\uD83D\uDC64';
+    }
 }
 
 async function loadSharedTrust(contactId) {

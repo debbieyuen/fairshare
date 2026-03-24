@@ -1834,6 +1834,9 @@ body {
     border-radius: 8px;
     background: var(--light-gray);
 }
+.contact-detail .pref-sponsor-card {
+    margin-top: 0.9rem;
+}
 .contact-shared-trust {
     margin-top: 0.75rem;
     padding: 0.55rem 0.75rem;

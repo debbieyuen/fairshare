@@ -3,6 +3,23 @@ function openPreferences() {
     navigateTo('profile');
 }
 
+function sponsoredAgoLabel(createdAt) {
+    if (!createdAt) return 'Sponsor';
+    const now = new Date();
+    const created = new Date(createdAt);
+    const diffMs = now - created;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays < 1) return 'Sponsored today';
+    if (diffDays < 30) return `Sponsored ${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+    let years = now.getFullYear() - created.getFullYear();
+    let months = now.getMonth() - created.getMonth();
+    if (now.getDate() < created.getDate()) months--;
+    if (months < 0) { years--; months += 12; }
+    if (years > 0 && months > 0) return `Sponsored ${years} year${years === 1 ? '' : 's'}, ${months} month${months === 1 ? '' : 's'} ago`;
+    if (years > 0) return `Sponsored ${years} year${years === 1 ? '' : 's'} ago`;
+    return `Sponsored ${months} month${months === 1 ? '' : 's'} ago`;
+}
+
 function renderProfileScreen() {
     const container = document.getElementById('profileScreenContent');
     if (!container || !currentUser) return;
@@ -35,7 +52,7 @@ function renderProfileScreen() {
                 <div class="pref-sponsor-card">
                     <div id="prefSponsorAvatar" class="pref-sponsor-avatar">👤</div>
                     <div>
-                        <div class="pref-sponsor-label">Sponsor</div>
+                        <div class="pref-sponsor-label">${sponsoredAgoLabel(currentProfile?.created_at)}</div>
                         <div id="prefSponsorName" class="pref-sponsor-name">Loading sponsor...</div>
                     </div>
                 </div>
