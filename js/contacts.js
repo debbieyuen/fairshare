@@ -503,6 +503,7 @@ function renderContactRow(contact, profile, shared) {
                     </span>
                     <input type="date" class="contact-detail-met-on-input" id="met-on-${cid}"
                         value="${firstMetValue}"
+                        onclick="try { this.showPicker(); } catch(e) {}"
                         onchange="event.stopPropagation(); saveFirstMetAt('${cid}', this.value)">
                 </div>
                 <div class="contact-detail-selfies-section">
