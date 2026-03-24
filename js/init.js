@@ -270,8 +270,8 @@ async function handlePendingMeet() {
     let token = null;
     try {
         const parsed = JSON.parse(stored);
-        const ONE_HOUR_MS = 60 * 60 * 1000;
-        if (parsed.token && (Date.now() - parsed.savedAt) < ONE_HOUR_MS) {
+        const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+        if (parsed.token && (Date.now() - parsed.savedAt) < ONE_DAY_MS) {
             token = parsed.token;
         }
     } catch {

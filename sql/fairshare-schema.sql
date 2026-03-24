@@ -1349,7 +1349,7 @@ create table public.meet_requests (
   share_phone boolean not null default false,
   share_email boolean not null default false,
   created_at timestamptz default now(),
-  expires_at timestamptz default (now() + interval '1 hour')
+  expires_at timestamptz default (now() + interval '24 hours')
 );
 
 alter table public.meet_requests enable row level security;
