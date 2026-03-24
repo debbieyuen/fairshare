@@ -1446,6 +1446,12 @@ body {
     font-size: 0.85rem;
     color: var(--dark-gray);
 }
+.meet-landing-subtext a {
+    color: var(--primary-color);
+    font-weight: 600;
+    text-decoration: underline;
+    cursor: pointer;
+}
 
 /* Full-screen flash overlay for successful handshake */
 .handshake-flash {

@@ -187,6 +187,9 @@ async function showMeetBanner(token) {
             return;
         }
 
+        const authHeading = document.querySelector('#authScreen h2');
+        if (authHeading) authHeading.style.display = 'none';
+
         const name = data?.user_name || 'A Union member';
         const photoUrl = data?.profile_image_url;
         const phone = data?.phone;
@@ -199,16 +202,64 @@ async function showMeetBanner(token) {
         html += `<div class="meet-landing-name">${esc(name)}</div>`;
         if (phone) html += `<div class="meet-landing-detail">\u260E\uFE0F ${esc(phone)}</div>`;
         if (email) html += `<div class="meet-landing-detail">\u2709\uFE0F ${esc(email)}</div>`;
-        html += `<div class="meet-landing-subtext">Sign up to add them as a contact.</div>`;
+        html += `<div class="meet-landing-subtext">Sign up to accept this sponsorship to join ${esc(APP_NAME)}, or <a href="#" id="meetAddContact">add as contact</a>.</div>`;
         html += '</div>';
 
         document.getElementById('inviteBannerText').innerHTML = html;
         document.getElementById('inviteBanner').classList.remove('hidden');
 
+        const meetUrl = `${window.location.origin}${window.location.pathname}?meet=${encodeURIComponent(token)}`;
+        const addContactLink = document.getElementById('meetAddContact');
+        if (addContactLink) {
+            addContactLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                downloadMeetVcf(name, phone, email, meetUrl, photoUrl);
+            });
+        }
+
         switchAuthTab('signup');
     } catch (e) {
         console.error('Failed to load meet details:', e);
     }
+}
+
+async function downloadMeetVcf(name, phone, email, meetUrl, photoUrl) {
+    let vcf = 'BEGIN:VCARD\r\nVERSION:3.0\r\n';
+    vcf += `FN:${name}\r\n`;
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+        vcf += `N:${parts.slice(1).join(' ')};${parts[0]};;;\r\n`;
+    } else {
+        vcf += `N:${name};;;;\r\n`;
+    }
+    if (phone) vcf += `TEL;TYPE=CELL:${phone}\r\n`;
+    if (email) vcf += `EMAIL:${email}\r\n`;
+    if (meetUrl) vcf += `URL:${meetUrl}\r\n`;
+    if (photoUrl) {
+        try {
+            const resp = await fetch(photoUrl);
+            const blob = await resp.blob();
+            const mime = blob.type || 'image/jpeg';
+            const ext = mime.split('/')[1]?.toUpperCase() || 'JPEG';
+            const buf = await blob.arrayBuffer();
+            const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+            vcf += `PHOTO;ENCODING=b;TYPE=${ext}:${b64}\r\n`;
+        } catch {
+            // CORS or network issue — skip embedded photo
+        }
+    }
+    vcf += `NOTE:Met via ${APP_NAME}\r\n`;
+    vcf += 'END:VCARD';
+
+    const blob = new Blob([vcf], { type: 'text/vcard' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${name.replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, '_')}.vcf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 }
 
 // Claim a pending meet token after the user has signed in
