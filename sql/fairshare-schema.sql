@@ -1346,6 +1346,8 @@ create table public.meet_requests (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
   token text unique not null default encode(gen_random_bytes(16), 'hex'),
+  share_phone boolean not null default false,
+  share_email boolean not null default false,
   created_at timestamptz default now(),
   expires_at timestamptz default (now() + interval '1 hour')
 );
@@ -1361,6 +1363,12 @@ create policy "Users can insert own meet requests"
 create policy "Users can read own meet requests"
   on public.meet_requests for select
   using (auth.uid() = user_id);
+
+-- Users can update their own meet requests (e.g. toggle share_phone/share_email)
+create policy "Users can update own meet requests"
+  on public.meet_requests for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
 
 -- Users can delete their own meet requests
 create policy "Users can delete own meet requests"
@@ -1456,6 +1464,8 @@ declare
   v_meet record;
   v_name text;
   v_profile_image_url text;
+  v_phone text;
+  v_email text;
 begin
   select * into v_meet
   from public.meet_requests
@@ -1466,13 +1476,16 @@ begin
     return json_build_object('error', 'Meet request not found or expired');
   end if;
 
-  select display_name, profile_image_url into v_name, v_profile_image_url
+  select display_name, profile_image_url, phone, email
+    into v_name, v_profile_image_url, v_phone, v_email
   from public.profiles
   where id = v_meet.user_id;
 
   return json_build_object(
     'user_name', coalesce(v_name, 'A Union member'),
-    'profile_image_url', v_profile_image_url
+    'profile_image_url', v_profile_image_url,
+    'phone', case when v_meet.share_phone then v_phone else null end,
+    'email', case when v_meet.share_email then v_email else null end
   );
 end;
 $$ language plpgsql security definer;

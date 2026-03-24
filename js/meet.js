@@ -1,4 +1,5 @@
 let currentMeetUrl = null;
+let currentMeetToken = null;
 let meetScanTimer = null;
 let meetStream = null;
 let meetChannel = null;
@@ -25,10 +26,32 @@ async function openMeetScreen() {
     // 2. Show the overlay immediately (camera preview + loading QR)
     document.getElementById('meetOverlay').classList.remove('hidden');
     document.getElementById('meetScanHint').textContent = cameraOk
-        ? 'Show your phones to each other'
+        ? '(Show your phones to each other)'
         : 'Camera unavailable — ask the other person to scan your code';
     document.getElementById('meetQrBox').innerHTML =
         '<div style="color:var(--dark-gray);font-size:0.85rem;padding:1rem;">Loading…</div>';
+
+    // Populate profile info below QR
+    const profilePhoto = document.getElementById('meetProfilePhoto');
+    if (currentProfile?.profile_image_url) {
+        profilePhoto.src = currentProfile.profile_image_url;
+        profilePhoto.style.display = '';
+    } else {
+        profilePhoto.src = '';
+        profilePhoto.style.display = 'none';
+    }
+    document.getElementById('meetProfileName').textContent = currentProfile?.display_name || '';
+
+    // Set up share icon availability
+    const phoneBtn = document.getElementById('meetSharePhone');
+    const emailBtn = document.getElementById('meetShareEmail');
+    phoneBtn.classList.remove('active');
+    emailBtn.classList.remove('active');
+    if (!currentProfile?.phone) phoneBtn.classList.add('disabled');
+    else phoneBtn.classList.remove('disabled');
+    if (!currentProfile?.email) emailBtn.classList.add('disabled');
+    else emailBtn.classList.remove('disabled');
+    document.getElementById('meetSharedInfo').style.display = 'none';
 
     // 3. Attach camera to video element if available
     if (cameraOk) {
@@ -51,6 +74,7 @@ async function openMeetScreen() {
     }
 
     const token = data.token;
+    currentMeetToken = token;
 
     // 5. Generate QR code encoding a navigable URL so non-members
     //    scanning with their phone camera land on the signup page.
@@ -205,6 +229,7 @@ function copyMeetLink() {
 
 function closeMeetScreen() {
     currentMeetUrl = null;
+    currentMeetToken = null;
     const copyBtn = document.getElementById('meetCopyBtn');
     if (copyBtn) copyBtn.style.display = 'none';
 
@@ -234,13 +259,55 @@ function closeMeetScreen() {
     const overlay = document.getElementById('meetOverlay');
     const qrSection = overlay.querySelector('.meet-qr-section');
     if (qrSection && !document.getElementById('meetQrBox')) {
-        // Restore the QR box element if it was replaced by success message
         const successEl = qrSection.querySelector('.meet-success');
         if (successEl) {
             successEl.outerHTML = '<div class="meet-qr-box" id="meetQrBox"></div>';
         }
     }
 
+    // Reset profile / share UI
+    const profilePhoto = document.getElementById('meetProfilePhoto');
+    if (profilePhoto) { profilePhoto.src = ''; profilePhoto.style.display = 'none'; }
+    const profileName = document.getElementById('meetProfileName');
+    if (profileName) profileName.textContent = '';
+    const sharedInfo = document.getElementById('meetSharedInfo');
+    if (sharedInfo) { sharedInfo.textContent = ''; sharedInfo.style.display = 'none'; }
+    document.getElementById('meetSharePhone')?.classList.remove('active');
+    document.getElementById('meetShareEmail')?.classList.remove('active');
+
     // Hide overlay
     overlay.classList.add('hidden');
+}
+
+async function toggleMeetShare(type) {
+    const phoneBtn = document.getElementById('meetSharePhone');
+    const emailBtn = document.getElementById('meetShareEmail');
+    const infoDiv = document.getElementById('meetSharedInfo');
+
+    if (type === 'phone') phoneBtn.classList.toggle('active');
+    else emailBtn.classList.toggle('active');
+
+    const sharePhone = phoneBtn.classList.contains('active');
+    const shareEmail = emailBtn.classList.contains('active');
+
+    let html = '';
+    if (sharePhone && currentProfile?.phone) html += `<div>\u260E\uFE0F ${esc(currentProfile.phone)}</div>`;
+    if (shareEmail && currentProfile?.email) html += `<div>\u2709\uFE0F ${esc(currentProfile.email)}</div>`;
+
+    if (html) {
+        infoDiv.innerHTML = html;
+        infoDiv.style.display = '';
+    } else {
+        infoDiv.innerHTML = '';
+        infoDiv.style.display = 'none';
+    }
+
+    if (currentMeetToken) {
+        db.from('meet_requests')
+            .update({ share_phone: sharePhone, share_email: shareEmail })
+            .eq('token', currentMeetToken)
+            .then(({ error }) => {
+                if (error) console.warn('[meet] Failed to update share prefs:', error.message);
+            });
+    }
 }

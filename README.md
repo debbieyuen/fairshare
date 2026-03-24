@@ -1,31 +1,23 @@
-# FairShare Web
+# Union
 
-Standalone FairShare web client, published with GitHub Pages.
+Keep track of and build trust with people, join groups, and spend locally.  Find the others!   
 
-## Local preview
+## Contact Manager
 
-Serve this directory with any static file server.
+- **Lightning-fast exchanges:** Add a new contact and share your info in seconds, even if they don't have the app.
+- **Privacy controls:** You choose exactly which personal info to share. Changes update everywhere automatically.
+- **Relationship tracking:** Save selfies when you meet, keep notes, and see how your network evolves over time.
+- **Mutual connections:** Instantly discover shared mutuals and shared trust. 
+- **Trust and endorsements:** Privately vouch for people, building a web-of-trust that helps you meet new people safely.
 
-## Deployment
 
-- GitHub Actions workflow: `.github/workflows/deploy.yml`
-- Pages source: workflow artifact from repository root
-- Custom domain: `app.fairshare.social` via `CNAME`
 
-## DNS checklist (Cloudflare)
+## Security 
 
-In **Cloudflare** → **fairshare.social** → **DNS** → **Records**:
+NOTE: THIS SECURITY DESIGN IS NOT YET IMPLEMENTED, SO IF YOU ARE USING UNION YOU ARE PROBABLY A FRIEND OF PHILIP AND ARE WILLING TO TEST IN THE OPEN. DON'T SHARE PRIVATE STUFF YET!
 
-1. Add a **CNAME** record:
-   - **Name**: `app` (this is `app.fairshare.social`)
-   - **Target**: `philiprosedale.github.io`
-   - **Proxy status**: **DNS only** (grey cloud) — recommended for GitHub Pages so GitHub can issue TLS cleanly.
+- Union will use E2EE and Message Relays to create a distributed system where no information is stored in a central database or accessible to the Union operators.  
 
-Then in the **fairshare** GitHub repository → **Settings** → **Pages**:
-
-1. **Build and deployment** source: **GitHub Actions** (if not already).
-2. **Custom domain**: `app.fairshare.social` → Save.
-3. Wait for **DNS check** to pass, then enable **Enforce HTTPS** when available.
 
 ## Repository layout
 

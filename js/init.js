@@ -187,15 +187,22 @@ async function showMeetBanner(token) {
             return;
         }
 
-        const sponsorName = data?.user_name || 'A Union member';
-        const sponsorInitial = sponsorName.charAt(0).toUpperCase() || 'U';
-        const sponsorAvatar = data?.profile_image_url
-            ? `<img class="invite-sponsor-avatar" src="${esc(data.profile_image_url)}" alt="${esc(sponsorName)}">`
-            : `<span class="invite-sponsor-avatar invite-sponsor-avatar-fallback">${esc(sponsorInitial)}</span>`;
+        const name = data?.user_name || 'A Union member';
+        const photoUrl = data?.profile_image_url;
+        const phone = data?.phone;
+        const email = data?.email;
 
-        document.getElementById('inviteBannerText').innerHTML =
-            `<div class="invite-sponsor-row">${sponsorAvatar}<div class="invite-sponsor-message"><strong class="invite-sponsor-name">${esc(sponsorName)}</strong> wants to sponsor you as a Union member!</div></div>` +
-            `<div class="invite-sponsor-subtext">Sign up to join and add them as a contact.</div>`;
+        let html = '<div class="meet-landing-card">';
+        if (photoUrl) {
+            html += `<img class="meet-landing-photo" src="${esc(photoUrl)}" alt="${esc(name)}">`;
+        }
+        html += `<div class="meet-landing-name">${esc(name)}</div>`;
+        if (phone) html += `<div class="meet-landing-detail">\u260E\uFE0F ${esc(phone)}</div>`;
+        if (email) html += `<div class="meet-landing-detail">\u2709\uFE0F ${esc(email)}</div>`;
+        html += `<div class="meet-landing-subtext">Sign up to add them as a contact.</div>`;
+        html += '</div>';
+
+        document.getElementById('inviteBannerText').innerHTML = html;
         document.getElementById('inviteBanner').classList.remove('hidden');
 
         switchAuthTab('signup');
