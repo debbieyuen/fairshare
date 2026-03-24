@@ -26,3 +26,12 @@ Then in the **fairshare** GitHub repository → **Settings** → **Pages**:
 1. **Build and deployment** source: **GitHub Actions** (if not already).
 2. **Custom domain**: `app.fairshare.social` → Save.
 3. Wait for **DNS check** to pass, then enable **Enforce HTTPS** when available.
+
+## Repository layout
+
+| Path | Purpose |
+|------|---------|
+| `index.html`, `js/`, `styles.css`, … | Static web app (GitHub Pages) |
+| `sql/` | Supabase schema and migration SQL (main file: `sql/fairshare-schema.sql`) |
+| `docs/` | Architecture and feature notes (Markdown) |
+| `supabase/functions/send-push/` | Edge function source (deploy with Supabase CLI, not Pages) |
