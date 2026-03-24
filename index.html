@@ -221,6 +221,9 @@
 <!-- ===== MEET / QR CONTACT EXCHANGE OVERLAY ===== -->
 <div id="meetOverlay" class="meet-overlay hidden">
     <button class="meet-close" onclick="closeMeetScreen()" aria-label="Close">✕</button>
+    <div class="meet-camera-pip">
+        <video id="meetVideo" autoplay playsinline muted></video>
+    </div>
     <div class="meet-qr-section">
         <div class="meet-qr-box" id="meetQrBox">
             <!-- QR code rendered here -->
@@ -237,9 +240,6 @@
         </div>
         <div class="meet-profile-name" id="meetProfileName"></div>
         <div class="meet-shared-info" id="meetSharedInfo" style="display:none;"></div>
-    </div>
-    <div class="meet-camera-pip">
-        <video id="meetVideo" autoplay playsinline muted></video>
     </div>
     <canvas id="meetCanvas" style="display:none;"></canvas>
     <div class="meet-scan-hint" id="meetScanHint">(Show your phones to each other)</div>

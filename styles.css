@@ -1369,15 +1369,13 @@ body {
     transition: opacity 0.2s;
 }
 .meet-camera-pip {
-    position: absolute;
-    bottom: 3.5rem;
-    right: 1rem;
-    width: 100px;
-    height: 130px;
-    border-radius: 12px;
+    flex: 0 0 auto;
+    width: 80px;
+    height: 100px;
+    border-radius: 10px;
     overflow: hidden;
     border: 2px solid rgba(255,255,255,0.3);
-    z-index: 3001;
+    margin-top: 0.5rem;
 }
 .meet-camera-pip video {
     width: 100%;
