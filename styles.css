@@ -1307,6 +1307,16 @@ body {
     padding: 1.5rem 1rem 1rem;
     gap: 0.6rem;
 }
+.meet-group-badge {
+    background: var(--accent-color);
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
+    margin-bottom: 0.5rem;
+    display: inline-block;
+}
 .meet-qr-box {
     background: #fff;
     border-radius: 12px;
@@ -1440,6 +1450,11 @@ body {
     color: var(--dark-gray);
     user-select: all;
     -webkit-user-select: all;
+}
+.meet-landing-group {
+    margin-top: 0.4rem;
+    font-size: 0.9rem;
+    color: var(--dark-gray);
 }
 .meet-landing-subtext {
     margin-top: 0.5rem;

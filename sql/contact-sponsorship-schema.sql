@@ -12,7 +12,7 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS sponsor_id uuid REFERENCES 
 ALTER TABLE public.meet_requests ADD COLUMN IF NOT EXISTS used_by uuid REFERENCES auth.users(id);
 
 
--- 3. Replace complete_meet to enforce single-use and set sponsor_id
+-- 3. Replace complete_meet to enforce single-use, set sponsor_id, and handle group sponsorship
 CREATE OR REPLACE FUNCTION public.complete_meet(p_token text)
 RETURNS json AS $$
 DECLARE
@@ -20,6 +20,8 @@ DECLARE
   v_meet_request record;
   v_contact_name text;
   v_caller_sponsor uuid;
+  v_group_name text;
+  v_admitted boolean;
 BEGIN
   -- Look up the meet request by token
   SELECT * INTO v_meet_request
@@ -71,6 +73,54 @@ BEGIN
   FROM public.profiles
   WHERE id = v_meet_request.user_id;
 
+  -- If this meet carries group context, also perform sponsorship
+  IF v_meet_request.group_id IS NOT NULL THEN
+
+    IF EXISTS (
+      SELECT 1 FROM public.members
+      WHERE group_id = v_meet_request.group_id
+        AND user_id = v_caller_id
+        AND status IN ('active', 'pending')
+    ) THEN
+      RAISE EXCEPTION 'You are already a member or pending candidate of this group';
+    END IF;
+
+    INSERT INTO public.members (group_id, user_id, status, balance)
+    VALUES (v_meet_request.group_id, v_caller_id, 'pending', 0);
+
+    INSERT INTO public.group_events (group_id, event_type, summary, actor_id, metadata)
+    VALUES (
+      v_meet_request.group_id,
+      'member_sponsored',
+      'New candidate '
+        || (SELECT display_name FROM public.profiles WHERE id = v_caller_id)
+        || ', sponsored by '
+        || COALESCE(v_contact_name, 'Unknown'),
+      v_meet_request.user_id,
+      json_build_object('sponsor_id', v_meet_request.user_id, 'candidate_id', v_caller_id)::jsonb
+    );
+
+    INSERT INTO public.endorsements (group_id, candidate_id, endorser_id)
+    VALUES (v_meet_request.group_id, v_caller_id, v_meet_request.user_id);
+
+    PERFORM public.check_endorsements(v_meet_request.group_id, v_caller_id);
+
+    SELECT name INTO v_group_name
+    FROM public.groups WHERE id = v_meet_request.group_id;
+
+    SELECT (status = 'active') INTO v_admitted
+    FROM public.members
+    WHERE group_id = v_meet_request.group_id AND user_id = v_caller_id;
+
+    RETURN json_build_object(
+      'contact_id', v_meet_request.user_id,
+      'contact_name', COALESCE(v_contact_name, 'Unknown'),
+      'group_id', v_meet_request.group_id,
+      'group_name', v_group_name,
+      'admitted', COALESCE(v_admitted, false)
+    );
+  END IF;
+
   RETURN json_build_object(
     'contact_id', v_meet_request.user_id,
     'contact_name', COALESCE(v_contact_name, 'Unknown')
@@ -79,13 +129,17 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 
--- 4. Replace get_meet_by_token to also check used_by
+-- 4. Replace get_meet_by_token to also check used_by and return group info
 CREATE OR REPLACE FUNCTION public.get_meet_by_token(p_token text)
 RETURNS json AS $$
 DECLARE
   v_meet record;
   v_name text;
   v_profile_image_url text;
+  v_phone text;
+  v_email text;
+  v_group_name text;
+  v_result json;
 BEGIN
   SELECT * INTO v_meet
   FROM public.meet_requests
@@ -100,14 +154,33 @@ BEGIN
     RETURN json_build_object('error', 'This meet link has already been used');
   END IF;
 
-  SELECT display_name, profile_image_url INTO v_name, v_profile_image_url
+  SELECT display_name, profile_image_url, phone, email
+    INTO v_name, v_profile_image_url, v_phone, v_email
   FROM public.profiles
   WHERE id = v_meet.user_id;
 
-  RETURN json_build_object(
+  v_result := json_build_object(
     'user_name', COALESCE(v_name, 'A Union member'),
-    'profile_image_url', v_profile_image_url
+    'profile_image_url', v_profile_image_url,
+    'phone', CASE WHEN v_meet.share_phone THEN v_phone ELSE NULL END,
+    'email', CASE WHEN v_meet.share_email THEN v_email ELSE NULL END
   );
+
+  IF v_meet.group_id IS NOT NULL THEN
+    SELECT name INTO v_group_name
+    FROM public.groups WHERE id = v_meet.group_id;
+
+    v_result := json_build_object(
+      'user_name', COALESCE(v_name, 'A Union member'),
+      'profile_image_url', v_profile_image_url,
+      'phone', CASE WHEN v_meet.share_phone THEN v_phone ELSE NULL END,
+      'email', CASE WHEN v_meet.share_email THEN v_email ELSE NULL END,
+      'group_name', v_group_name,
+      'message', v_meet.message
+    );
+  END IF;
+
+  RETURN v_result;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 

@@ -75,7 +75,7 @@ async function renderMembersTab() {
     content.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
             <span id="memberCountDisplay" style="font-size:0.9rem;color:var(--dark-gray);">Loading…</span>
-            <button class="btn btn-primary btn-small" onclick="showModal('sponsor')">+ Sponsor</button>
+            <button class="btn btn-primary btn-small" onclick="startSponsorMeet()">+ Sponsor</button>
         </div>
         <h4 style="color:var(--accent-color);margin-bottom:0.5rem;">Members</h4>
         <div id="membersListContent"><p style="color:var(--dark-gray);">Loading…</p></div>

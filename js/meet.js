@@ -4,11 +4,15 @@ let meetScanTimer = null;
 let meetStream = null;
 let meetChannel = null;
 let meetHandled = false; // prevent duplicate scans
+let currentMeetGroup = null; // { groupId, groupName, message } when sponsoring
 
-async function openMeetScreen() {
+async function openMeetScreen(options) {
     if (!currentUser) return;
 
     meetHandled = false;
+    currentMeetGroup = options?.groupId
+        ? { groupId: options.groupId, groupName: options.groupName, message: options.message }
+        : null;
 
     // 1. Request camera FIRST — iOS Safari requires getUserMedia to be called
     //    in the direct user-gesture call stack (before any await to network).
@@ -30,6 +34,18 @@ async function openMeetScreen() {
         : 'Camera unavailable — ask the other person to scan your code';
     document.getElementById('meetQrBox').innerHTML =
         '<div style="color:var(--dark-gray);font-size:0.85rem;padding:1rem;">Loading…</div>';
+
+    // Show group context badge when sponsoring
+    const groupBadge = document.getElementById('meetGroupBadge');
+    if (groupBadge) {
+        if (currentMeetGroup) {
+            groupBadge.textContent = 'Sponsoring to ' + currentMeetGroup.groupName;
+            groupBadge.style.display = '';
+        } else {
+            groupBadge.textContent = '';
+            groupBadge.style.display = 'none';
+        }
+    }
 
     // Populate profile info below QR
     const profilePhoto = document.getElementById('meetProfilePhoto');
@@ -61,9 +77,14 @@ async function openMeetScreen() {
     }
 
     // 4. Create a meet request in the database (network call after camera)
+    const insertPayload = { user_id: currentUser.id };
+    if (currentMeetGroup) {
+        insertPayload.group_id = currentMeetGroup.groupId;
+        insertPayload.message = currentMeetGroup.message || null;
+    }
     const { data, error } = await db
         .from('meet_requests')
-        .insert({ user_id: currentUser.id })
+        .insert(insertPayload)
         .select('token')
         .single();
 
@@ -230,6 +251,7 @@ function copyMeetLink() {
 function closeMeetScreen() {
     currentMeetUrl = null;
     currentMeetToken = null;
+    currentMeetGroup = null;
     const copyBtn = document.getElementById('meetCopyBtn');
     if (copyBtn) copyBtn.style.display = 'none';
 
@@ -264,6 +286,10 @@ function closeMeetScreen() {
             successEl.outerHTML = '<div class="meet-qr-box" id="meetQrBox"></div>';
         }
     }
+
+    // Reset group badge
+    const groupBadge = document.getElementById('meetGroupBadge');
+    if (groupBadge) { groupBadge.textContent = ''; groupBadge.style.display = 'none'; }
 
     // Reset profile / share UI
     const profilePhoto = document.getElementById('meetProfilePhoto');

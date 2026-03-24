@@ -36,29 +36,6 @@ function showModal(type) {
             loadSendModal();
             break;
 
-        case 'sponsor':
-            body.innerHTML = `
-                <h3>Sponsor a New Member</h3>
-                <div id="sponsorFormArea">
-                    <form id="sponsorForm">
-                        <div class="form-group">
-                            <label>Describe the person you'd like to sponsor</label>
-                            <textarea id="sponsorMessage" rows="3" placeholder="e.g. Jane Smith, my colleague who wants to participate in our group"></textarea>
-                        </div>
-                        <p style="font-size:0.8rem;color:var(--dark-gray);margin-top:0.5rem;">
-                            This will generate a unique invite link you can share with the candidate.
-                            The link expires in 7 days.
-                        </p>
-                        <div class="form-actions">
-                            <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-                            <button type="submit" class="btn btn-primary">Create Invite Link</button>
-                        </div>
-                    </form>
-                </div>
-            `;
-            document.getElementById('sponsorForm').addEventListener('submit', (e) => createSponsorship(e));
-            break;
-
         case 'shareChoice':
             body.innerHTML = `
                 <h3>Share with ${esc(shareWithContactName || 'contact')}</h3>

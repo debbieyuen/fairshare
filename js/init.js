@@ -43,8 +43,8 @@ async function init() {
             currentUser = session.user;
             await loadProfile();
             const claimedGroup = await handlePendingInvite();
-            await handlePendingMeet();
-            showApp(claimedGroup);
+            const claimedGroupFromMeet = await handlePendingMeet();
+            showApp(claimedGroup || claimedGroupFromMeet);
         } else {
             showAuth();
         }
@@ -63,8 +63,8 @@ async function init() {
                     try {
                         await loadProfile();
                         const claimedGroup = await handlePendingInvite();
-                        await handlePendingMeet();
-                        showApp(claimedGroup);
+                        const claimedGroupFromMeet = await handlePendingMeet();
+                        showApp(claimedGroup || claimedGroupFromMeet);
                     } catch (e) {
                         console.error('[auth] post-SIGNED_IN error:', e);
                     }
@@ -194,6 +194,8 @@ async function showMeetBanner(token) {
         const photoUrl = data?.profile_image_url;
         const phone = data?.phone;
         const email = data?.email;
+        const groupName = data?.group_name;
+        const message = data?.message;
 
         let html = '<div class="meet-landing-card">';
         if (photoUrl) {
@@ -202,7 +204,13 @@ async function showMeetBanner(token) {
         html += `<div class="meet-landing-name">${esc(name)}</div>`;
         if (phone) html += `<div class="meet-landing-detail">\u260E\uFE0F ${esc(phone)}</div>`;
         if (email) html += `<div class="meet-landing-detail">\u2709\uFE0F ${esc(email)}</div>`;
-        html += `<div class="meet-landing-subtext">Sign up to accept this sponsorship to join ${esc(APP_NAME)}, or <a href="#" id="meetAddContact">add as contact</a>.</div>`;
+        if (groupName) {
+            html += `<div class="meet-landing-group">wants to sponsor you as a member of <strong>${esc(groupName)}</strong></div>`;
+            if (message) html += `<div class="invite-sponsor-note"><em>"${esc(message)}"</em></div>`;
+            html += `<div class="meet-landing-subtext">Sign up to join the group, or <a href="#" id="meetAddContact">add as contact</a>.</div>`;
+        } else {
+            html += `<div class="meet-landing-subtext">Sign up to connect on ${esc(APP_NAME)}, or <a href="#" id="meetAddContact">add as contact</a>.</div>`;
+        }
         html += '</div>';
 
         document.getElementById('inviteBannerText').innerHTML = html;
@@ -263,9 +271,10 @@ async function downloadMeetVcf(name, phone, email, meetUrl, photoUrl) {
 }
 
 // Claim a pending meet token after the user has signed in
+// Returns group_id if the meet carried group context (sponsorship)
 async function handlePendingMeet() {
     const stored = localStorage.getItem('fairshare_meet');
-    if (!stored) return;
+    if (!stored) return null;
 
     let token = null;
     try {
@@ -280,9 +289,10 @@ async function handlePendingMeet() {
 
     if (!token) {
         localStorage.removeItem('fairshare_meet');
-        return;
+        return null;
     }
 
+    let claimedGroupId = null;
     try {
         const { data, error } = await db.rpc('complete_meet', { p_token: token });
         if (error) {
@@ -290,7 +300,18 @@ async function handlePendingMeet() {
         } else {
             const contactName = data?.contact_name || 'New contact';
             if (data?.contact_id) pendingOpenContactId = data.contact_id;
-            showToast(`Connected with ${contactName}!`, 'success');
+
+            if (data?.group_id) {
+                claimedGroupId = data.group_id;
+                pendingOpenNewestContact = true;
+                if (data.admitted) {
+                    showToast(`Welcome to "${data.group_name}"! You've been admitted as a member.`, 'success');
+                } else {
+                    showToast(`You've been sponsored to join "${data.group_name}"! Awaiting group endorsement.`, 'success');
+                }
+            } else {
+                showToast(`Connected with ${contactName}!`, 'success');
+            }
         }
     } catch (e) {
         console.error('Failed to complete meet:', e);
@@ -303,4 +324,5 @@ async function handlePendingMeet() {
     }
 
     document.getElementById('inviteBanner').classList.add('hidden');
+    return claimedGroupId;
 }

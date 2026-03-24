@@ -1348,6 +1348,8 @@ create table public.meet_requests (
   token text unique not null default encode(gen_random_bytes(16), 'hex'),
   share_phone boolean not null default false,
   share_email boolean not null default false,
+  group_id uuid references public.groups(id) on delete set null,
+  message text,
   created_at timestamptz default now(),
   expires_at timestamptz default (now() + interval '24 hours')
 );
@@ -1416,6 +1418,8 @@ declare
   v_caller_id uuid := auth.uid();
   v_meet_request record;
   v_contact_name text;
+  v_group_name text;
+  v_admitted boolean;
 begin
   -- Look up the meet request by token
   select * into v_meet_request
@@ -1446,6 +1450,69 @@ begin
   from public.profiles
   where id = v_meet_request.user_id;
 
+  -- If this meet carries group context, also perform sponsorship
+  if v_meet_request.group_id is not null then
+
+    -- Check caller isn't already a member (active or pending)
+    if exists (
+      select 1 from public.members
+      where group_id = v_meet_request.group_id
+        and user_id = v_caller_id
+        and status in ('active', 'pending')
+    ) then
+      raise exception 'You are already a member or pending candidate of this group';
+    end if;
+
+    -- Create pending membership
+    insert into public.members (group_id, user_id, status, balance)
+    values (v_meet_request.group_id, v_caller_id, 'pending', 0);
+
+    -- Log member_sponsored event
+    insert into public.group_events (group_id, event_type, summary, actor_id, metadata)
+    values (
+      v_meet_request.group_id,
+      'member_sponsored',
+      'New candidate '
+        || (select display_name from public.profiles where id = v_caller_id)
+        || ', sponsored by '
+        || coalesce(v_contact_name, 'Unknown'),
+      v_meet_request.user_id,
+      json_build_object('sponsor_id', v_meet_request.user_id, 'candidate_id', v_caller_id)::jsonb
+    );
+
+    -- Auto-endorse from the sponsor
+    insert into public.endorsements (group_id, candidate_id, endorser_id)
+    values (v_meet_request.group_id, v_caller_id, v_meet_request.user_id);
+
+    -- If the candidate has no sponsor yet, set the meet issuer as their profile sponsor
+    if not exists (
+      select 1 from public.profiles
+      where id = v_caller_id and sponsor_id is not null
+    ) then
+      update public.profiles
+      set sponsor_id = v_meet_request.user_id
+      where id = v_caller_id;
+    end if;
+
+    -- Check if this endorsement meets the threshold
+    perform public.check_endorsements(v_meet_request.group_id, v_caller_id);
+
+    select name into v_group_name
+    from public.groups where id = v_meet_request.group_id;
+
+    select (status = 'active') into v_admitted
+    from public.members
+    where group_id = v_meet_request.group_id and user_id = v_caller_id;
+
+    return json_build_object(
+      'contact_id', v_meet_request.user_id,
+      'contact_name', coalesce(v_contact_name, 'Unknown'),
+      'group_id', v_meet_request.group_id,
+      'group_name', v_group_name,
+      'admitted', coalesce(v_admitted, false)
+    );
+  end if;
+
   return json_build_object(
     'contact_id', v_meet_request.user_id,
     'contact_name', coalesce(v_contact_name, 'Unknown')
@@ -1466,6 +1533,8 @@ declare
   v_profile_image_url text;
   v_phone text;
   v_email text;
+  v_group_name text;
+  v_result json;
 begin
   select * into v_meet
   from public.meet_requests
@@ -1481,12 +1550,28 @@ begin
   from public.profiles
   where id = v_meet.user_id;
 
-  return json_build_object(
+  v_result := json_build_object(
     'user_name', coalesce(v_name, 'A Union member'),
     'profile_image_url', v_profile_image_url,
     'phone', case when v_meet.share_phone then v_phone else null end,
     'email', case when v_meet.share_email then v_email else null end
   );
+
+  if v_meet.group_id is not null then
+    select name into v_group_name
+    from public.groups where id = v_meet.group_id;
+
+    v_result := json_build_object(
+      'user_name', coalesce(v_name, 'A Union member'),
+      'profile_image_url', v_profile_image_url,
+      'phone', case when v_meet.share_phone then v_phone else null end,
+      'email', case when v_meet.share_email then v_email else null end,
+      'group_name', v_group_name,
+      'message', v_meet.message
+    );
+  end if;
+
+  return v_result;
 end;
 $$ language plpgsql security definer;
 
