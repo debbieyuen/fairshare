@@ -580,6 +580,16 @@ begin
   insert into public.endorsements (group_id, candidate_id, endorser_id)
   values (v_sponsorship.group_id, v_user_id, v_sponsorship.sponsor_id);
 
+  -- If the candidate has no sponsor yet, set the group sponsor as their profile sponsor
+  if not exists (
+    select 1 from public.profiles
+    where id = v_user_id and sponsor_id is not null
+  ) then
+    update public.profiles
+    set sponsor_id = v_sponsorship.sponsor_id
+    where id = v_user_id;
+  end if;
+
   -- Sponsor ↔ candidate as contacts (same pattern as complete_meet)
   if v_sponsorship.sponsor_id <> v_user_id then
     insert into public.contacts (user_id, contact_id, met_at)
