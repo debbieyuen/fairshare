@@ -219,10 +219,7 @@ async function showMeetBanner(token) {
         const meetUrl = `${window.location.origin}${window.location.pathname}?meet=${encodeURIComponent(token)}`;
         const addContactLink = document.getElementById('meetAddContact');
         if (addContactLink) {
-            addContactLink.addEventListener('click', (e) => {
-                e.preventDefault();
-                downloadMeetVcf(name, phone, email, meetUrl, photoUrl);
-            });
+            prepareMeetVcfLink(addContactLink, name, phone, email, meetUrl, photoUrl);
         }
 
         switchAuthTab('signup');
@@ -231,7 +228,7 @@ async function showMeetBanner(token) {
     }
 }
 
-async function downloadMeetVcf(name, phone, email, meetUrl, photoUrl) {
+async function prepareMeetVcfLink(linkEl, name, phone, email, meetUrl, photoUrl) {
     let vcf = 'BEGIN:VCARD\r\nVERSION:3.0\r\n';
     vcf += `FN:${name}\r\n`;
     const parts = name.trim().split(/\s+/);
@@ -262,16 +259,10 @@ async function downloadMeetVcf(name, phone, email, meetUrl, photoUrl) {
     const blob = new Blob([vcf], { type: 'text/vcard' });
     const url = URL.createObjectURL(blob);
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if (isMobile) {
-        window.location.href = url;
-    } else {
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${name.replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, '_')}.vcf`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+
+    linkEl.href = url;
+    if (!isMobile) {
+        linkEl.download = `${name.replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, '_')}.vcf`;
     }
 }
 

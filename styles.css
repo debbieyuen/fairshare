@@ -1558,7 +1558,7 @@ body {
     position: absolute;
     right: 0.45rem;
     top: 50%;
-    transform: translateY(-65%);
+    transform: translateY(-50%);
     border: none;
     background: transparent;
     color: var(--dark-gray);
