@@ -83,7 +83,7 @@ body {
     min-width: 48px;
     min-height: 48px;
     border-radius: 50%;
-    border: none;
+    border: 2.5px solid rgba(255, 255, 255, 0.35);
     background: rgba(255,255,255,0.25);
     color: var(--white);
     font-size: 1.28rem;
@@ -2101,6 +2101,7 @@ body {
     color: var(--dark-gray);
     padding: 0.5rem 0;
     height: 100%;
+    overflow: visible;
     transition: color 0.2s ease;
     font-family: inherit;
     -webkit-tap-highlight-color: transparent;
@@ -2115,6 +2116,11 @@ body {
     width: 24px;
     height: 24px;
 }
+.bottom-bar-icon-groups {
+    width: 96px;
+    height: 96px;
+    margin-top: 4px;
+}
 .bottom-bar-label {
     font-size: 0.68rem;
     font-weight: 600;
@@ -2128,18 +2134,20 @@ body {
     background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
     color: var(--white);
     margin-top: -35px;
+    transform: translateY(-12px);
+    border: 2.5px solid rgba(255, 255, 255, 0.35);
     box-shadow: 0 4px 14px rgba(58, 124, 165, 0.4);
     padding: 0;
     position: relative;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 .bottom-bar-btn-center:hover {
-    transform: scale(1.06);
+    transform: translateY(-12px) scale(1.06);
     box-shadow: 0 6px 18px rgba(58, 124, 165, 0.5);
     color: var(--white);
 }
 .bottom-bar-btn-center:active {
-    transform: scale(0.96);
+    transform: translateY(-12px) scale(0.96);
 }
 .bottom-bar-handshake {
     font-size: 2rem;
