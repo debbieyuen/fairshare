@@ -98,21 +98,32 @@
 
         <!-- ===== CONTACTS VIEW (default) ===== -->
         <div id="contactsScreen">
-            <div class="contacts-search-wrap">
-                <span class="contacts-search-icon" aria-hidden="true">🔍</span>
-                <input
-                    type="search"
-                    id="contactsSearchInput"
-                    class="contacts-search-input"
-                    placeholder="Search name, email, or phone"
-                    aria-label="Search contacts"
-                    autocomplete="off">
+            <div class="contacts-toolbar">
+                <div class="contacts-search-wrap">
+                    <svg class="contacts-search-icon" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="7"/><line x1="15.5" y1="15.5" x2="21" y2="21"/></svg>
+                    <input
+                        type="search"
+                        id="contactsSearchInput"
+                        class="contacts-search-input"
+                        placeholder="Search name, email, or phone"
+                        aria-label="Search contacts"
+                        autocomplete="off">
+                    <button
+                        type="button"
+                        id="contactsSearchClearBtn"
+                        class="contacts-search-clear hidden"
+                        aria-label="Clear search">
+                        ✕
+                    </button>
+                </div>
                 <button
                     type="button"
-                    id="contactsSearchClearBtn"
-                    class="contacts-search-clear hidden"
-                    aria-label="Clear search">
-                    ✕
+                    id="contactsSortBtn"
+                    class="contacts-sort-btn"
+                    aria-label="Change sort order"
+                    title="Sort contacts">
+                    <span class="contacts-sort-label" id="contactsSortLabel">Recent</span>
+                    <span class="contacts-sort-arrow">▾</span>
                 </button>
             </div>
             <div class="contacts-list-wrap">

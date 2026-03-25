@@ -1117,7 +1117,7 @@ body {
     .auth-container { padding: 1.5rem; margin: 1.5rem auto; }
 
     /* Contacts inline */
-    .contacts-search-wrap { padding: 0 0 0.5rem; }
+    .contacts-toolbar { padding: 0 0 0.5rem; }
     .contact-row-header { padding: 0.7rem 0.8rem; }
 }
 
@@ -1489,21 +1489,59 @@ body {
     100% { opacity: 0; background: #d0d0d0; }
 }
 
-/* Inline contacts search */
-.contacts-search-wrap {
-    position: relative;
-    padding: 0 0 0.75rem;
+/* Contacts toolbar (search + sort) */
+.contacts-toolbar {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
     max-width: 700px;
     margin: 0 auto;
     width: 100%;
+    padding: 0 0 0.75rem;
+}
+
+/* Inline contacts search */
+.contacts-search-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+}
+
+.contacts-sort-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.65rem 0.7rem;
+    border: 1px solid var(--medium-gray);
+    border-radius: 8px;
+    background: #edf1f4;
+    color: var(--text-color);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: border-color 0.15s, background 0.15s;
+}
+.contacts-sort-btn:hover {
+    background: #e2e8ed;
+}
+.contacts-sort-btn:active,
+.contacts-sort-btn.active {
+    border-color: var(--primary-color);
+    background: rgba(58, 124, 165, 0.08);
+}
+.contacts-sort-arrow {
+    font-size: 0.75rem;
+    opacity: 0.6;
 }
 .contacts-search-icon {
     position: absolute;
-    left: 0.8rem;
+    left: 0.75rem;
     top: 50%;
-    transform: translateY(-65%);
+    transform: translateY(-50%);
     color: var(--dark-gray);
-    font-size: 1.27rem;
     pointer-events: none;
 }
 .contacts-search-input {

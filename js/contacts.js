@@ -1,5 +1,6 @@
 let contactsSearchQuery = '';
 let contactsLoadedRows = [];
+let contactsSortMode = 'recent';
 
 function getContactsSearchInput() {
     return document.getElementById('contactsSearchInput');
@@ -50,6 +51,29 @@ function bindContactsSearchInput() {
     }
     updateContactsSearchClearVisibility();
     input.dataset.bound = '1';
+}
+
+function bindContactsSortButton() {
+    const btn = document.getElementById('contactsSortBtn');
+    const label = document.getElementById('contactsSortLabel');
+    if (!btn || btn.dataset.bound === '1') return;
+    btn.addEventListener('click', () => {
+        contactsSortMode = contactsSortMode === 'recent' ? 'age' : 'recent';
+        if (label) label.textContent = contactsSortMode === 'recent' ? 'Recent' : 'Age';
+        renderContactsForCurrentQuery();
+    });
+    btn.dataset.bound = '1';
+}
+
+function sortContactRows(rows) {
+    if (contactsSortMode === 'age') {
+        return rows.slice().sort((a, b) => {
+            const aDate = a.contact.first_met_at || a.contact.created_at || a.contact.met_at || '';
+            const bDate = b.contact.first_met_at || b.contact.created_at || b.contact.met_at || '';
+            return (aDate || '9').localeCompare(bDate || '9');
+        });
+    }
+    return rows;
 }
 
 function getNoContactsHtml() {
@@ -277,7 +301,7 @@ function renderContactsForCurrentQuery() {
         return;
     }
 
-    renderContactRows(filteredRows);
+    renderContactRows(sortContactRows(filteredRows));
 }
 
 async function openContactDetailsById(contactId) {

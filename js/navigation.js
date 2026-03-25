@@ -14,6 +14,7 @@ function navigateTo(view) {
         case 'contacts':
             contactsScreen.classList.remove('hidden');
             bindContactsSearchInput();
+            bindContactsSortButton();
             loadAndRenderContactList();
             break;
         case 'groups':
