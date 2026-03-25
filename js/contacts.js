@@ -81,6 +81,7 @@ function expandContactRow(contactId) {
     loadSharedTrust(contactId);
     loadFamilyTree(contactId);
     reloadContactSelfiesStrip(contactId);
+    requestAnimationFrame(() => row.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     return true;
 }
 
@@ -211,6 +212,7 @@ function bindContactRowEvents(content) {
                 expandedRow.classList.remove('expanded');
             });
             row.classList.add('expanded');
+            requestAnimationFrame(() => row.scrollIntoView({ behavior: 'smooth', block: 'start' }));
             const cid = row.dataset.contactId;
             if (cid) {
                 loadSharedTrust(cid);
@@ -552,16 +554,18 @@ function renderSharedTrust(container, trustData) {
     const profileMatchesCount = trustData?.profileMatchesCount == null
         ? 'Unavailable'
         : (Number.isFinite(Number(trustData.profileMatchesCount)) ? Number(trustData.profileMatchesCount) : 0);
-    const groupNames = Array.isArray(trustData?.groups) ? trustData.groups.filter(Boolean) : null;
+    const groups = Array.isArray(trustData?.groups) ? trustData.groups.filter(g => g && g.name) : null;
     const contactsText = contactsCount === 'Unavailable'
         ? 'Shared contacts unavailable'
         : (Number(contactsCount) > 0
             ? `<span class="contact-shared-key">${Number(contactsCount)}</span> Shared Contacts`
             : 'No Shared Contacts');
-    const groupsText = groupNames == null
+    const groupsText = groups == null
         ? 'Shared groups unavailable'
-        : (groupNames.length > 0
-            ? `Shared groups: <span class="contact-shared-key">${groupNames.map(name => esc(name)).join(', ')}</span>`
+        : (groups.length > 0
+            ? `Shared groups: ${groups.map(g =>
+                `<a href="#" class="contact-shared-key contact-shared-group-link" data-group-id="${esc(g.id)}">${esc(g.name)}</a>`
+              ).join(', ')}`
             : 'No Shared Groups');
     const attestersText = attestersCount === 'Unavailable'
         ? 'Mutual attestations unavailable'
@@ -580,6 +584,15 @@ function renderSharedTrust(container, trustData) {
         <div class="contact-detail-line">${attestersText}</div>
         <div class="contact-detail-line">${profileMatchesText}</div>
     `;
+    container.querySelectorAll('.contact-shared-group-link').forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const groupId = link.dataset.groupId;
+            navigateTo('groups');
+            selectGroupById(groupId);
+        });
+    });
 }
 
 async function loadContactSponsor(contactId) {
@@ -640,7 +653,7 @@ async function loadSharedTrust(contactId) {
                 : (Number.isFinite(Number(sharedContactsRes.data)) ? Number(sharedContactsRes.data) : 0),
             groups: sharedGroupsRes.error
                 ? null
-                : (Array.isArray(sharedGroupsRes.data) ? sharedGroupsRes.data.map(row => row.name).filter(Boolean) : []),
+                : (Array.isArray(sharedGroupsRes.data) ? sharedGroupsRes.data.filter(row => row.name) : []),
             attestersCount: sharedAttestersRes.error
                 ? null
                 : (Number.isFinite(Number(sharedAttestersRes.data)) ? Number(sharedAttestersRes.data) : 0),

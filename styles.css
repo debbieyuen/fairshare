@@ -1555,6 +1555,7 @@ body {
     box-shadow: 0 1px 3px rgba(0,0,0,0.08);
     cursor: pointer;
     transition: var(--transition);
+    scroll-margin-top: 70px;
 }
 .contact-row:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
 .contact-row-header {
@@ -1972,6 +1973,13 @@ body {
 .contact-shared-key {
     font-weight: 600;
     color: var(--dark-gray);
+}
+a.contact-shared-group-link {
+    text-decoration: underline;
+    cursor: pointer;
+}
+a.contact-shared-group-link:active {
+    opacity: 0.6;
 }
 .header-heart-btn { color: #ff4d6d !important; font-size: 1.32rem !important; }
 
