@@ -1609,7 +1609,7 @@ create or replace function public.send_push_to_group(
   p_actor_id uuid,
   p_title text,
   p_body text,
-  p_url text default '/fairshare/',
+  p_url text default '/',
   p_include_actor boolean default false
 )
 returns void as $$
@@ -1681,7 +1681,7 @@ begin
     NEW.actor_id,
     coalesce(v_group_name, 'FairShare'),
     NEW.summary,
-    '/fairshare/'
+    '/'
   );
   return NEW;
 end;
@@ -1710,7 +1710,7 @@ begin
     NEW.user_id,
     coalesce(v_group_name, 'FairShare') || ' Chat',
     coalesce(v_sender_name, 'Someone') || ': ' || v_preview,
-    '/fairshare/'
+    '/'
   );
   return NEW;
 end;
@@ -1759,7 +1759,7 @@ create or replace function public.send_push_to_users(
   p_actor_id uuid,
   p_title text,
   p_body text,
-  p_url text default '/fairshare/'
+  p_url text default '/'
 )
 returns void as $$
 declare

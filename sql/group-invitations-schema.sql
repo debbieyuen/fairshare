@@ -88,7 +88,7 @@ BEGIN
     v_sponsor_id,
     'Group Membership Offer',
     COALESCE(v_sponsor_name, 'Someone') || ' has offered to sponsor your membership in ' || COALESCE(v_group_name, 'a group'),
-    '/fairshare/'
+    '/'
   );
 
   RETURN json_build_object(
