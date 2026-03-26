@@ -61,6 +61,10 @@ async function logout() {
         db.removeChannel(contactEventsChannel);
         contactEventsChannel = null;
     }
+    if (groupInvitationsChannel) {
+        db.removeChannel(groupInvitationsChannel);
+        groupInvitationsChannel = null;
+    }
     // Reset client state
     selectedGroup = null;
     myGroups = [];
@@ -103,6 +107,7 @@ async function showApp(navigateToGroupId) {
     subscribeToContactShares();
     subscribeToContactEvents();
     subscribeToContactNotifications();
+    subscribeToGroupInvitations();
     maybeShowInstallHintFloater();
     if (currentProfile?.push_notifications !== false) subscribeToPush();
 
@@ -117,6 +122,7 @@ async function showApp(navigateToGroupId) {
     }
 
     await openPendingContactDetailsIfAny();
+    await checkPendingGroupInvitations();
 }
 
 function subscribeToContactShares() {
