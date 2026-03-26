@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Relay Routing Simulator</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{overflow:hidden;background:#000;font-family:'Courier New',monospace;font-size:12px;color:#ccc}
+canvas{display:block;position:fixed;top:0;left:0}
+.panel{
+  position:fixed;
+  background:rgba(0,0,0,0.82);
+  border:1px solid rgba(255,255,255,0.12);
+  border-radius:6px;
+  padding:10px 14px;
+  line-height:1.7;
+  z-index:10;
+  backdrop-filter:blur(6px);
+  -webkit-backdrop-filter:blur(6px);
+  user-select:none;
+}
+#stats{top:12px;left:12px;min-width:210px}
+#controls{top:12px;right:12px;min-width:195px}
+.panel h3{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:4px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.panel input[type="number"],
+.panel select{
+  width:72px;background:rgba(255,255,255,0.07);
+  border:1px solid rgba(255,255,255,0.18);
+  color:#fff;padding:2px 5px;border-radius:3px;
+  font-family:inherit;font-size:inherit;text-align:right;
+}
+.panel select{width:60px;text-align:left}
+.panel button{
+  background:rgba(255,255,255,0.09);
+  border:1px solid rgba(255,255,255,0.18);
+  color:#ccc;padding:4px 12px;border-radius:3px;
+  cursor:pointer;font-family:inherit;font-size:inherit;
+}
+.panel button:hover{background:rgba(255,255,255,0.18)}
+.panel button.active{background:rgba(255,120,80,0.25);border-color:rgba(255,120,80,0.5);color:#ffa}
+.sep{border:none;border-top:1px solid rgba(255,255,255,0.08);margin:6px 0}
+.chk{display:flex;align-items:center;gap:6px;cursor:pointer}
+.chk input{accent-color:#7af}
+.val{color:#7cf;min-width:40px;text-align:right}
+.panel input[type="range"]{
+  width:90px;height:4px;accent-color:#7af;cursor:pointer;
+  background:rgba(255,255,255,0.12);border-radius:2px;
+  -webkit-appearance:none;appearance:none;
+}
+.panel input[type="range"]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:12px;height:12px;border-radius:50%;
+  background:#7af;border:none;cursor:pointer;
+}
+.slider-row{display:flex;align-items:center;gap:6px}
+.slider-row span:first-child{min-width:60px}
+.slider-row .val{min-width:44px;font-size:11px}
+</style>
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+
+<div id="stats" class="panel">
+  <h3>Statistics</h3>
+  <div class="row"><span>Tick</span><span class="val" id="sTick">0</span></div>
+  <div class="row"><span>Active msgs</span><span class="val" id="sActive">0</span></div>
+  <div class="row"><span>Delivered</span><span class="val" id="sDelivered">–</span></div>
+  <div class="row"><span>Avg latency</span><span class="val" id="sLatency">–</span></div>
+  <div class="row"><span>Avg hops</span><span class="val" id="sHops">–</span></div>
+  <div class="row"><span>Buffered</span><span class="val" id="sBuffer">0</span></div>
+  <div class="row"><span>Buffer KB</span><span class="val" id="sBytes">0</span></div>
+</div>
+
+<div id="controls" class="panel">
+  <h3>Controls</h3>
+  <div class="row"><span>People</span><input type="number" id="cPeople" value="100" min="2" max="5000"></div>
+  <div class="row"><span>Neighbors</span><input type="number" id="cNeighbors" value="5" min="1" max="50"></div>
+  <div class="row"><span>Msg chance</span><input type="number" id="cChance" value="0.002" step="0.001" min="0" max="1"></div>
+  <div class="row"><span>Msg bytes</span><input type="number" id="cSize" value="256" min="1" max="100000"></div>
+  <div class="row"><span>TTL</span><input type="number" id="cTTL" value="300" min="10" max="10000"></div>
+  <hr class="sep">
+  <div class="slider-row"><span>Tick rate</span><input type="range" id="cRate" min="-5" max="3.3" step="0.1" value="0"><span class="val" id="cRateVal">1×</span></div>
+  <div class="slider-row"><span>Motion</span><input type="range" id="cMotion" min="0" max="0.5" step="0.01" value="0"><span class="val" id="cMotionVal">0</span></div>
+  <div class="row" style="margin-top:6px">
+    <button id="btnPause">Pause</button>
+    <button id="btnStep">Step</button>
+    <button id="btnReset">Reset</button>
+  </div>
+  <hr class="sep">
+  <label class="chk"><input type="checkbox" id="cConns">Show connections</label>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+// ──────────────────────────────────────────────
+// Canvas
+// ──────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+// ──────────────────────────────────────────────
+// Configuration
+// ──────────────────────────────────────────────
+const cfg = {
+  nodeCount: 100,
+  neighborCount: 5,
+  msgChance: 0.002,
+  msgSize: 256,
+  ttl: 300,
+  tickRate: 1,
+  paused: false,
+  showConns: false,
+  sigma: 0,
+  drag: 0.995,
+};
+
+// ──────────────────────────────────────────────
+// Utilities
+// ──────────────────────────────────────────────
+let _spareGauss = null;
+function gaussRand() {
+  if (_spareGauss !== null) { const v = _spareGauss; _spareGauss = null; return v; }
+  let u, v, s;
+  do { u = Math.random() * 2 - 1; v = Math.random() * 2 - 1; s = u * u + v * v; } while (s >= 1 || s === 0);
+  const m = Math.sqrt(-2 * Math.log(s) / s);
+  _spareGauss = v * m;
+  return u * m;
+}
+
+function torusDx(ax, bx, wrap) {
+  let d = bx - ax;
+  if (d > wrap / 2) d -= wrap;
+  if (d < -wrap / 2) d += wrap;
+  return d;
+}
+
+function torusDist2(ax, ay, bx, by) {
+  const dx = torusDx(ax, bx, W);
+  const dy = torusDx(ay, by, H);
+  return dx * dx + dy * dy;
+}
+
+function msgColor(hue, alpha) {
+  return alpha < 1 ? `hsla(${hue},90%,65%,${alpha})` : `hsl(${hue},90%,65%)`;
+}
+
+// ──────────────────────────────────────────────
+// Spatial Hash (grid-based, torus-aware)
+// ──────────────────────────────────────────────
+class SpatialHash {
+  constructor(cellSize) {
+    this.cellSize = cellSize;
+    this.cols = Math.max(1, Math.ceil(W / cellSize));
+    this.rows = Math.max(1, Math.ceil(H / cellSize));
+    this.cells = new Array(this.cols * this.rows);
+  }
+
+  rebuild(nodes) {
+    for (let i = 0; i < this.cells.length; i++) this.cells[i] = null;
+    for (const n of nodes) {
+      const c = Math.floor(n.x / this.cellSize) % this.cols;
+      const r = Math.floor(n.y / this.cellSize) % this.rows;
+      const idx = r * this.cols + c;
+      if (!this.cells[idx]) this.cells[idx] = [n]; else this.cells[idx].push(n);
+    }
+  }
+
+  query(x, y, radius) {
+    const out = [];
+    const c0 = Math.floor(x / this.cellSize);
+    const r0 = Math.floor(y / this.cellSize);
+    const span = Math.ceil(radius / this.cellSize);
+    for (let dr = -span; dr <= span; dr++) {
+      for (let dc = -span; dc <= span; dc++) {
+        const c = ((c0 + dc) % this.cols + this.cols) % this.cols;
+        const r = ((r0 + dr) % this.rows + this.rows) % this.rows;
+        const cell = this.cells[r * this.cols + c];
+        if (cell) for (let i = 0; i < cell.length; i++) out.push(cell[i]);
+      }
+    }
+    return out;
+  }
+}
+
+// ──────────────────────────────────────────────
+// Node — base class; Person is the default type.
+// Future: RelayNode extends Node with larger
+// buffers, more connections, and fixed position.
+// ──────────────────────────────────────────────
+class Node {
+  constructor(id, x, y, vx, vy) {
+    this.id = id;
+    this.x = x;
+    this.y = y;
+    this.vx = vx;
+    this.vy = vy;
+    this.buffer = new Map();
+    this.seenIds = new Map();
+    this.highlightHue = 0;
+    this.highlightTTL = 0;
+    this.senderHue = 0;
+    this.senderTTL = 0;
+  }
+  get type() { return 'person'; }
+  get maxConnections() { return cfg.neighborCount; }
+  get maxBufferBytes() { return Infinity; }
+}
+
+// ──────────────────────────────────────────────
+// Simulation State
+// ──────────────────────────────────────────────
+let nodes = [];
+let nodeById = {};
+let grid = null;
+let tick = 0;
+let nextMsgId = 0;
+let spacing = 50;
+const deliveredIds = new Map();
+const stats = { created: 0, delivered: 0, totLat: 0, totHops: 0 };
+let nbCache = new Map();
+let trails = []; // { fromId, toId, hue, life }
+const TRAIL_LIFE = 18;
+const targetMarks = new Map(); // msgId -> { nodeId, hue }
+
+// ──────────────────────────────────────────────
+// Init / Reset
+// ──────────────────────────────────────────────
+function init() {
+  nodes = [];
+  nodeById = {};
+  tick = 0;
+  nextMsgId = 0;
+  deliveredIds.clear();
+  stats.created = 0;
+  stats.delivered = 0;
+  stats.totLat = 0;
+  stats.totHops = 0;
+  nbCache = new Map();
+  trails = [];
+  targetMarks.clear();
+
+  for (let i = 0; i < cfg.nodeCount; i++) {
+    const n = new Node(
+      i,
+      Math.random() * W,
+      Math.random() * H,
+      0, 0,
+    );
+    nodes.push(n);
+    nodeById[i] = n;
+  }
+
+  spacing = Math.sqrt(W * H / Math.max(1, cfg.nodeCount));
+  grid = new SpatialHash(spacing * 2);
+  grid.rebuild(nodes);
+}
+
+// ──────────────────────────────────────────────
+// Neighbor lookup (cached per tick)
+// ──────────────────────────────────────────────
+function getNeighbors(node) {
+  let cached = nbCache.get(node.id);
+  if (cached) return cached;
+  cached = computeNeighbors(node);
+  nbCache.set(node.id, cached);
+  return cached;
+}
+
+function computeNeighbors(node) {
+  const need = Math.min(node.maxConnections, nodes.length - 1);
+  if (need <= 0) return [];
+
+  let radius = spacing * 2.5;
+  let cands;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    cands = grid.query(node.x, node.y, radius);
+    if (cands.length > need) break;
+    radius *= 2;
+  }
+  if (cands.length <= need + 1) {
+    cands = nodes;
+  }
+
+  const ranked = [];
+  for (let i = 0; i < cands.length; i++) {
+    const c = cands[i];
+    if (c.id === node.id) continue;
+    ranked.push({ n: c, d: torusDist2(node.x, node.y, c.x, c.y) });
+  }
+  ranked.sort((a, b) => a.d - b.d);
+
+  const result = [];
+  const seen = new Set();
+  for (let i = 0; i < ranked.length && result.length < need; i++) {
+    if (!seen.has(ranked[i].n.id)) {
+      seen.add(ranked[i].n.id);
+      result.push(ranked[i].n);
+    }
+  }
+  return result;
+}
+
+// ──────────────────────────────────────────────
+// Routing — forwards a node's buffer to its
+// connections. Extracted as a function so that
+// future relay nodes can override behavior.
+// ──────────────────────────────────────────────
+function forwardMessages(node, neighbors, incomingMap) {
+  if (node.buffer.size === 0) return;
+  for (const nb of neighbors) {
+    for (const [msgId, msg] of node.buffer) {
+      if (msg.addedTick === tick) continue;
+      if (nb.seenIds.has(msgId)) continue;
+      if (!incomingMap.has(nb.id)) incomingMap.set(nb.id, []);
+      incomingMap.get(nb.id).push({ msgId, hue: msg.hue, fromId: msg.fromId, toId: msg.toId, size: msg.size, createdTick: msg.createdTick, hops: msg.hops + 1, relayedBy: node.id });
+    }
+  }
+}
+
+function applyIncoming(incomingMap) {
+  for (const [nid, msgs] of incomingMap) {
+    const node = nodeById[nid];
+    for (const msg of msgs) {
+      if (node.seenIds.has(msg.msgId)) continue;
+      node.seenIds.set(msg.msgId, msg.createdTick);
+      node.buffer.set(msg.msgId, { id: msg.msgId, hue: msg.hue, fromId: msg.fromId, toId: msg.toId, size: msg.size, createdTick: msg.createdTick, hops: msg.hops, addedTick: tick });
+      trails.push({ fromId: msg.relayedBy, toId: nid, hue: msg.hue, life: TRAIL_LIFE });
+
+      if (nid === msg.toId && !deliveredIds.has(msg.msgId)) {
+        node.highlightHue = msg.hue;
+        node.highlightTTL = 60;
+        deliveredIds.set(msg.msgId, tick);
+        targetMarks.delete(msg.msgId);
+        stats.delivered++;
+        stats.totLat += tick - msg.createdTick;
+        stats.totHops += msg.hops;
+      }
+    }
+  }
+}
+
+// ──────────────────────────────────────────────
+// Simulation Step
+// ──────────────────────────────────────────────
+function step() {
+  tick++;
+  nbCache = new Map();
+
+  // Move
+  for (const n of nodes) {
+    n.vx = n.vx * cfg.drag + gaussRand() * cfg.sigma;
+    n.vy = n.vy * cfg.drag + gaussRand() * cfg.sigma;
+    n.x = ((n.x + n.vx) % W + W) % W;
+    n.y = ((n.y + n.vy) % H + H) % H;
+  }
+
+  // Rebuild grid
+  grid.rebuild(nodes);
+
+  // Generate messages
+  for (const n of nodes) {
+    if (Math.random() < cfg.msgChance) {
+      let toIdx;
+      do { toIdx = Math.floor(Math.random() * nodes.length); } while (toIdx === n.id);
+      const hue = (nextMsgId * 137.508) % 360;
+      const mid = nextMsgId++;
+      const msg = { id: mid, hue, fromId: n.id, toId: nodes[toIdx].id, size: cfg.msgSize, createdTick: tick, hops: 0, addedTick: tick };
+      n.buffer.set(mid, msg);
+      n.seenIds.set(mid, tick);
+      n.senderHue = hue;
+      n.senderTTL = 20;
+      stats.created++;
+      targetMarks.set(mid, { nodeId: nodes[toIdx].id, hue });
+
+      if (n.id === msg.toId && !deliveredIds.has(mid)) {
+        n.highlightHue = hue;
+        n.highlightTTL = 60;
+        deliveredIds.set(mid, tick);
+        targetMarks.delete(mid);
+        stats.delivered++;
+        stats.totLat += 0;
+        stats.totHops += 0;
+      }
+    }
+  }
+
+  // Forward (collect-then-apply for correct 1-hop-per-tick propagation)
+  const incoming = new Map();
+  for (const n of nodes) {
+    const nbs = getNeighbors(n);
+    forwardMessages(n, nbs, incoming);
+  }
+  applyIncoming(incoming);
+
+  // Cleanup expired / delivered
+  for (const n of nodes) {
+    for (const [mid, msg] of n.buffer) {
+      if (tick - msg.createdTick > cfg.ttl || deliveredIds.has(mid)) {
+        n.buffer.delete(mid);
+      }
+    }
+    if (n.highlightTTL > 0) n.highlightTTL--;
+    if (n.senderTTL > 0) n.senderTTL--;
+  }
+
+  // Age trails
+  for (let i = trails.length - 1; i >= 0; i--) {
+    if (--trails[i].life <= 0) trails.splice(i, 1);
+  }
+
+  // Periodic GC of seenIds and deliveredIds
+  if (tick % 200 === 0) {
+    const cutoff = tick - cfg.ttl - 100;
+    for (const n of nodes) {
+      for (const [mid, ct] of n.seenIds) {
+        if (ct < cutoff) n.seenIds.delete(mid);
+      }
+    }
+    for (const [mid, dt] of deliveredIds) {
+      if (dt < cutoff) deliveredIds.delete(mid);
+    }
+    for (const mid of targetMarks.keys()) {
+      if (deliveredIds.has(mid)) targetMarks.delete(mid);
+    }
+  }
+}
+
+// ──────────────────────────────────────────────
+// Render
+// ──────────────────────────────────────────────
+function render() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+
+  // Optional connection lines
+  if (cfg.showConns) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    for (const n of nodes) {
+      const nbs = getNeighbors(n);
+      for (const nb of nbs) {
+        const tx = n.x + torusDx(n.x, nb.x, W);
+        const ty = n.y + torusDx(n.y, nb.y, H);
+        ctx.moveTo(n.x, n.y);
+        ctx.lineTo(tx, ty);
+      }
+    }
+    ctx.stroke();
+  }
+
+  // Transmission trails (drawn before nodes so they sit underneath)
+  for (const t of trails) {
+    const src = nodeById[t.fromId];
+    const dst = nodeById[t.toId];
+    if (!src || !dst) continue;
+    const a = t.life / TRAIL_LIFE;
+    ctx.strokeStyle = msgColor(t.hue, a * 0.7);
+    ctx.lineWidth = 1 + a;
+    ctx.beginPath();
+    const tx = src.x + torusDx(src.x, dst.x, W);
+    const ty = src.y + torusDx(src.y, dst.y, H);
+    ctx.moveTo(src.x, src.y);
+    ctx.lineTo(tx, ty);
+    ctx.stroke();
+  }
+
+  // Target markers (steady colored ring on the destination node for in-flight messages)
+  if (targetMarks.size > 0) {
+    const perNode = new Map();
+    for (const [, { nodeId, hue }] of targetMarks) {
+      if (!perNode.has(nodeId)) perNode.set(nodeId, hue);
+    }
+    ctx.lineWidth = 1.5;
+    for (const [nid, hue] of perNode) {
+      const n = nodeById[nid];
+      if (!n) continue;
+      const pulse = 0.5 + 0.2 * Math.sin(tick * 0.15);
+      ctx.strokeStyle = msgColor(hue, pulse);
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, 7, 0, 6.2832);
+      ctx.stroke();
+      ctx.fillStyle = msgColor(hue, 0.25);
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, 2.5, 0, 6.2832);
+      ctx.fill();
+    }
+  }
+
+  // Nodes
+  // First pass: plain white nodes (batched)
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  for (const n of nodes) {
+    if (n.highlightTTL <= 0 && n.senderTTL <= 0) {
+      ctx.moveTo(n.x + 2.5, n.y);
+      ctx.arc(n.x, n.y, 2.5, 0, 6.2832);
+    }
+  }
+  ctx.fill();
+
+  // Second pass: highlighted nodes (individual colors)
+  for (const n of nodes) {
+    if (n.highlightTTL > 0) {
+      const a = n.highlightTTL / 60;
+      ctx.fillStyle = msgColor(n.highlightHue, Math.max(0.3, a));
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, 2.5 + 3 * a, 0, 6.2832);
+      ctx.fill();
+    } else if (n.senderTTL > 0) {
+      const a = n.senderTTL / 20;
+      ctx.strokeStyle = msgColor(n.senderHue, a * 0.6);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, 5 + (1 - a) * 6, 0, 6.2832);
+      ctx.stroke();
+      // Still draw the white dot
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, 2.5, 0, 6.2832);
+      ctx.fill();
+    }
+  }
+
+  // Buffer indicators (colored horizontal lines above each node)
+  for (const n of nodes) {
+    if (n.buffer.size === 0) continue;
+    const msgs = n.buffer.values();
+    let i = 0;
+    for (const msg of msgs) {
+      if (i >= 6) break;
+      ctx.fillStyle = msgColor(msg.hue, 0.85);
+      ctx.fillRect(n.x - 3, n.y - 7 - i * 3, 6, 2);
+      i++;
+    }
+    if (n.buffer.size > 6) {
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.fillRect(n.x - 0.5, n.y - 7 - 6 * 3, 1, 2);
+      ctx.fillRect(n.x + 1.5, n.y - 7 - 6 * 3, 1, 2);
+      ctx.fillRect(n.x - 2.5, n.y - 7 - 6 * 3, 1, 2);
+    }
+  }
+}
+
+// ──────────────────────────────────────────────
+// Stats Display
+// ──────────────────────────────────────────────
+const elTick = document.getElementById('sTick');
+const elActive = document.getElementById('sActive');
+const elDelivered = document.getElementById('sDelivered');
+const elLatency = document.getElementById('sLatency');
+const elHops = document.getElementById('sHops');
+const elBuffer = document.getElementById('sBuffer');
+const elBytes = document.getElementById('sBytes');
+
+function updateStats() {
+  let totalBuf = 0;
+  let totalBytes = 0;
+  const activeSet = new Set();
+  for (const n of nodes) {
+    totalBuf += n.buffer.size;
+    for (const [mid] of n.buffer) activeSet.add(mid);
+    for (const msg of n.buffer.values()) totalBytes += msg.size;
+  }
+
+  elTick.textContent = tick;
+  elActive.textContent = activeSet.size;
+  if (stats.created > 0) {
+    const pct = stats.created > 0 ? (stats.delivered / stats.created * 100).toFixed(1) : 0;
+    elDelivered.textContent = `${stats.delivered}/${stats.created} (${pct}%)`;
+  } else {
+    elDelivered.textContent = '–';
+  }
+  elLatency.textContent = stats.delivered > 0 ? (stats.totLat / stats.delivered).toFixed(1) + ' t' : '–';
+  elHops.textContent = stats.delivered > 0 ? (stats.totHops / stats.delivered).toFixed(1) : '–';
+  elBuffer.textContent = totalBuf;
+  elBytes.textContent = (totalBytes / 1024).toFixed(1);
+}
+
+// ──────────────────────────────────────────────
+// Main Loop
+// ──────────────────────────────────────────────
+let statsCounter = 0;
+let tickAccum = 0;
+
+function loop() {
+  if (!cfg.paused) {
+    tickAccum += cfg.tickRate;
+    while (tickAccum >= 1) {
+      step();
+      tickAccum -= 1;
+    }
+  }
+  render();
+  statsCounter++;
+  if (statsCounter >= 10) { updateStats(); statsCounter = 0; }
+  requestAnimationFrame(loop);
+}
+
+// ──────────────────────────────────────────────
+// Controls
+// ──────────────────────────────────────────────
+function setupControls() {
+  const el = (id) => document.getElementById(id);
+
+  el('cPeople').addEventListener('change', function() {
+    cfg.nodeCount = Math.max(2, Math.min(5000, parseInt(this.value) || 100));
+    this.value = cfg.nodeCount;
+    init();
+  });
+  el('cNeighbors').addEventListener('change', function() {
+    cfg.neighborCount = Math.max(1, Math.min(50, parseInt(this.value) || 5));
+    this.value = cfg.neighborCount;
+  });
+  el('cChance').addEventListener('change', function() {
+    cfg.msgChance = Math.max(0, Math.min(1, parseFloat(this.value) || 0));
+    this.value = cfg.msgChance;
+  });
+  el('cSize').addEventListener('change', function() {
+    cfg.msgSize = Math.max(1, parseInt(this.value) || 256);
+    this.value = cfg.msgSize;
+  });
+  el('cTTL').addEventListener('change', function() {
+    cfg.ttl = Math.max(10, parseInt(this.value) || 300);
+    this.value = cfg.ttl;
+  });
+
+  const rateSlider = el('cRate');
+  const rateLabel = el('cRateVal');
+  function updateRate() {
+    const v = parseFloat(rateSlider.value);
+    cfg.tickRate = Math.pow(2, v);
+    const display = cfg.tickRate >= 1
+      ? cfg.tickRate.toFixed(cfg.tickRate >= 2 ? 0 : 1) + '×'
+      : '1/' + Math.round(1 / cfg.tickRate) + '×';
+    rateLabel.textContent = display;
+  }
+  rateSlider.addEventListener('input', updateRate);
+
+  const motionSlider = el('cMotion');
+  const motionLabel = el('cMotionVal');
+  motionSlider.addEventListener('input', function() {
+    cfg.sigma = parseFloat(this.value);
+    motionLabel.textContent = cfg.sigma.toFixed(2);
+  });
+
+  const pauseBtn = el('btnPause');
+  pauseBtn.addEventListener('click', () => {
+    cfg.paused = !cfg.paused;
+    pauseBtn.textContent = cfg.paused ? 'Resume' : 'Pause';
+    pauseBtn.classList.toggle('active', cfg.paused);
+  });
+
+  el('btnStep').addEventListener('click', () => {
+    step();
+    render();
+    updateStats();
+  });
+
+  el('btnReset').addEventListener('click', () => {
+    cfg.nodeCount = parseInt(el('cPeople').value) || 100;
+    cfg.neighborCount = parseInt(el('cNeighbors').value) || 5;
+    cfg.msgChance = parseFloat(el('cChance').value) || 0.002;
+    cfg.msgSize = parseInt(el('cSize').value) || 256;
+    cfg.ttl = parseInt(el('cTTL').value) || 300;
+    cfg.sigma = parseFloat(el('cMotion').value);
+    tickAccum = 0;
+    init();
+    updateStats();
+  });
+
+  el('cConns').addEventListener('change', function() {
+    cfg.showConns = this.checked;
+  });
+}
+
+// ──────────────────────────────────────────────
+// Start
+// ──────────────────────────────────────────────
+resize();
+window.addEventListener('resize', () => { resize(); init(); });
+init();
+setupControls();
+updateStats();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>
