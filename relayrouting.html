@@ -21,7 +21,7 @@ canvas{display:block;position:fixed;top:0;left:0;cursor:crosshair}
   user-select:none;
 }
 #stats{top:12px;left:12px;min-width:210px}
-#controls{top:12px;right:12px;min-width:195px}
+#controls{top:12px;right:12px;min-width:195px;max-height:calc(100vh - 24px);overflow-y:auto}
 .panel h3{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#888;margin-bottom:4px}
 .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .panel input[type="number"],
@@ -72,6 +72,7 @@ canvas{display:block;position:fixed;top:0;left:0;cursor:crosshair}
   <div class="row"><span>Buffered</span><span class="val" id="sBuffer">0</span></div>
   <div class="row"><span>Buffer KB</span><span class="val" id="sBytes">0</span></div>
   <div class="row"><span>Avg oversend</span><span class="val" id="sOversend">–</span></div>
+  <div class="row"><span>ACKs active</span><span class="val" id="sAcks">0</span></div>
 </div>
 
 <div id="controls" class="panel">
@@ -92,6 +93,13 @@ canvas{display:block;position:fixed;top:0;left:0;cursor:crosshair}
   <hr class="sep">
   <label class="chk"><input type="checkbox" id="cConns">Show connections</label>
   <label class="chk"><input type="checkbox" id="cOneAt">One at a time</label>
+  <hr class="sep">
+  <h3>Learning</h3>
+  <div class="row"><span>Receivers</span><input type="number" id="cReceivers" value="10" min="1" max="100"></div>
+  <label class="chk"><input type="checkbox" id="cWeights" checked>Use weights</label>
+  <div class="slider-row"><span>Def weight</span><input type="range" id="cDefWeight" min="0.05" max="1" step="0.05" value="1"><span class="val" id="cDefWeightVal">1.00</span></div>
+  <div class="slider-row"><span>Learn rate</span><input type="range" id="cLearnRate" min="0.01" max="0.5" step="0.01" value="0.2"><span class="val" id="cLearnRateVal">0.20</span></div>
+  <label class="chk"><input type="checkbox" id="cShowRoutes">Show routes</label>
 </div>
 
 <script>
@@ -131,6 +139,12 @@ const cfg = {
   oneAtATime: false,
   sigma: 0,
   drag: 0.995,
+  receiversPerNode: 10,
+  useWeights: true,
+  defaultWeight: 1.0,
+  learnRate: 0.2,
+  decayRate: 0.001,
+  showRoutes: false,
 };
 
 // ──────────────────────────────────────────────
@@ -175,6 +189,39 @@ function drawTorusLine(x1, y1, x2, y2) {
     ctx.moveTo(x1 + shiftX, y1 + shiftY);
     ctx.lineTo(ex + shiftX, ey + shiftY);
   }
+}
+
+// ──────────────────────────────────────────────
+// Channel colors
+// ──────────────────────────────────────────────
+let channelCounter = 0;
+const channelHues = new Map();
+
+function channelHue(channel) {
+  let h = channelHues.get(channel);
+  if (h === undefined) {
+    h = (channelCounter++ * 137.508) % 360;
+    channelHues.set(channel, h);
+  }
+  return h;
+}
+
+// ──────────────────────────────────────────────
+// Weight helpers
+// ──────────────────────────────────────────────
+function getWeight(node, channel, neighborId) {
+  const chMap = node.weights.get(channel);
+  if (!chMap) return cfg.defaultWeight;
+  const w = chMap.get(neighborId);
+  return w !== undefined ? w : cfg.defaultWeight;
+}
+
+function strengthenWeight(node, channel, neighborId) {
+  let chMap = node.weights.get(channel);
+  if (!chMap) { chMap = new Map(); node.weights.set(channel, chMap); }
+  const cur = chMap.get(neighborId);
+  const base = cur !== undefined ? cur : cfg.defaultWeight;
+  chMap.set(neighborId, Math.min(1.0, base + cfg.learnRate));
 }
 
 // ──────────────────────────────────────────────
@@ -233,6 +280,8 @@ class Node {
     this.highlightTTL = 0;
     this.senderHue = 0;
     this.senderTTL = 0;
+    this.receivers = [];
+    this.weights = new Map();
   }
   get type() { return 'person'; }
   get maxConnections() { return cfg.neighborCount; }
@@ -255,6 +304,7 @@ let trails = []; // { fromId, toId, hue, life }
 const TRAIL_LIFE = 18;
 const targetMarks = new Map(); // msgId -> { nodeId, hue }
 let soloMsg = null; // { id, createdTick } when oneAtATime is active
+let acks = []; // { channel, path, hopIndex, hue }
 
 // ──────────────────────────────────────────────
 // Init / Reset
@@ -274,6 +324,9 @@ function init() {
   trails = [];
   targetMarks.clear();
   soloMsg = null;
+  acks = [];
+  channelCounter = 0;
+  channelHues.clear();
 
   for (let i = 0; i < cfg.nodeCount; i++) {
     const n = new Node(
@@ -284,6 +337,16 @@ function init() {
     );
     nodes.push(n);
     nodeById[i] = n;
+  }
+
+  const maxRecv = Math.min(cfg.receiversPerNode, nodes.length - 1);
+  for (const n of nodes) {
+    const recvs = new Set();
+    while (recvs.size < maxRecv) {
+      const r = Math.floor(Math.random() * nodes.length);
+      if (r !== n.id) recvs.add(r);
+    }
+    n.receivers = [...recvs];
   }
 
   spacing = Math.sqrt(W * H / Math.max(1, cfg.nodeCount));
@@ -347,8 +410,12 @@ function forwardMessages(node, neighbors, incomingMap) {
     for (const [msgId, msg] of node.buffer) {
       if (msg.addedTick === tick) continue;
       if (nb.seenIds.has(msgId)) continue;
+      if (cfg.useWeights) {
+        const w = getWeight(node, msg.channel, nb.id);
+        if (Math.random() >= w) continue;
+      }
       if (!incomingMap.has(nb.id)) incomingMap.set(nb.id, []);
-      incomingMap.get(nb.id).push({ msgId, hue: msg.hue, fromId: msg.fromId, toId: msg.toId, size: msg.size, createdTick: msg.createdTick, hops: msg.hops + 1, relayedBy: node.id });
+      incomingMap.get(nb.id).push({ msgId, hue: msg.hue, fromId: msg.fromId, toId: msg.toId, size: msg.size, createdTick: msg.createdTick, hops: msg.hops + 1, relayedBy: node.id, channel: msg.channel, path: msg.path });
     }
   }
 }
@@ -359,7 +426,8 @@ function applyIncoming(incomingMap) {
     for (const msg of msgs) {
       if (node.seenIds.has(msg.msgId)) continue;
       node.seenIds.set(msg.msgId, msg.createdTick);
-      node.buffer.set(msg.msgId, { id: msg.msgId, hue: msg.hue, fromId: msg.fromId, toId: msg.toId, size: msg.size, createdTick: msg.createdTick, hops: msg.hops, addedTick: tick });
+      const fullPath = [...msg.path, nid];
+      node.buffer.set(msg.msgId, { id: msg.msgId, hue: msg.hue, fromId: msg.fromId, toId: msg.toId, size: msg.size, createdTick: msg.createdTick, hops: msg.hops, addedTick: tick, channel: msg.channel, path: fullPath });
       trails.push({ fromId: msg.relayedBy, toId: nid, hue: msg.hue, life: TRAIL_LIFE });
       stats.totSends++;
 
@@ -371,6 +439,9 @@ function applyIncoming(incomingMap) {
         stats.delivered++;
         stats.totLat += tick - msg.createdTick;
         stats.totHops += msg.hops;
+        if (fullPath.length > 1) {
+          acks.push({ channel: msg.channel, path: fullPath, hopIndex: fullPath.length - 2, hue: msg.hue });
+        }
       }
     }
   }
@@ -380,19 +451,20 @@ function applyIncoming(incomingMap) {
 // Message Creation
 // ──────────────────────────────────────────────
 function createMessageFrom(n) {
-  let toIdx;
-  do { toIdx = Math.floor(Math.random() * nodes.length); } while (toIdx === n.id);
-  const hue = (nextMsgId * 137.508) % 360;
+  if (n.receivers.length === 0) return -1;
+  const toId = n.receivers[Math.floor(Math.random() * n.receivers.length)];
+  const channel = `${n.id}>${toId}`;
+  const hue = channelHue(channel);
   const mid = nextMsgId++;
-  const msg = { id: mid, hue, fromId: n.id, toId: nodes[toIdx].id, size: cfg.msgSize, createdTick: tick, hops: 0, addedTick: tick };
+  const msg = { id: mid, hue, fromId: n.id, toId, size: cfg.msgSize, createdTick: tick, hops: 0, addedTick: tick, channel, path: [n.id] };
   n.buffer.set(mid, msg);
   n.seenIds.set(mid, tick);
   n.senderHue = hue;
   n.senderTTL = 20;
   stats.created++;
-  targetMarks.set(mid, { nodeId: nodes[toIdx].id, hue });
+  targetMarks.set(mid, { nodeId: toId, hue });
 
-  if (n.id === msg.toId && !deliveredIds.has(mid)) {
+  if (n.id === toId && !deliveredIds.has(mid)) {
     n.highlightHue = hue;
     n.highlightTTL = 60;
     deliveredIds.set(mid, tick);
@@ -450,6 +522,39 @@ function step() {
   }
   applyIncoming(incoming);
 
+  // Process ACKs (one hop backward per tick)
+  if (cfg.useWeights) {
+    const nextAcks = [];
+    for (const ack of acks) {
+      const nodeId = ack.path[ack.hopIndex];
+      const fwdToId = ack.path[ack.hopIndex + 1];
+      const node = nodeById[nodeId];
+      if (node) {
+        strengthenWeight(node, ack.channel, fwdToId);
+        trails.push({ fromId: fwdToId, toId: nodeId, hue: ack.hue, life: Math.floor(TRAIL_LIFE * 0.6) });
+      }
+      if (ack.hopIndex > 0) {
+        nextAcks.push({ channel: ack.channel, path: ack.path, hopIndex: ack.hopIndex - 1, hue: ack.hue });
+      }
+    }
+    acks = nextAcks;
+  }
+
+  // Weight decay (every 10 ticks for performance)
+  if (cfg.useWeights && cfg.decayRate > 0 && tick % 10 === 0) {
+    const decayMul = Math.pow(1 - cfg.decayRate, 10);
+    for (const n of nodes) {
+      for (const [ch, nbMap] of n.weights) {
+        for (const [nbId, w] of nbMap) {
+          const newW = w * decayMul;
+          if (newW < 0.01) nbMap.delete(nbId);
+          else nbMap.set(nbId, newW);
+        }
+        if (nbMap.size === 0) n.weights.delete(ch);
+      }
+    }
+  }
+
   // Cleanup expired / delivered
   for (const n of nodes) {
     for (const [mid, msg] of n.buffer) {
@@ -489,6 +594,26 @@ function step() {
 function render() {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
+
+  // Learned routes (muted background lines)
+  if (cfg.showRoutes) {
+    for (const n of nodes) {
+      if (n.weights.size === 0) continue;
+      for (const [ch, nbMap] of n.weights) {
+        const hue = channelHue(ch);
+        for (const [nbId, w] of nbMap) {
+          if (w < 0.05) continue;
+          const nb = nodeById[nbId];
+          if (!nb) continue;
+          ctx.strokeStyle = msgColor(hue, w * 0.2);
+          ctx.lineWidth = 1 + w * 3;
+          ctx.beginPath();
+          drawTorusLine(n.x, n.y, nb.x, nb.y);
+          ctx.stroke();
+        }
+      }
+    }
+  }
 
   // Optional connection lines
   if (cfg.showConns) {
@@ -603,6 +728,7 @@ const elHops = document.getElementById('sHops');
 const elBuffer = document.getElementById('sBuffer');
 const elBytes = document.getElementById('sBytes');
 const elOversend = document.getElementById('sOversend');
+const elAcks = document.getElementById('sAcks');
 
 function updateStats() {
   let totalBuf = 0;
@@ -627,6 +753,7 @@ function updateStats() {
   elBuffer.textContent = totalBuf;
   elBytes.textContent = (totalBytes / 1024).toFixed(1);
   elOversend.textContent = stats.created > 0 ? (stats.totSends / stats.created).toFixed(1) : '–';
+  elAcks.textContent = acks.length;
 }
 
 // ──────────────────────────────────────────────
@@ -716,6 +843,11 @@ function setupControls() {
     cfg.msgSize = parseInt(el('cSize').value) || 256;
     cfg.ttl = parseInt(el('cTTL').value) || 8;
     cfg.sigma = parseFloat(el('cMotion').value);
+    cfg.receiversPerNode = parseInt(el('cReceivers').value) || 10;
+    cfg.defaultWeight = parseFloat(el('cDefWeight').value);
+    cfg.learnRate = parseFloat(el('cLearnRate').value);
+    cfg.useWeights = el('cWeights').checked;
+    cfg.showRoutes = el('cShowRoutes').checked;
     tickAccum = 0;
     init();
     updateStats();
@@ -728,6 +860,34 @@ function setupControls() {
   el('cOneAt').addEventListener('change', function() {
     cfg.oneAtATime = this.checked;
     soloMsg = null;
+  });
+
+  el('cReceivers').addEventListener('change', function() {
+    cfg.receiversPerNode = Math.max(1, Math.min(100, parseInt(this.value) || 10));
+    this.value = cfg.receiversPerNode;
+    init();
+  });
+
+  el('cWeights').addEventListener('change', function() {
+    cfg.useWeights = this.checked;
+  });
+
+  const defWeightSlider = el('cDefWeight');
+  const defWeightLabel = el('cDefWeightVal');
+  defWeightSlider.addEventListener('input', function() {
+    cfg.defaultWeight = parseFloat(this.value);
+    defWeightLabel.textContent = cfg.defaultWeight.toFixed(2);
+  });
+
+  const learnRateSlider = el('cLearnRate');
+  const learnRateLabel = el('cLearnRateVal');
+  learnRateSlider.addEventListener('input', function() {
+    cfg.learnRate = parseFloat(this.value);
+    learnRateLabel.textContent = cfg.learnRate.toFixed(2);
+  });
+
+  el('cShowRoutes').addEventListener('change', function() {
+    cfg.showRoutes = this.checked;
   });
 }
 
