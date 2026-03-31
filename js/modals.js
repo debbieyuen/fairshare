@@ -391,7 +391,8 @@ async function sendSuggestedPicture(contactId, file) {
 }
 
 function showSuggestedPictureDialog(notification) {
-    const imageUrl = notification.data?.image_url;
+    const rawData = typeof notification.data === 'string' ? JSON.parse(notification.data) : notification.data;
+    const imageUrl = rawData?.image_url;
     const msg = notification.message || 'Someone suggests a new profile picture';
     if (!imageUrl) {
         showToast(msg, 'info');
