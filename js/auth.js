@@ -112,6 +112,20 @@ async function showApp(navigateToGroupId) {
     if (currentProfile?.push_notifications !== false) subscribeToPush();
 
     if (!navigateToGroupId) {
+        const storedNav = localStorage.getItem('fairshare_notification_nav');
+        if (storedNav) {
+            try {
+                const nav = JSON.parse(storedNav);
+                navigateToGroupId = nav.groupId;
+                if (nav.tab) activeTab = nav.tab;
+            } catch {}
+            localStorage.removeItem('fairshare_notification_nav');
+        }
+    } else {
+        localStorage.removeItem('fairshare_notification_nav');
+    }
+
+    if (!navigateToGroupId) {
         navigateTo('contacts');
     }
 
@@ -270,6 +284,18 @@ if ('serviceWorker' in navigator) {
             const params = new URLSearchParams(event.data.search);
             if (params.get('action') === 'suggested_picture') {
                 fetchAndShowSuggestedPicture();
+            }
+            const groupId = params.get('group');
+            if (groupId) {
+                const tab = params.get('tab');
+                if (tab) activeTab = tab;
+                navigateTo('groups');
+                const membership = myGroups.find(m => m.group_id === groupId);
+                if (membership) {
+                    selectGroup(membership.groups, membership);
+                } else {
+                    loadMyGroups(groupId);
+                }
             }
         }
     });

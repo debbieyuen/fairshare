@@ -1684,7 +1684,7 @@ begin
     NEW.actor_id,
     coalesce(v_group_name, 'FairShare'),
     NEW.summary,
-    '/'
+    '/?group=' || NEW.group_id::text
   );
   return NEW;
 end;
@@ -1713,7 +1713,7 @@ begin
     NEW.user_id,
     coalesce(v_group_name, 'FairShare') || ' Chat',
     coalesce(v_sender_name, 'Someone') || ': ' || v_preview,
-    '/'
+    '/?group=' || NEW.group_id::text || '&tab=chat'
   );
   return NEW;
 end;

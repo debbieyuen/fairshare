@@ -37,6 +37,17 @@ async function init() {
         await showMeetBanner(meetToken);
     }
 
+    const notifGroupId = urlParams.get('group');
+    if (notifGroupId) {
+        localStorage.setItem('fairshare_notification_nav', JSON.stringify({
+            groupId: notifGroupId,
+            tab: urlParams.get('tab') || null
+        }));
+        if (window.location.search) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    }
+
     try {
         const { data: { session } } = await db.auth.getSession();
         if (session) {
