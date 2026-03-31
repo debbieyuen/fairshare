@@ -493,7 +493,8 @@ function renderContactRow(contact, profile, shared) {
         ? `<img class="contact-detail-profile-photo" src="${esc(avatarUrl)}" alt="${esc(name)} profile"
                style="cursor:pointer"
                onclick="event.stopPropagation(); openLightbox('${esc(avatarUrl)}')">`
-        : '<div class="contact-detail-profile-placeholder">👤</div>';
+        : `<div class="contact-detail-profile-placeholder" style="cursor:pointer"
+               onclick="event.stopPropagation(); openSuggestPicture('${cid}')">👤</div>`;
     const sharedIconHtml = (hasSharedPhone || hasSharedEmail)
         ? `<span class="contact-row-shared-icons" aria-label="Contact details shared with you">
                 ${hasSharedPhone ? '<span class="contact-row-shared-icon" title="Phone shared">📞</span>' : ''}
@@ -516,7 +517,10 @@ function renderContactRow(contact, profile, shared) {
             </div>
             <div class="contact-detail">
                 <div class="contact-detail-top-row">
-                    <div class="contact-detail-profile-media">${largeAvatarHtml}</div>
+                    <div class="contact-detail-profile-col">
+                        <div class="contact-detail-profile-media">${largeAvatarHtml}</div>
+                        <button type="button" class="btn btn-small btn-suggest-picture" onclick="event.stopPropagation(); openSuggestPicture('${cid}')">Suggest new picture</button>
+                    </div>
                     <div class="contact-detail-top-actions">
                         <button type="button" class="btn btn-small btn-vouch-with-contact" data-contact-id="${cid}" data-contact-name="${esc(name)}">Vouch</button>
                         <button type="button" class="btn btn-primary btn-small btn-share-with-contact" data-contact-id="${cid}" data-contact-name="${esc(name)}">Share</button>

@@ -1731,8 +1731,9 @@ create table if not exists public.contact_notifications (
   id uuid primary key default gen_random_uuid(),
   to_user_id uuid not null references public.profiles(id) on delete cascade,
   from_user_id uuid not null references public.profiles(id) on delete cascade,
-  notification_type text not null check (notification_type in ('profile_picture_updated', 'met_date_set')),
+  notification_type text not null check (notification_type in ('profile_picture_updated', 'profile_updated', 'met_date_set', 'profile_picture_suggested')),
   message text not null,
+  data jsonb default null,
   created_at timestamptz default now()
 );
 
@@ -1890,6 +1891,41 @@ begin
 
   -- Send Web Push
   perform public.send_push_to_users(ARRAY[p_contact_id], p_actor_id, 'FairShare', v_msg);
+end;
+$$ language plpgsql security definer;
+
+
+-- Suggest a new profile picture for a contact.
+-- Inserts a contact_notification with the suggested image URL and sends Web Push.
+create or replace function public.suggest_profile_picture(
+  p_actor_id uuid,
+  p_contact_id uuid,
+  p_image_url text
+)
+returns void as $$
+declare
+  v_name text;
+  v_msg text;
+begin
+  if auth.uid() is distinct from p_actor_id then
+    raise exception 'Unauthorized';
+  end if;
+
+  if not exists (
+    select 1 from public.contacts
+    where user_id = p_actor_id and contact_id = p_contact_id
+  ) then
+    raise exception 'Not a contact';
+  end if;
+
+  select display_name into v_name from public.profiles where id = p_actor_id;
+  v_msg := coalesce(v_name, 'Someone') || ' suggests this new profile picture';
+
+  insert into public.contact_notifications (to_user_id, from_user_id, notification_type, message, data)
+  values (p_contact_id, p_actor_id, 'profile_picture_suggested', v_msg,
+          jsonb_build_object('image_url', p_image_url));
+
+  perform public.send_push_to_users(ARRAY[p_contact_id], p_actor_id, 'Union', v_msg);
 end;
 $$ language plpgsql security definer;
 

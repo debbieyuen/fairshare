@@ -1733,6 +1733,43 @@ body {
     font-size: 2rem;
     color: var(--dark-gray);
 }
+.contact-detail-profile-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+}
+.btn-suggest-picture {
+    font-size: 0.65rem;
+    padding: 0.15rem 0.4rem;
+    white-space: nowrap;
+    color: var(--dark-gray);
+    border: 1px solid var(--medium-gray);
+    background: transparent;
+    border-radius: 4px;
+}
+.btn-suggest-picture:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+.suggest-pic-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+.suggest-pic-preview {
+    max-width: 100%;
+    max-height: 280px;
+    border-radius: 8px;
+    object-fit: contain;
+}
+.suggest-pic-dialog-img {
+    max-width: 100%;
+    max-height: 300px;
+    border-radius: 8px;
+    object-fit: contain;
+}
 /* ---- Met on date field ---- */
 .contact-detail-met-on {
     position: relative;

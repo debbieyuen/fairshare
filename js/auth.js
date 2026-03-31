@@ -162,8 +162,12 @@ function subscribeToContactNotifications() {
             table: 'contact_notifications',
             filter: 'to_user_id=eq.' + currentUser.id
         }, (payload) => {
-            const msg = payload.new?.message;
-            if (msg) showToast(msg, 'info');
+            if (payload.new?.notification_type === 'profile_picture_suggested') {
+                showSuggestedPictureDialog(payload.new);
+            } else {
+                const msg = payload.new?.message;
+                if (msg) showToast(msg, 'info');
+            }
         })
         .subscribe();
 }
