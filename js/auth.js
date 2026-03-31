@@ -163,11 +163,18 @@ function subscribeToContactNotifications() {
             filter: 'to_user_id=eq.' + currentUser.id
         }, async (payload) => {
             if (payload.new?.notification_type === 'profile_picture_suggested') {
-                const { data: notif } = await db.from('contact_notifications')
-                    .select('*')
-                    .eq('id', payload.new.id)
-                    .single();
-                showSuggestedPictureDialog(notif || payload.new);
+                const notification = Object.assign({}, payload.new);
+                if (!notification.data?.image_url) {
+                    try {
+                        const { data: notifData } = await db.rpc('get_contact_notification_data', {
+                            p_notification_id: notification.id
+                        });
+                        if (notifData) notification.data = notifData;
+                    } catch (e) {
+                        console.warn('get_contact_notification_data fallback failed:', e);
+                    }
+                }
+                showSuggestedPictureDialog(notification);
             } else {
                 const msg = payload.new?.message;
                 if (msg) showToast(msg, 'info');

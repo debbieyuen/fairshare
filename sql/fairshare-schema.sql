@@ -1930,6 +1930,14 @@ end;
 $$ language plpgsql security definer;
 
 
+-- Read the data column for a contact notification (bypasses PostgREST table cache).
+create or replace function public.get_contact_notification_data(p_notification_id uuid)
+returns jsonb as $$
+  select data from public.contact_notifications
+  where id = p_notification_id and to_user_id = auth.uid();
+$$ language sql stable security definer;
+
+
 -- ============================================================
 -- STORAGE: Avatars bucket for public profile photos and contact selfies
 -- ============================================================
