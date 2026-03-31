@@ -65,15 +65,19 @@ self.addEventListener('activate', event => {
   );
 });
 
-// Handle incoming push notifications
+// Handle incoming push notifications — skip if a window is focused (Realtime handles foreground)
 self.addEventListener('push', event => {
   const data = event.data ? event.data.json() : {};
   event.waitUntil(
-    self.registration.showNotification(data.title || 'Union', {
-      body: data.body || '',
-      icon: './icon-192.png',
-      badge: './icon-192.png',
-      data: { url: data.url || './' },
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
+      const hasFocused = windowClients.some(c => c.visibilityState === 'visible');
+      if (hasFocused) return;
+      return self.registration.showNotification(data.title || 'Union', {
+        body: data.body || '',
+        icon: './icon-192.png',
+        badge: './icon-192.png',
+        data: { url: data.url || './' },
+      });
     })
   );
 });

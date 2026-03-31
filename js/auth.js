@@ -161,9 +161,13 @@ function subscribeToContactNotifications() {
             schema: 'public',
             table: 'contact_notifications',
             filter: 'to_user_id=eq.' + currentUser.id
-        }, (payload) => {
+        }, async (payload) => {
             if (payload.new?.notification_type === 'profile_picture_suggested') {
-                showSuggestedPictureDialog(payload.new);
+                const { data: notif } = await db.from('contact_notifications')
+                    .select('*')
+                    .eq('id', payload.new.id)
+                    .single();
+                showSuggestedPictureDialog(notif || payload.new);
             } else {
                 const msg = payload.new?.message;
                 if (msg) showToast(msg, 'info');
