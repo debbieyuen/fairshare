@@ -123,6 +123,7 @@ async function showApp(navigateToGroupId) {
 
     await openPendingContactDetailsIfAny();
     await checkPendingGroupInvitations();
+    await checkPendingSuggestedPictures();
 }
 
 function subscribeToContactShares() {
@@ -225,4 +226,51 @@ function subscribeToContactEvents() {
             showToast(name + ' took a new selfie with you.', 'info');
         })
         .subscribe();
+}
+
+async function checkPendingSuggestedPictures() {
+    if (!currentUser) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('action') !== 'suggested_picture') return;
+    window.history.replaceState({}, document.title, window.location.pathname);
+    await fetchAndShowSuggestedPicture();
+}
+
+async function fetchAndShowSuggestedPicture() {
+    if (!currentUser) return;
+    try {
+        const { data, error } = await db
+            .from('contact_notifications')
+            .select('*')
+            .eq('to_user_id', currentUser.id)
+            .eq('notification_type', 'profile_picture_suggested')
+            .order('created_at', { ascending: false })
+            .limit(1);
+        if (error || !data || data.length === 0) return;
+        const notification = data[0];
+        if (!notification.data?.image_url) {
+            try {
+                const { data: notifData } = await db.rpc('get_contact_notification_data', {
+                    p_notification_id: notification.id
+                });
+                if (notifData) notification.data = notifData;
+            } catch (e) {
+                console.warn('get_contact_notification_data fallback failed:', e);
+            }
+        }
+        showSuggestedPictureDialog(notification);
+    } catch (e) {
+        console.error('fetchAndShowSuggestedPicture error:', e);
+    }
+}
+
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data?.type === 'notification-click') {
+            const params = new URLSearchParams(event.data.search);
+            if (params.get('action') === 'suggested_picture') {
+                fetchAndShowSuggestedPicture();
+            }
+        }
+    });
 }

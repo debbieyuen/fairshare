@@ -1408,6 +1408,9 @@ alter publication supabase_realtime add table public.chat_messages;
 alter publication supabase_realtime add table public.group_events;
 alter publication supabase_realtime add table public.document_history;
 
+-- Enable Realtime for contact notifications (profile picture suggestions, etc.)
+alter publication supabase_realtime add table public.contact_notifications;
+
 
 -- ============================================================
 -- COMPLETE MEET: server-side function for QR contact exchange
@@ -1925,7 +1928,8 @@ begin
   values (p_contact_id, p_actor_id, 'profile_picture_suggested', v_msg,
           jsonb_build_object('image_url', p_image_url));
 
-  perform public.send_push_to_users(ARRAY[p_contact_id], p_actor_id, 'Union', v_msg);
+  perform public.send_push_to_users(ARRAY[p_contact_id], p_actor_id, 'Union', v_msg,
+          '/?action=suggested_picture');
 end;
 $$ language plpgsql security definer;
 

@@ -76,6 +76,7 @@ self.addEventListener('push', event => {
         body: data.body || '',
         icon: './icon-192.png',
         badge: './icon-192.png',
+        tag: data.tag || ((data.title || '') + '::' + (data.body || '')),
         data: { url: data.url || './' },
       });
     })
@@ -90,6 +91,9 @@ self.addEventListener('notificationclick', event => {
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
       for (const client of windowClients) {
         if (new URL(client.url).pathname.startsWith(targetUrl.pathname) && 'focus' in client) {
+          if (targetUrl.search) {
+            client.postMessage({ type: 'notification-click', search: targetUrl.search });
+          }
           return client.focus();
         }
       }
