@@ -225,7 +225,7 @@ function matchesContactSearch(row) {
 function bindContactRowEvents(content) {
     content.querySelectorAll('.contact-row').forEach((row) => {
         row.addEventListener('click', (e) => {
-            if (e.target.closest('.contact-detail-actions') || e.target.closest('.selfies-strip-container') || e.target.closest('.contact-detail-profile-media') || e.target.closest('.contact-detail-met-on') || e.target.closest('input') || e.target.closest('button')) return;
+            if (e.target.closest('.contact-detail-actions') || e.target.closest('.selfies-strip-container') || e.target.closest('.contact-detail-profile-media') || e.target.closest('.contact-detail-met-on') || e.target.closest('.contact-detail-nearby') || e.target.closest('input') || e.target.closest('button')) return;
             const wasExpanded = row.classList.contains('expanded');
             if (wasExpanded) {
                 row.classList.remove('expanded');
