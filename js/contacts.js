@@ -1110,9 +1110,11 @@ async function vouchWithContactChoice(attestationType) {
 async function toggleNotifyNearby(contactId, enabled) {
     if (!currentUser) return;
     try {
+        const patch = { notify_nearby: enabled };
+        if (enabled) patch.last_nearby_notified_at = null;
         const { error } = await db
             .from('contacts')
-            .update({ notify_nearby: enabled })
+            .update(patch)
             .eq('user_id', currentUser.id)
             .eq('contact_id', contactId);
         if (error) throw error;

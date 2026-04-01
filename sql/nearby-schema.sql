@@ -57,6 +57,7 @@ DECLARE
   v_nearby record;
   v_distance double precision;
   v_my_name text;
+  v_contact_name text;
   v_notified_ids uuid[] := '{}';
 BEGIN
   IF v_user_id IS NULL THEN
@@ -104,6 +105,10 @@ BEGIN
       IF v_nearby.last_nearby_notified_at IS NULL
          OR v_nearby.last_nearby_notified_at < now() - interval '1 hour' THEN
 
+        -- Look up contact's display name for the reciprocal notification
+        SELECT display_name INTO v_contact_name
+        FROM public.profiles WHERE id = v_nearby.contact_id;
+
         -- In-app notification for the contact
         INSERT INTO public.contact_notifications
           (to_user_id, from_user_id, notification_type, message)
@@ -111,10 +116,21 @@ BEGIN
           (v_nearby.contact_id, v_user_id, 'nearby_alert',
            coalesce(v_my_name, 'Someone') || ' is nearby!');
 
-        -- Web Push to the contact
+        -- In-app notification for the caller
+        INSERT INTO public.contact_notifications
+          (to_user_id, from_user_id, notification_type, message)
+        VALUES
+          (v_user_id, v_nearby.contact_id, 'nearby_alert',
+           coalesce(v_contact_name, 'Someone') || ' is nearby!');
+
+        -- Web Push to both parties
         PERFORM public.send_push_to_users(
           ARRAY[v_nearby.contact_id], v_user_id, 'Union',
           coalesce(v_my_name, 'Someone') || ' is nearby!'
+        );
+        PERFORM public.send_push_to_users(
+          ARRAY[v_user_id], v_nearby.contact_id, 'Union',
+          coalesce(v_contact_name, 'Someone') || ' is nearby!'
         );
 
         -- Update last-notified timestamps on both sides to avoid duplicates
