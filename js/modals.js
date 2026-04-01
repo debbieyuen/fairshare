@@ -447,15 +447,34 @@ async function acceptSuggestedPicture(imageUrl) {
     closeModal({ refreshContactList: false });
 }
 
-function saveSuggestedPicture(imageUrl) {
-    const a = document.createElement('a');
-    a.href = imageUrl;
-    a.download = 'suggested-profile-picture.jpg';
-    a.target = '_blank';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    showToast('Picture saved.', 'success');
+async function saveSuggestedPicture(imageUrl) {
+    try {
+        const resp = await fetch(imageUrl);
+        if (!resp.ok) throw new Error('Could not download image');
+        const blob = await resp.blob();
+        const ext = imageUrl.split('.').pop()?.split('?')[0] || 'jpg';
+        const mimeType = blob.type || 'image/jpeg';
+        const file = new File([blob], 'suggested-profile-picture.' + ext, { type: mimeType });
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({ files: [file] });
+            showToast('Picture saved.', 'success');
+        } else {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'suggested-profile-picture.' + ext;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast('Picture saved.', 'success');
+        }
+    } catch (e) {
+        if (e.name === 'AbortError') return;
+        console.error('Save suggested picture error:', e);
+        showToast('Could not save picture: ' + (e.message || 'error'), 'error');
+    }
 }
 
 // Allow Escape key to close any open modal or overlays
