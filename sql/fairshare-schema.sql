@@ -1884,6 +1884,11 @@ begin
     raise exception 'Not a contact';
   end if;
 
+  -- Update the mirror contact row so both parties share the same date
+  update public.contacts
+  set first_met_at = p_met_date
+  where user_id = p_contact_id and contact_id = p_actor_id;
+
   select display_name into v_name from public.profiles where id = p_actor_id;
   v_date_str := trim(to_char(p_met_date, 'Month DD, YYYY'));
   v_msg := coalesce(v_name, 'Someone') || ' says you met on ' || v_date_str;
