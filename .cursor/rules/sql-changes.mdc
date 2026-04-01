@@ -1,0 +1,9 @@
+---
+description: After modifying SQL schema files, provide a ready-to-paste SQL block
+globs: sql/**/*.sql
+alwaysApply: false
+---
+
+# SQL Change Output
+
+After editing any SQL schema file, always end your response with the complete SQL statements the user needs to run in the Supabase SQL Editor, in a single fenced code block they can copy-paste directly. Only include the changed/new statements — not the entire file.
