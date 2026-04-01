@@ -24,3 +24,5 @@ let suggestPicStream = null;
 let pendingOpenContactId = null; // open this contact detail after app render
 let pendingOpenNewestContact = false; // fallback when exact new contact id is unknown
 let profileCache = {};   // user_id -> display_name cache for chat
+let nearbyTrackingInterval = null; // setInterval id for foreground GPS polling
+let nearbyTrackingActive = false; // true when at least one contact has notify_nearby

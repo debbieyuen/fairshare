@@ -65,6 +65,8 @@ async function logout() {
         db.removeChannel(groupInvitationsChannel);
         groupInvitationsChannel = null;
     }
+    // Stop nearby location tracking
+    stopNearbyTracking();
     // Reset client state
     selectedGroup = null;
     myGroups = [];
@@ -138,6 +140,7 @@ async function showApp(navigateToGroupId) {
     await openPendingContactDetailsIfAny();
     await checkPendingGroupInvitations();
     await checkPendingSuggestedPictures();
+    checkAndStartNearbyTracking();
 }
 
 function subscribeToContactShares() {
@@ -190,6 +193,9 @@ function subscribeToContactNotifications() {
                     }
                 }
                 showSuggestedPictureDialog(notification);
+            } else if (payload.new?.notification_type === 'nearby_alert') {
+                const msg = payload.new?.message;
+                if (msg) showToast(msg, 'success');
             } else {
                 const msg = payload.new?.message;
                 if (msg) showToast(msg, 'info');

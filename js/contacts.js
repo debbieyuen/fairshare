@@ -546,6 +546,15 @@ function renderContactRow(contact, profile, shared) {
                         </div>
                     </div>
                 </div>
+                <div class="contact-detail-nearby">
+                    <label class="contact-nearby-label">
+                        <input type="checkbox" class="contact-nearby-checkbox"
+                               data-contact-id="${cid}"
+                               ${contact.notify_nearby ? 'checked' : ''}
+                               onchange="event.stopPropagation(); toggleNotifyNearby('${cid}', this.checked)">
+                        Notify if nearby
+                    </label>
+                </div>
                 <div class="contact-shared-trust" id="shared-${cid}">
                     <div class="contact-shared-title">Trust</div>
                     <div class="contact-detail-line contact-detail-muted">Loading shared trust…</div>
@@ -1096,4 +1105,24 @@ async function vouchWithContactChoice(attestationType) {
     closeModal();
     vouchWithContactId = null;
     vouchWithContactName = '';
+}
+
+async function toggleNotifyNearby(contactId, enabled) {
+    if (!currentUser) return;
+    try {
+        const { error } = await db
+            .from('contacts')
+            .update({ notify_nearby: enabled })
+            .eq('user_id', currentUser.id)
+            .eq('contact_id', contactId);
+        if (error) throw error;
+        const row = contactsLoadedRows.find(r => r.contact.contact_id === contactId);
+        if (row) row.contact.notify_nearby = enabled;
+        checkAndStartNearbyTracking();
+    } catch (e) {
+        console.error('toggleNotifyNearby error:', e);
+        showToast('Could not update nearby preference.', 'error');
+        const cb = document.querySelector(`.contact-nearby-checkbox[data-contact-id="${contactId}"]`);
+        if (cb) cb.checked = !enabled;
+    }
 }
