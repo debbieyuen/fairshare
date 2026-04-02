@@ -85,8 +85,20 @@ document.addEventListener('visibilitychange', async () => {
             await logout();
         } else {
             currentUser = session.user;
-            // Re-subscribe to realtime in case the channel was dropped
+            // Re-subscribe to realtime in case channels were dropped while backgrounded
             if (selectedGroup) subscribeToGroup(selectedGroup.id);
+            subscribeToContactEvents();
+
+            // If the contacts view is open, refresh it to catch any selfie or profile
+            // updates that arrived while the Realtime channel was down.
+            if (activeMainView === 'contacts') {
+                const expandedRow = document.querySelector('.contact-row.expanded');
+                const expandedContactId = expandedRow?.dataset?.contactId || null;
+                // Wipe the selfie cache so re-expanded rows always fetch fresh data.
+                Object.keys(contactSelfiesCache).forEach(k => delete contactSelfiesCache[k]);
+                await loadAndRenderContactList();
+                if (expandedContactId) expandContactRow(expandedContactId);
+            }
         }
     } catch (e) {
         console.warn('[visibility] Session check failed:', e);
