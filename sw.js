@@ -91,9 +91,9 @@ self.addEventListener('notificationclick', event => {
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
       for (const client of windowClients) {
         if (new URL(client.url).pathname.startsWith(targetUrl.pathname) && 'focus' in client) {
-          if (targetUrl.search) {
-            client.postMessage({ type: 'notification-click', search: targetUrl.search });
-          }
+          // Always notify the client so it can refresh stale data (e.g. selfie
+          // notifications carry no URL params but still need a cache bust).
+          client.postMessage({ type: 'notification-click', search: targetUrl.search });
           return client.focus();
         }
       }

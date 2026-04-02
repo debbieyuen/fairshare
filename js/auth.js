@@ -311,6 +311,15 @@ if ('serviceWorker' in navigator) {
                 } else {
                     loadMyGroups(groupId);
                 }
+            } else {
+                // Non-group notification (e.g. new selfie, met-date): bust the
+                // selfie cache so the next contact expand always fetches fresh
+                // rows, and immediately refresh any strip that is already open.
+                Object.keys(contactSelfiesCache).forEach(k => delete contactSelfiesCache[k]);
+                const expandedRow = document.querySelector('.contact-row.expanded');
+                if (expandedRow?.dataset?.contactId) {
+                    reloadContactSelfiesStrip(expandedRow.dataset.contactId);
+                }
             }
         }
     });

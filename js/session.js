@@ -88,16 +88,13 @@ document.addEventListener('visibilitychange', async () => {
             // Re-subscribe to realtime in case channels were dropped while backgrounded
             if (selectedGroup) subscribeToGroup(selectedGroup.id);
             subscribeToContactEvents();
-
-            // If the contacts view is open, refresh it to catch any selfie or profile
-            // updates that arrived while the Realtime channel was down.
-            if (activeMainView === 'contacts') {
-                const expandedRow = document.querySelector('.contact-row.expanded');
-                const expandedContactId = expandedRow?.dataset?.contactId || null;
-                // Wipe the selfie cache so re-expanded rows always fetch fresh data.
-                Object.keys(contactSelfiesCache).forEach(k => delete contactSelfiesCache[k]);
-                await loadAndRenderContactList();
-                if (expandedContactId) expandContactRow(expandedContactId);
+            // Invalidate the selfie cache so the next contact expand always
+            // fetches fresh rows from the DB instead of serving stale data.
+            Object.keys(contactSelfiesCache).forEach(k => delete contactSelfiesCache[k]);
+            // If a contact detail is already open, refresh its strip right now.
+            const expandedRow = document.querySelector('.contact-row.expanded');
+            if (expandedRow?.dataset?.contactId) {
+                reloadContactSelfiesStrip(expandedRow.dataset.contactId);
             }
         }
     } catch (e) {
