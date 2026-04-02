@@ -193,6 +193,12 @@ function subscribeToContactNotifications() {
                     }
                 }
                 showSuggestedPictureDialog(notification);
+            } else if (payload.new?.notification_type === 'met_date_set') {
+                const msg = payload.new?.message;
+                if (msg) showToast(msg, 'info');
+                const fromId = payload.new?.from_user_id;
+                const metDate = payload.new?.data?.met_date;
+                if (fromId && metDate) updateContactMetDate(fromId, metDate);
             } else if (payload.new?.notification_type === 'nearby_alert') {
                 const msg = payload.new?.message;
                 if (msg) showToast(msg, 'success');

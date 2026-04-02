@@ -473,6 +473,26 @@ async function saveFirstMetAt(contactId, dateValue) {
     }
 }
 
+function updateContactMetDate(contactId, isoDate) {
+    const row = contactsLoadedRows.find(r => r.contact.contact_id === contactId);
+    if (row) {
+        row.contact.first_met_at = isoDate;
+        const rowEl = document.querySelector(`.contact-row[data-contact-id="${contactId}"]`);
+        if (rowEl) {
+            const durationEl = rowEl.querySelector('.contact-row-known-duration');
+            const newDuration = formatKnownDuration(isoDate || row.contact.created_at);
+            if (durationEl) {
+                durationEl.textContent = newDuration;
+                durationEl.style.display = newDuration ? '' : 'none';
+            }
+            const displayEl = rowEl.querySelector(`#met-on-display-${contactId}`);
+            if (displayEl) displayEl.textContent = formatFirstMetDisplay(isoDate);
+            const inputEl = rowEl.querySelector(`#met-on-${contactId}`);
+            if (inputEl) inputEl.value = isoDate ? new Date(isoDate).toISOString().slice(0, 10) : '';
+        }
+    }
+}
+
 function renderContactRow(contact, profile, shared) {
     const name = profile.display_name || 'Unknown';
     const avatarUrl = profile.profile_image_url || null;

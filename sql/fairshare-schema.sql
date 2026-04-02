@@ -1893,9 +1893,9 @@ begin
   v_date_str := trim(to_char(p_met_date, 'Month DD, YYYY'));
   v_msg := coalesce(v_name, 'Someone') || ' says you met on ' || v_date_str;
 
-  -- Insert in-app notification row
-  insert into public.contact_notifications (to_user_id, from_user_id, notification_type, message)
-  values (p_contact_id, p_actor_id, 'met_date_set', v_msg);
+  -- Insert in-app notification row (include date in data so the recipient's UI can update live)
+  insert into public.contact_notifications (to_user_id, from_user_id, notification_type, message, data)
+  values (p_contact_id, p_actor_id, 'met_date_set', v_msg, jsonb_build_object('met_date', p_met_date));
 
   -- Send Web Push
   perform public.send_push_to_users(ARRAY[p_contact_id], p_actor_id, 'FairShare', v_msg);
