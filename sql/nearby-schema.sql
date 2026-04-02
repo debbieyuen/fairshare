@@ -38,7 +38,8 @@ ALTER TABLE public.contact_notifications
     'profile_updated',
     'met_date_set',
     'profile_picture_suggested',
-    'nearby_alert'
+    'nearby_alert',
+    'new_selfie'
   ));
 
 -- 4. RPC: update caller's location and check for nearby mutual contacts.
