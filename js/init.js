@@ -153,6 +153,9 @@ async function handlePendingInvite() {
         return null;
     }
 
+    // Remove immediately so a concurrent call cannot claim the same token.
+    localStorage.removeItem('fairshare_invite');
+
     let claimedGroupId = null;
     try {
         const { data, error } = await db.rpc('claim_sponsorship', { p_token: token });
@@ -170,9 +173,6 @@ async function handlePendingInvite() {
     } catch (e) {
         console.error('Failed to claim sponsorship:', e);
     }
-
-    // Always clear the stored token (used or failed)
-    localStorage.removeItem('fairshare_invite');
 
     // Clean the URL
     if (window.location.search.includes('invite=')) {
@@ -299,6 +299,10 @@ async function handlePendingMeet() {
         return null;
     }
 
+    // Remove immediately so a concurrent call (e.g. from onAuthStateChange
+    // racing with getSession) cannot claim the same token a second time.
+    localStorage.removeItem('fairshare_meet');
+
     let claimedGroupId = null;
     try {
         const { data, error } = await db.rpc('complete_meet', { p_token: token });
@@ -323,8 +327,6 @@ async function handlePendingMeet() {
     } catch (e) {
         console.error('Failed to complete meet:', e);
     }
-
-    localStorage.removeItem('fairshare_meet');
 
     if (window.location.search.includes('meet=')) {
         window.history.replaceState({}, document.title, window.location.pathname);

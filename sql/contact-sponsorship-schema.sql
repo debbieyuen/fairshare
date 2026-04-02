@@ -23,11 +23,13 @@ DECLARE
   v_group_name text;
   v_admitted boolean;
 BEGIN
-  -- Look up the meet request by token
+  -- Look up the meet request by token, locking the row so a concurrent
+  -- call cannot also pass the used_by check before we mark it used.
   SELECT * INTO v_meet_request
   FROM public.meet_requests
   WHERE token = p_token
-    AND expires_at > now();
+    AND expires_at > now()
+  FOR UPDATE;
 
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Meet request not found or expired';
