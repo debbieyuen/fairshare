@@ -156,7 +156,8 @@ function buildSelfiesStripHtml(selfies, contactId) {
                  data-lightbox-url="${esc(s.selfie_url)}"
                  ${dateStr ? `data-lightbox-date="${esc(dateStr)}"` : ''}
                  ${locStr ? `data-lightbox-location="${esc(locStr)}"` : ''}>
-                <img src="${esc(s.selfie_url)}" alt="Selfie" loading="lazy">
+                <img src="${esc(s.selfie_url)}" alt="Selfie" loading="lazy"
+                     onload="if(this.naturalWidth>this.naturalHeight){var t=this.closest('.selfie-tile'),w=Math.round(110*this.naturalWidth/this.naturalHeight);t.style.flex='0 0 '+w+'px';this.style.width=w+'px';}">
                 ${caption ? `<div class="selfie-caption">${esc(dateStr)}${locStr ? `<br><span class="selfie-caption-location">${esc(locStr)}</span>` : ''}</div>` : ''}
             </div>`;
     }).join('');
