@@ -161,7 +161,54 @@ function buildSelfiesStripHtml(selfies, contactId) {
                 ${caption ? `<div class="selfie-caption">${esc(dateStr)}${locStr ? `<br><span class="selfie-caption-location">${esc(locStr)}</span>` : ''}</div>` : ''}
             </div>`;
     }).join('');
-    return `<div class="selfies-strip">${tilesHtml}${addTileHtml}</div>`;
+    // Add tile at both ends: left is revealed by swiping right, right is always visible
+    return `<div class="selfies-strip">${addTileHtml}${tilesHtml}${addTileHtml}</div>`;
+}
+
+// Enable smooth click-drag scrolling on desktop for a selfies strip element
+function attachSelfiesStripDragScroll(strip) {
+    let isDown = false;
+    let startX = 0;
+    let scrollStart = 0;
+    let moved = false;
+
+    strip.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        isDown = true;
+        moved = false;
+        startX = e.pageX;
+        scrollStart = strip.scrollLeft;
+        strip.style.cursor = 'grabbing';
+        // Disable scroll-snap during drag so movement is pixel-smooth
+        strip.style.scrollSnapType = 'none';
+        e.preventDefault();
+    });
+
+    const endDrag = () => {
+        if (!isDown) return;
+        isDown = false;
+        strip.style.cursor = '';
+        // Re-enable scroll-snap so touch/release snaps to a tile
+        strip.style.scrollSnapType = '';
+    };
+
+    strip.addEventListener('mousemove', (e) => {
+        if (!isDown) return;
+        const dx = e.pageX - startX;
+        if (Math.abs(dx) > 4) moved = true;
+        strip.scrollLeft = scrollStart - dx;
+    });
+
+    strip.addEventListener('mouseup', endDrag);
+    strip.addEventListener('mouseleave', endDrag);
+
+    // Block clicks on child elements when the gesture was a drag, not a tap
+    strip.addEventListener('click', (e) => {
+        if (moved) {
+            e.stopPropagation();
+            e.preventDefault();
+        }
+    }, true);
 }
 
 function ensureLightbox() {
@@ -205,6 +252,15 @@ async function reloadContactSelfiesStrip(contactId) {
     if (!container) return;
     const selfies = await loadContactSelfies(contactId);
     container.innerHTML = buildSelfiesStripHtml(selfies, contactId);
+    const strip = container.querySelector('.selfies-strip');
+    if (strip) {
+        attachSelfiesStripDragScroll(strip);
+        // When there are existing selfies the add tile is at the far left; start
+        // scrolled past it so users discover it by swiping right.
+        if (selfies && selfies.length > 0) {
+            strip.scrollLeft = 118; // 110px tile + ~8px gap — hides left add tile initially
+        }
+    }
 }
 
 function matchesContactSearch(row) {

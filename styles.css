@@ -1900,6 +1900,7 @@ body {
 }
 .selfies-strip-container {
     overflow: hidden;
+    position: relative;
 }
 .selfies-strip {
     display: flex;
@@ -1910,6 +1911,10 @@ body {
     padding-bottom: 0.4rem;
     /* hide scrollbar but keep scroll */
     scrollbar-width: none;
+    cursor: grab;
+}
+.selfies-strip:active {
+    cursor: grabbing;
 }
 .selfies-strip::-webkit-scrollbar { display: none; }
 .selfie-tile {
