@@ -122,14 +122,32 @@ RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
+DECLARE
+  v_caller_id uuid := auth.uid();
+  v_name      text;
+  v_msg       text;
 BEGIN
   -- Row for the caller
   INSERT INTO contact_selfies (user_id, contact_id, selfie_url, captured_at, lat, lng, location_label)
-  VALUES (auth.uid(), p_contact_id, p_selfie_url, p_captured_at, p_lat, p_lng, p_location_label);
+  VALUES (v_caller_id, p_contact_id, p_selfie_url, p_captured_at, p_lat, p_lng, p_location_label);
 
   -- Mirrored row for the contact so they also see the selfie
   INSERT INTO contact_selfies (user_id, contact_id, selfie_url, captured_at, lat, lng, location_label)
-  VALUES (p_contact_id, auth.uid(), p_selfie_url, p_captured_at, p_lat, p_lng, p_location_label);
+  VALUES (p_contact_id, v_caller_id, p_selfie_url, p_captured_at, p_lat, p_lng, p_location_label);
+
+  -- Update contacts.selfie_url for both sides so the Realtime UPDATE triggers UI refresh for the recipient
+  UPDATE contacts SET selfie_url = p_selfie_url
+  WHERE (user_id = v_caller_id AND contact_id = p_contact_id)
+     OR (user_id = p_contact_id AND contact_id = v_caller_id);
+
+  -- Notify the contact via in-app notification and Web Push
+  SELECT display_name INTO v_name FROM public.profiles WHERE id = v_caller_id;
+  v_msg := coalesce(v_name, 'Someone') || ' took a new selfie with you.';
+
+  INSERT INTO public.contact_notifications (to_user_id, from_user_id, notification_type, message)
+  VALUES (p_contact_id, v_caller_id, 'new_selfie', v_msg);
+
+  PERFORM public.send_push_to_users(ARRAY[p_contact_id], v_caller_id, 'FairShare', v_msg);
 END;
 $$;
 

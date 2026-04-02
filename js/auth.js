@@ -202,6 +202,9 @@ function subscribeToContactNotifications() {
             } else if (payload.new?.notification_type === 'nearby_alert') {
                 const msg = payload.new?.message;
                 if (msg) showToast(msg, 'success');
+            } else if (payload.new?.notification_type === 'new_selfie') {
+                // In-app display is handled by the contacts.selfie_url UPDATE Realtime event,
+                // which also refreshes the selfie strip. This notification exists for push delivery only.
             } else {
                 const msg = payload.new?.message;
                 if (msg) showToast(msg, 'info');
