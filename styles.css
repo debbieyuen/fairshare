@@ -1959,6 +1959,96 @@ body {
 }
 .selfie-tile-add:hover, .selfie-tile-add:active { opacity: 0.85; }
 .selfie-tile-add-icon { font-size: 1.8rem; }
+
+/* ---- Mutual contacts line ---- */
+.contact-mutuals {
+    margin-top: 0.55rem;
+    padding: 0 0.1rem;
+    font-size: 0.82rem;
+    color: var(--dark-gray);
+    line-height: 1.45;
+}
+.contact-mutuals-link {
+    font-weight: 600;
+    color: var(--primary-color);
+    text-decoration: none;
+    cursor: pointer;
+}
+.contact-mutuals-link:hover { text-decoration: underline; }
+.contact-mutuals-name {
+    color: var(--dark-gray);
+    text-decoration: none;
+}
+.contact-mutuals-name:hover { text-decoration: underline; }
+.contact-mutuals-separator {
+    margin: 0 0.15rem 0 0;
+}
+
+/* ---- Mutuals popup ---- */
+.mutuals-popup-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 5000;
+    align-items: center;
+    justify-content: center;
+}
+.mutuals-popup-overlay.active {
+    display: flex;
+}
+.mutuals-popup {
+    background: var(--white);
+    border-radius: 12px;
+    width: 90%;
+    max-width: 380px;
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.25);
+    overflow: hidden;
+}
+.mutuals-popup-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.1rem 0.75rem;
+    border-bottom: 1px solid var(--medium-gray);
+}
+.mutuals-popup-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--accent-color);
+}
+.mutuals-popup-close {
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    color: var(--dark-gray);
+    padding: 0.2rem 0.4rem;
+    border-radius: 6px;
+}
+.mutuals-popup-close:hover { background: var(--light-gray); }
+.mutuals-popup-list {
+    list-style: none;
+    margin: 0;
+    padding: 0.5rem 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.mutuals-popup-item {
+    padding: 0.55rem 1.1rem;
+    font-size: 0.9rem;
+    color: var(--text-color, #222);
+    border-bottom: 1px solid var(--light-gray, #f0f0f0);
+    cursor: pointer;
+}
+.mutuals-popup-item:hover { background: var(--light-gray, #f5f5f5); }
+.mutuals-popup-item:active { background: var(--medium-gray, #e8e8e8); }
+.mutuals-popup-item:last-child { border-bottom: none; }
+
 /* ---- New-contact fullscreen selfie overlay ---- */
 .new-contact-selfie-overlay {
     position: fixed;

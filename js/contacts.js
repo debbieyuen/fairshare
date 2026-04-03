@@ -104,6 +104,7 @@ function expandContactRow(contactId) {
     row.classList.add('expanded');
     loadSharedTrust(contactId);
     loadFamilyTree(contactId);
+    loadMutualContacts(contactId);
     reloadContactSelfiesStrip(contactId);
     requestAnimationFrame(() => row.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     return true;
@@ -298,6 +299,7 @@ function bindContactRowEvents(content) {
             if (cid) {
                 loadSharedTrust(cid);
                 loadFamilyTree(cid);
+                loadMutualContacts(cid);
                 reloadContactSelfiesStrip(cid);
                 loadContactSponsor(cid);
             }
@@ -368,10 +370,7 @@ async function openContactDetailsById(contactId) {
 
     navigateTo('contacts');
     clearContactSearchState();
-
-    if (!getContactRow(contactId)) {
-        await loadAndRenderContactList();
-    }
+    await loadAndRenderContactList();
 
     if (expandContactRow(contactId)) {
         return true;
@@ -623,6 +622,7 @@ function renderContactRow(contact, profile, shared) {
                         </div>
                     </div>
                 </div>
+                <div class="contact-mutuals" id="mutuals-${cid}"></div>
                 <div class="contact-detail-nearby">
                     <label class="contact-nearby-label">
                         <input type="checkbox" class="contact-nearby-checkbox"
@@ -655,6 +655,105 @@ function renderContactRow(contact, profile, shared) {
                 </div>
             </div>
         </div>`;
+}
+
+const mutualContactsCache = {};
+const MUTUALS_INLINE_LIMIT = 3;
+
+async function loadMutualContacts(contactId) {
+    const container = document.getElementById('mutuals-' + contactId);
+    if (!container || !currentUser) return;
+    if (container.dataset.loaded === '1') return;
+
+    if (mutualContactsCache[contactId]) {
+        container.dataset.loaded = '1';
+        renderMutualContacts(container, mutualContactsCache[contactId], contactId);
+        return;
+    }
+
+    try {
+        const { data, error } = await db.rpc('get_shared_contacts', { p_contact_id: contactId });
+        if (error) throw error;
+        const mutuals = Array.isArray(data) ? data : [];
+        mutualContactsCache[contactId] = mutuals;
+        container.dataset.loaded = '1';
+        renderMutualContacts(container, mutuals, contactId);
+    } catch (e) {
+        console.error('loadMutualContacts error:', e);
+        container.dataset.loaded = '1';
+    }
+}
+
+function renderMutualContacts(container, mutuals, contactId) {
+    if (!mutuals || mutuals.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+    const count = mutuals.length;
+    const names = mutuals.map(m => m.display_name || 'Unknown');
+    const inlineNames = names.slice(0, MUTUALS_INLINE_LIMIT);
+    const hasMore = count > MUTUALS_INLINE_LIMIT;
+
+    const nameLink = (m) => `<a href="#" class="contact-mutuals-name" data-mutual-id="${esc(m.id)}">${esc(m.display_name || 'Unknown')}</a>`;
+    const inlineMutuals = hasMore ? mutuals.slice(0, MUTUALS_INLINE_LIMIT) : mutuals;
+
+    const label = `<a href="#" class="contact-mutuals-link">${count} Mutual${count === 1 ? '' : 's'}</a>`;
+    const nameList = inlineMutuals.map(nameLink).join(', ') + (hasMore ? ', \u2026' : '');
+
+    container.innerHTML = `<span class="contact-mutuals-text">${label}<span class="contact-mutuals-separator">:</span> ${nameList}</span>`;
+
+    container.querySelector('.contact-mutuals-link').addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        showMutualsPopup(mutuals, contactId);
+    });
+
+    container.querySelectorAll('.contact-mutuals-name').forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openContactDetailsById(link.dataset.mutualId);
+        });
+    });
+}
+
+function showMutualsPopup(mutuals, contactId) {
+    let overlay = document.getElementById('mutuals-popup-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'mutuals-popup-overlay';
+        overlay.className = 'mutuals-popup-overlay';
+        overlay.innerHTML = `<div class="mutuals-popup">
+            <div class="mutuals-popup-header">
+                <h3 class="mutuals-popup-title"></h3>
+                <button class="mutuals-popup-close" aria-label="Close">\u2715</button>
+            </div>
+            <ul class="mutuals-popup-list"></ul>
+        </div>`;
+        overlay.addEventListener('click', (e) => {
+            if (!e.target.closest('.mutuals-popup')) closeMutualsPopup();
+        });
+        overlay.querySelector('.mutuals-popup-close').addEventListener('click', closeMutualsPopup);
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMutualsPopup(); });
+        document.body.appendChild(overlay);
+    }
+    overlay.querySelector('.mutuals-popup-title').textContent = `${mutuals.length} Mutual Contacts`;
+    const list = overlay.querySelector('.mutuals-popup-list');
+    list.innerHTML = mutuals.map(m =>
+        `<li class="mutuals-popup-item" data-mutual-id="${esc(m.id)}">${esc(m.display_name || 'Unknown')}</li>`
+    ).join('');
+    list.querySelectorAll('.mutuals-popup-item').forEach(item => {
+        item.addEventListener('click', () => {
+            closeMutualsPopup();
+            openContactDetailsById(item.dataset.mutualId);
+        });
+    });
+    overlay.classList.add('active');
+}
+
+function closeMutualsPopup() {
+    const overlay = document.getElementById('mutuals-popup-overlay');
+    if (overlay) overlay.classList.remove('active');
 }
 
 const sharedTrustCache = {};
