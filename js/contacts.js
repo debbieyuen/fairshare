@@ -1,6 +1,7 @@
 let contactsSearchQuery = '';
 let contactsLoadedRows = [];
 let contactsSortMode = 'recent';
+let _dragJustEnded = false;
 
 function getContactsSearchInput() {
     return document.getElementById('contactsSearchInput');
@@ -58,14 +59,49 @@ function bindContactsSortButton() {
     const label = document.getElementById('contactsSortLabel');
     if (!btn || btn.dataset.bound === '1') return;
     btn.addEventListener('click', () => {
-        contactsSortMode = contactsSortMode === 'recent' ? 'age' : 'recent';
-        if (label) label.textContent = contactsSortMode === 'recent' ? 'Recent' : 'Age';
+        if (contactsSortMode === 'recent') contactsSortMode = 'age';
+        else if (contactsSortMode === 'age') contactsSortMode = 'custom';
+        else contactsSortMode = 'recent';
+        updateSortLabel();
         renderContactsForCurrentQuery();
     });
     btn.dataset.bound = '1';
 }
 
+function updateSortLabel() {
+    const label = document.getElementById('contactsSortLabel');
+    if (!label) return;
+    if (contactsSortMode === 'recent') label.textContent = 'Recent';
+    else if (contactsSortMode === 'age') label.textContent = 'Age';
+    else label.textContent = 'Custom';
+}
+
+function getCustomOrderKey() {
+    return `fairshare_contact_order_${currentUser ? currentUser.id : 'anon'}`;
+}
+
+function loadCustomOrder() {
+    try {
+        return JSON.parse(localStorage.getItem(getCustomOrderKey()) || '[]');
+    } catch (_) {
+        return [];
+    }
+}
+
+function saveCustomOrder(ids) {
+    try {
+        localStorage.setItem(getCustomOrderKey(), JSON.stringify(ids));
+    } catch (_) { /* storage full or unavailable */ }
+}
+
 function sortContactRows(rows) {
+    if (contactsSortMode === 'recent') {
+        return rows.slice().sort((a, b) => {
+            const aDate = a.contact.met_at || '';
+            const bDate = b.contact.met_at || '';
+            return (bDate || '0').localeCompare(aDate || '0');
+        });
+    }
     if (contactsSortMode === 'age') {
         return rows.slice().sort((a, b) => {
             const aDate = a.contact.first_met_at || a.contact.created_at || a.contact.met_at || '';
@@ -73,7 +109,20 @@ function sortContactRows(rows) {
             return (aDate || '9').localeCompare(bDate || '9');
         });
     }
-    return rows;
+    if (contactsSortMode === 'custom') {
+        const order = loadCustomOrder();
+        if (order.length === 0) return rows;
+        const indexMap = {};
+        order.forEach((id, i) => { indexMap[id] = i; });
+        return rows.slice().sort((a, b) => {
+            const ai = indexMap[a.contact.contact_id];
+            const bi = indexMap[b.contact.contact_id];
+            const aPos = ai !== undefined ? ai : order.length;
+            const bPos = bi !== undefined ? bi : order.length;
+            return aPos - bPos;
+        });
+    }
+    return rows.slice();
 }
 
 function getNoContactsHtml() {
@@ -283,6 +332,7 @@ function matchesContactSearch(row) {
 function bindContactRowEvents(content) {
     content.querySelectorAll('.contact-row').forEach((row) => {
         row.addEventListener('click', (e) => {
+            if (_dragJustEnded) return;
             if (e.target.closest('.contact-detail-actions') || e.target.closest('.selfies-strip-container') || e.target.closest('.contact-detail-profile-media') || e.target.closest('.contact-detail-met-on') || e.target.closest('.contact-detail-nearby') || e.target.closest('input') || e.target.closest('button')) return;
             const wasExpanded = row.classList.contains('expanded');
             if (wasExpanded) {
@@ -343,6 +393,7 @@ function renderContactRows(rows) {
     )).join('');
     bindContactRowEvents(content);
     bindContactActionEvents(content);
+    bindContactDragSort(content);
 }
 
 function renderContactsForCurrentQuery() {
@@ -447,6 +498,18 @@ async function loadAndRenderContactList() {
             profile: profileMap[contact.contact_id] || {},
             shared: sharedByThemMap[contact.contact_id] || {}
         }));
+
+        if (contactsSortMode === 'custom') {
+            const order = loadCustomOrder();
+            const orderSet = new Set(order);
+            const newIds = contactsLoadedRows
+                .map(r => r.contact.contact_id)
+                .filter(id => !orderSet.has(id));
+            if (newIds.length > 0) {
+                saveCustomOrder([...newIds, ...order]);
+            }
+        }
+
         renderContactsForCurrentQuery();
     } catch (e) {
         console.error('Load contacts error:', e);
@@ -547,6 +610,248 @@ function updateContactMetDate(contactId, isoDate) {
             if (inputEl) inputEl.value = isoDate ? new Date(isoDate).toISOString().slice(0, 10) : '';
         }
     }
+}
+
+function bindContactDragSort(content) {
+    if (!content || content.dataset.dragBound === '1') return;
+    content.dataset.dragBound = '1';
+
+    const HOLD_MS = 500;
+    const MOVE_THRESHOLD = 8;
+    const SCROLL_ZONE = 80;   // px from viewport edge to trigger scroll
+    const SCROLL_MAX = 18;    // max px per frame
+
+    let holdTimer = null;
+    let dragActive = false;
+    let sourceRow = null;
+    let ghost = null;
+    let indicator = null;
+    let pointerStartX = 0;
+    let pointerStartY = 0;
+    let ghostOffsetY = 0; // fixed: pointer Y minus ghost top, computed once at drag start
+    let insertBeforeId = null; // contact_id of the row we'd insert before (null = append)
+    let lastPointerY = 0;
+    let scrollRAF = null;
+
+    function cancelHold() {
+        if (holdTimer !== null) { clearTimeout(holdTimer); holdTimer = null; }
+    }
+
+    function stopEdgeScroll() {
+        if (scrollRAF !== null) { cancelAnimationFrame(scrollRAF); scrollRAF = null; }
+    }
+
+    function tickEdgeScroll() {
+        scrollRAF = null;
+        if (!dragActive) return;
+        const vh = window.innerHeight;
+        let speed = 0;
+        if (lastPointerY < SCROLL_ZONE) {
+            speed = -SCROLL_MAX * (1 - lastPointerY / SCROLL_ZONE);
+        } else if (lastPointerY > vh - SCROLL_ZONE) {
+            speed = SCROLL_MAX * (1 - (vh - lastPointerY) / SCROLL_ZONE);
+        }
+        if (speed !== 0) {
+            window.scrollBy(0, speed);
+            updateIndicator(lastPointerY);
+            scrollRAF = requestAnimationFrame(tickEdgeScroll);
+        }
+    }
+
+    function scheduleEdgeScroll(clientY) {
+        lastPointerY = clientY;
+        const vh = window.innerHeight;
+        const inZone = clientY < SCROLL_ZONE || clientY > vh - SCROLL_ZONE;
+        if (inZone && scrollRAF === null) {
+            scrollRAF = requestAnimationFrame(tickEdgeScroll);
+        } else if (!inZone) {
+            stopEdgeScroll();
+        }
+    }
+
+    function startDrag(row, clientX, clientY) {
+        dragActive = true;
+        sourceRow = row;
+
+        // Ghost clone
+        const rect = row.getBoundingClientRect();
+        ghost = row.cloneNode(true);
+        ghost.className = 'contact-drag-ghost';
+        ghost.style.width = rect.width + 'px';
+        ghost.style.left = rect.left + 'px';
+        document.body.appendChild(ghost);
+
+        // Compute fixed offset once so ghost stays locked to cursor regardless of page scroll
+        ghostOffsetY = clientY - rect.top;
+        ghost.style.top = (clientY - ghostOffsetY) + 'px';
+
+        // Drag indicator
+        indicator = document.createElement('div');
+        indicator.className = 'contact-drag-indicator';
+        content.style.position = 'relative';
+        content.appendChild(indicator);
+
+        row.classList.add('dragging');
+        document.body.classList.add('drag-sort-active');
+        updateIndicator(clientY);
+    }
+
+    function moveGhostTo(clientY) {
+        if (!ghost) return;
+        ghost.style.top = (clientY - ghostOffsetY) + 'px';
+    }
+
+    function getRowsExcludingSource() {
+        return Array.from(content.querySelectorAll('.contact-row:not(.dragging)'));
+    }
+
+    function updateIndicator(clientY) {
+        if (!indicator) return;
+        const rows = getRowsExcludingSource();
+        if (rows.length === 0) {
+            indicator.style.display = 'none';
+            insertBeforeId = null;
+            return;
+        }
+
+        // Find the gap closest to clientY
+        const contentRect = content.getBoundingClientRect();
+        let bestY = null;
+        insertBeforeId = null;
+
+        for (let i = 0; i <= rows.length; i++) {
+            let gapY;
+            if (i === 0) {
+                gapY = rows[0].getBoundingClientRect().top;
+            } else if (i === rows.length) {
+                const lastRect = rows[rows.length - 1].getBoundingClientRect();
+                gapY = lastRect.bottom;
+            } else {
+                const above = rows[i - 1].getBoundingClientRect();
+                const below = rows[i].getBoundingClientRect();
+                gapY = (above.bottom + below.top) / 2;
+            }
+
+            if (bestY === null || Math.abs(clientY - gapY) < Math.abs(clientY - bestY)) {
+                bestY = gapY;
+                insertBeforeId = i < rows.length ? rows[i].dataset.contactId : null;
+            }
+        }
+
+        const indicatorTop = (bestY - contentRect.top) - 1.5;
+        indicator.style.top = indicatorTop + 'px';
+        indicator.style.display = 'block';
+    }
+
+    function endDrag(cancelled) {
+        cancelHold();
+        stopEdgeScroll();
+        if (!dragActive) return;
+        dragActive = false;
+
+        if (ghost) { ghost.remove(); ghost = null; }
+        if (indicator) { indicator.remove(); indicator = null; }
+        if (sourceRow) sourceRow.classList.remove('dragging');
+        document.body.classList.remove('drag-sort-active');
+
+        if (!cancelled && sourceRow) {
+            const sourceId = sourceRow.dataset.contactId;
+            // Reorder contactsLoadedRows in memory
+            const srcIndex = contactsLoadedRows.findIndex(r => r.contact.contact_id === sourceId);
+            if (srcIndex !== -1) {
+                const [moved] = contactsLoadedRows.splice(srcIndex, 1);
+                if (insertBeforeId) {
+                    const targetIndex = contactsLoadedRows.findIndex(r => r.contact.contact_id === insertBeforeId);
+                    if (targetIndex !== -1) {
+                        contactsLoadedRows.splice(targetIndex, 0, moved);
+                    } else {
+                        contactsLoadedRows.push(moved);
+                    }
+                } else {
+                    contactsLoadedRows.push(moved);
+                }
+            }
+            // Persist new custom order
+            saveCustomOrder(contactsLoadedRows.map(r => r.contact.contact_id));
+
+            // Signal to suppress the next click event on any row
+            _dragJustEnded = true;
+            setTimeout(() => { _dragJustEnded = false; }, 100);
+
+            renderContactsForCurrentQuery();
+        }
+
+        sourceRow = null;
+        insertBeforeId = null;
+    }
+
+    // --- Event listeners ---
+
+    content.addEventListener('pointerdown', (e) => {
+        const row = e.target.closest('.contact-row');
+        if (!row) return;
+        // Don't initiate drag from interactive elements
+        if (e.target.closest('button, input, a, .selfies-strip-container')) return;
+
+        pointerStartX = e.clientX;
+        pointerStartY = e.clientY;
+
+        holdTimer = setTimeout(() => {
+            holdTimer = null;
+            const contactId = row.dataset.contactId;
+
+            // Switch to Custom before drag begins so the list re-renders into custom order
+            // first — the user can then see exactly where they're placing the card.
+            if (contactsSortMode !== 'custom') {
+                const prevSortedIds = sortContactRows(contactsLoadedRows).map(r => r.contact.contact_id);
+                contactsSortMode = 'custom';
+                updateSortLabel();
+                const stored = loadCustomOrder();
+                const storedSet = new Set(stored);
+                const newIds = prevSortedIds.filter(id => !storedSet.has(id));
+                saveCustomOrder([...stored.filter(id => prevSortedIds.includes(id)), ...newIds]);
+                renderContactsForCurrentQuery();
+            }
+
+            // After a possible re-render the original `row` reference may be stale; re-find it.
+            const targetRow = content.querySelector(`.contact-row[data-contact-id="${CSS.escape(contactId)}"]`);
+            if (!targetRow) return;
+
+            // If the list re-rendered, the card may now be at a different scroll position.
+            // Scroll the page so the card sits under the cursor before we lock in ghostOffsetY.
+            const targetRect = targetRow.getBoundingClientRect();
+            const HOLD_POINT = 25; // natural hold point: ~25px from top of card header
+            window.scrollBy(0, targetRect.top - e.clientY + HOLD_POINT);
+
+            targetRow.setPointerCapture(e.pointerId);
+            startDrag(targetRow, e.clientX, e.clientY);
+        }, HOLD_MS);
+    });
+
+    content.addEventListener('pointermove', (e) => {
+        if (!dragActive) {
+            // Cancel hold if pointer moved too far
+            if (holdTimer !== null) {
+                const dx = e.clientX - pointerStartX;
+                const dy = e.clientY - pointerStartY;
+                if (Math.hypot(dx, dy) > MOVE_THRESHOLD) cancelHold();
+            }
+            return;
+        }
+        moveGhostTo(e.clientY);
+        updateIndicator(e.clientY);
+        scheduleEdgeScroll(e.clientY);
+    });
+
+    content.addEventListener('pointerup', (e) => {
+        cancelHold();
+        if (dragActive) endDrag(false);
+    });
+
+    content.addEventListener('pointercancel', (e) => {
+        cancelHold();
+        if (dragActive) endDrag(true);
+    });
 }
 
 function renderContactRow(contact, profile, shared) {

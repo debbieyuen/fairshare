@@ -1596,6 +1596,38 @@ body {
     scroll-margin-top: 70px;
 }
 .contact-row:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+.contact-row.dragging {
+    opacity: 0.35;
+    pointer-events: none;
+    box-shadow: none;
+}
+.contact-drag-ghost {
+    position: fixed;
+    z-index: 9999;
+    pointer-events: none;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.22);
+    border-radius: 10px;
+    background: var(--card-bg, #fff);
+    opacity: 0.96;
+    transform: scale(1.03);
+    transition: none;
+    overflow: hidden;
+    /* collapsed to header height only */
+    max-height: 70px;
+}
+.contact-drag-ghost .contact-detail { display: none !important; }
+.contact-drag-indicator {
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--primary-color, #3a7ca5);
+    pointer-events: none;
+    z-index: 100;
+    display: none;
+}
+body.drag-sort-active * { user-select: none; }
 .contact-row-header {
     display: flex;
     align-items: center;
