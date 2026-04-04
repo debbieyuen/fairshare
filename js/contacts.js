@@ -667,6 +667,8 @@ function bindContactDragSort(content) {
     let lastPointerY = 0;
     let scrollRAF = null;
 
+    function _preventTouchScroll(e) { e.preventDefault(); }
+
     function cancelHold() {
         if (holdTimer !== null) { clearTimeout(holdTimer); holdTimer = null; }
     }
@@ -709,6 +711,13 @@ function bindContactDragSort(content) {
 
         // iOS may have selected text during the hold period; clear it before drag begins.
         window.getSelection()?.removeAllRanges();
+
+        // On iOS, pointer events fire pointercancel as soon as the finger moves even a
+        // little, because the browser interprets movement as a scroll gesture and takes
+        // over the touch.  The only reliable way to stop this mid-gesture is a
+        // non-passive touchmove listener that calls preventDefault(), which tells the
+        // browser "this touch is mine, don't scroll."
+        document.addEventListener('touchmove', _preventTouchScroll, { passive: false });
 
         // Ghost clone
         const rect = row.getBoundingClientRect();
@@ -783,6 +792,7 @@ function bindContactDragSort(content) {
     function endDrag(cancelled) {
         cancelHold();
         stopEdgeScroll();
+        document.removeEventListener('touchmove', _preventTouchScroll);
         if (!dragActive) return;
         dragActive = false;
 
