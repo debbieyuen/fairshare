@@ -63,6 +63,7 @@ function bindContactsSortButton() {
         else if (contactsSortMode === 'age') contactsSortMode = 'custom';
         else contactsSortMode = 'recent';
         updateSortLabel();
+        scheduleSortPrefsSave();
         renderContactsForCurrentQuery();
     });
     btn.dataset.bound = '1';
@@ -92,6 +93,39 @@ function saveCustomOrder(ids) {
     try {
         localStorage.setItem(getCustomOrderKey(), JSON.stringify(ids));
     } catch (_) { /* storage full or unavailable */ }
+    scheduleSortPrefsSave();
+}
+
+let _sortSaveTimer = null;
+function scheduleSortPrefsSave() {
+    if (_sortSaveTimer) clearTimeout(_sortSaveTimer);
+    _sortSaveTimer = setTimeout(async () => {
+        _sortSaveTimer = null;
+        if (!currentUser) return;
+        const order = contactsSortMode === 'custom' ? loadCustomOrder() : null;
+        try {
+            await db.from('profiles')
+                .update({ contacts_sort_mode: contactsSortMode, contacts_sort_order: order })
+                .eq('id', currentUser.id);
+        } catch (e) {
+            console.error('Failed to save sort preferences:', e);
+        }
+    }, 1500);
+}
+
+function initContactsSortPrefs() {
+    if (!currentProfile) return;
+    const mode = currentProfile.contacts_sort_mode;
+    if (mode === 'recent' || mode === 'age' || mode === 'custom') {
+        contactsSortMode = mode;
+    }
+    // Seed localStorage from DB value so the order is available instantly on next render
+    if (mode === 'custom' && Array.isArray(currentProfile.contacts_sort_order)) {
+        try {
+            localStorage.setItem(getCustomOrderKey(), JSON.stringify(currentProfile.contacts_sort_order));
+        } catch (_) { /* storage full */ }
+    }
+    updateSortLabel();
 }
 
 function sortContactRows(rows) {
@@ -810,6 +844,7 @@ function bindContactDragSort(content) {
                 const storedSet = new Set(stored);
                 const newIds = prevSortedIds.filter(id => !storedSet.has(id));
                 saveCustomOrder([...stored.filter(id => prevSortedIds.includes(id)), ...newIds]);
+                scheduleSortPrefsSave();
                 renderContactsForCurrentQuery();
             }
 
