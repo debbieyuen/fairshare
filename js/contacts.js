@@ -707,6 +707,9 @@ function bindContactDragSort(content) {
         dragActive = true;
         sourceRow = row;
 
+        // iOS may have selected text during the hold period; clear it before drag begins.
+        window.getSelection()?.removeAllRanges();
+
         // Ghost clone
         const rect = row.getBoundingClientRect();
         ghost = row.cloneNode(true);

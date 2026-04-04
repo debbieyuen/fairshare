@@ -1594,8 +1594,6 @@ body {
     cursor: pointer;
     transition: var(--transition);
     scroll-margin-top: 70px;
-    user-select: none;
-    -webkit-user-select: none;
 }
 .contact-row:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
 .contact-row.dragging {
