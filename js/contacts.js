@@ -651,7 +651,7 @@ function bindContactDragSort(content) {
     content.dataset.dragBound = '1';
 
     const HOLD_MS = 500;
-    const MOVE_THRESHOLD = 8;
+    const MOVE_THRESHOLD = 12;
     const SCROLL_ZONE = 80;   // px from viewport edge to trigger scroll
     const SCROLL_MAX = 18;    // max px per frame
 
