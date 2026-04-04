@@ -790,23 +790,21 @@ function bindContactDragSort(content) {
 
         if (!cancelled && sourceRow) {
             const sourceId = sourceRow.dataset.contactId;
-            // Reorder contactsLoadedRows in memory
-            const srcIndex = contactsLoadedRows.findIndex(r => r.contact.contact_id === sourceId);
+
+            // Compute the new order from the DISPLAYED custom order, not from
+            // contactsLoadedRows (which is in DB met_at order, not custom order).
+            const displayedIds = sortContactRows(contactsLoadedRows).map(r => r.contact.contact_id);
+            const srcIndex = displayedIds.indexOf(sourceId);
             if (srcIndex !== -1) {
-                const [moved] = contactsLoadedRows.splice(srcIndex, 1);
+                displayedIds.splice(srcIndex, 1);
                 if (insertBeforeId) {
-                    const targetIndex = contactsLoadedRows.findIndex(r => r.contact.contact_id === insertBeforeId);
-                    if (targetIndex !== -1) {
-                        contactsLoadedRows.splice(targetIndex, 0, moved);
-                    } else {
-                        contactsLoadedRows.push(moved);
-                    }
+                    const targetIndex = displayedIds.indexOf(insertBeforeId);
+                    displayedIds.splice(targetIndex !== -1 ? targetIndex : displayedIds.length, 0, sourceId);
                 } else {
-                    contactsLoadedRows.push(moved);
+                    displayedIds.push(sourceId);
                 }
             }
-            // Persist new custom order
-            saveCustomOrder(contactsLoadedRows.map(r => r.contact.contact_id));
+            saveCustomOrder(displayedIds);
 
             // Signal to suppress the next click event on any row
             _dragJustEnded = true;
