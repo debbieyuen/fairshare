@@ -8,6 +8,7 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 function canUsePush() {
+    if (IS_NATIVE) return false; // Web Push not available inside native shell; APNs TBD
     const isWebProtocol = window.location.protocol === 'http:' || window.location.protocol === 'https:';
     return isWebProtocol && window.isSecureContext && ('serviceWorker' in navigator) && ('PushManager' in window);
 }

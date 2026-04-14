@@ -1,0 +1,18 @@
+{
+  "name": "union",
+  "version": "1.0.0",
+  "description": "Find the others — create groups with their own currencies",
+  "private": true,
+  "scripts": {
+    "dev": "npx http-server . -p 3000 -c-1",
+    "build": "rsync -a --delete --exclude node_modules --exclude ios --exclude www --exclude .git --exclude .github --exclude .cursor --exclude docs --exclude sql --exclude supabase --exclude package.json --exclude package-lock.json --exclude capacitor.config.json --exclude CNAME --exclude README.md . www/",
+    "cap:sync": "npm run build && npx cap sync ios"
+  },
+  "keywords": [],
+  "license": "ISC",
+  "dependencies": {
+    "@capacitor/cli": "^6.2.1",
+    "@capacitor/core": "^6.2.1",
+    "@capacitor/ios": "^6.2.1"
+  }
+}

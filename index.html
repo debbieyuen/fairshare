@@ -5,7 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script>
     // Camera (getUserMedia) requires a secure context — redirect HTTP → HTTPS
-    if (location.protocol === 'http:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+    // Skip in Capacitor native shell (loads from capacitor://localhost)
+    if (!window.Capacitor?.isNativePlatform()
+        && location.protocol === 'http:'
+        && location.hostname !== 'localhost'
+        && location.hostname !== '127.0.0.1') {
         location.replace('https://' + location.host + location.pathname + location.search + location.hash);
     }
     </script>
@@ -306,9 +310,9 @@
 <script src="js/init.js"></script>
 <script src="js/boot.js"></script>
 
-<!-- PWA: Register service worker -->
+<!-- PWA: Register service worker (skipped inside Capacitor native shell) -->
 <script>
-if ('serviceWorker' in navigator) {
+if (!window.Capacitor?.isNativePlatform() && 'serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js')
         .then(reg => console.log(APP_NAME + ' SW registered, scope:', reg.scope))
         .catch(err => console.error(APP_NAME + ' SW registration failed:', err));
