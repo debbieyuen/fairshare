@@ -203,6 +203,49 @@ BEGIN
 END;
 $$;
 
+-- Return mutual contacts between caller and p_contact_id (id + display_name).
+CREATE OR REPLACE FUNCTION public.get_shared_contacts(p_contact_id uuid)
+RETURNS TABLE (
+  id uuid,
+  display_name text
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_caller_id uuid := auth.uid();
+BEGIN
+  IF v_caller_id IS NULL THEN
+    RAISE EXCEPTION 'You must be logged in';
+  END IF;
+
+  IF p_contact_id IS NULL THEN
+    RAISE EXCEPTION 'Contact is required';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.contacts
+    WHERE user_id = v_caller_id
+      AND contact_id = p_contact_id
+  ) THEN
+    RAISE EXCEPTION 'You can only view shared trust for your contacts';
+  END IF;
+
+  RETURN QUERY
+  SELECT DISTINCT p.id, p.display_name
+  FROM public.contacts c1
+  JOIN public.contacts c2
+    ON c1.contact_id = c2.contact_id
+  JOIN public.profiles p
+    ON p.id = c1.contact_id
+  WHERE c1.user_id = v_caller_id
+    AND c2.user_id = p_contact_id
+    AND c1.contact_id NOT IN (v_caller_id, p_contact_id)
+  ORDER BY p.display_name;
+END;
+$$;
+
 -- List groups where both caller and p_contact_id are active members.
 CREATE OR REPLACE FUNCTION public.get_shared_groups(p_contact_id uuid)
 RETURNS TABLE (

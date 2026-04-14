@@ -106,6 +106,7 @@ async function showApp(navigateToGroupId) {
     document.getElementById('appScreen').classList.remove('hidden');
     document.getElementById('userDisplay').textContent = currentProfile?.display_name || currentUser.email;
     setHeaderAvatar(currentProfile?.profile_image_url || null);
+    initContactsSortPrefs();
     subscribeToContactShares();
     subscribeToContactEvents();
     subscribeToContactNotifications();
