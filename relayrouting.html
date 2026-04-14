@@ -93,6 +93,11 @@ canvas{display:block;position:fixed;top:0;left:0;cursor:crosshair}
   <hr class="sep">
   <label class="chk"><input type="checkbox" id="cConns">Show connections</label>
   <label class="chk"><input type="checkbox" id="cOneAt">One at a time</label>
+  <div class="row" style="align-items:center;gap:6px">
+    <label class="chk" style="flex:1"><input type="checkbox" id="cOneRoute">One route only</label>
+    <button id="btnOneRouteStep" style="display:none" title="Send a message on the fixed route">Send</button>
+  </div>
+  <div id="oneRouteInfo" style="display:none;font-size:10px;color:#aaa;margin-top:2px"></div>
   <hr class="sep">
   <h3>Learning</h3>
   <div class="row"><span>Receivers</span><input type="number" id="cReceivers" value="10" min="1" max="100"></div>
@@ -145,6 +150,7 @@ const cfg = {
   learnRate: 0.2,
   decayRate: 0.001,
   showRoutes: false,
+  oneRouteOnly: false,
 };
 
 // ──────────────────────────────────────────────
@@ -305,6 +311,8 @@ const TRAIL_LIFE = 18;
 const targetMarks = new Map(); // msgId -> { nodeId, hue }
 let soloMsg = null; // { id, createdTick } when oneAtATime is active
 let acks = []; // { channel, path, hopIndex, hue }
+let oneRouteFrom = null; // fixed sender node id for "One Route Only"
+let oneRouteTo = null;   // fixed receiver node id for "One Route Only"
 
 // ──────────────────────────────────────────────
 // Init / Reset
@@ -327,6 +335,8 @@ function init() {
   acks = [];
   channelCounter = 0;
   channelHues.clear();
+  oneRouteFrom = null;
+  oneRouteTo = null;
 
   for (let i = 0; i < cfg.nodeCount; i++) {
     const n = new Node(
@@ -482,6 +492,40 @@ function createOneMessage() {
   soloMsg = { id: mid, createdTick: tick };
 }
 
+function createFixedRouteMessage() {
+  if (oneRouteFrom === null || oneRouteTo === null) return;
+  const sender = nodeById[oneRouteFrom];
+  if (!sender) return;
+  const channel = `${oneRouteFrom}>${oneRouteTo}`;
+  const hue = channelHue(channel);
+  const mid = nextMsgId++;
+  const msg = { id: mid, hue, fromId: oneRouteFrom, toId: oneRouteTo, size: cfg.msgSize, createdTick: tick, hops: 0, addedTick: tick, channel, path: [oneRouteFrom] };
+  sender.buffer.set(mid, msg);
+  sender.seenIds.set(mid, tick);
+  sender.senderHue = hue;
+  sender.senderTTL = 20;
+  stats.created++;
+  targetMarks.set(mid, { nodeId: oneRouteTo, hue });
+
+  if (oneRouteFrom === oneRouteTo && !deliveredIds.has(mid)) {
+    sender.highlightHue = hue;
+    sender.highlightTTL = 60;
+    deliveredIds.set(mid, tick);
+    targetMarks.delete(mid);
+    stats.delivered++;
+  }
+}
+
+function pickOneRoute() {
+  const fromIdx = Math.floor(Math.random() * nodes.length);
+  const sender = nodes[fromIdx];
+  if (sender.receivers.length === 0) return;
+  oneRouteFrom = sender.id;
+  oneRouteTo = sender.receivers[Math.floor(Math.random() * sender.receivers.length)];
+  const info = document.getElementById('oneRouteInfo');
+  info.textContent = `Route: node ${oneRouteFrom} → node ${oneRouteTo}`;
+}
+
 // ──────────────────────────────────────────────
 // Simulation Step
 // ──────────────────────────────────────────────
@@ -500,17 +544,18 @@ function step() {
   // Rebuild grid
   grid.rebuild(nodes);
 
-  // Generate messages
-  if (cfg.oneAtATime) {
-    // Wait until previous solo message has fully expired before sending another
-    const canSend = !soloMsg || (tick - soloMsg.createdTick > cfg.ttl);
-    if (canSend) {
-      soloMsg = null;
-      createOneMessage();
-    }
-  } else {
-    for (const n of nodes) {
-      if (Math.random() < cfg.msgChance) createMessageFrom(n);
+  // Generate messages (suppressed entirely when oneRouteOnly — use the Send button)
+  if (!cfg.oneRouteOnly) {
+    if (cfg.oneAtATime) {
+      const canSend = !soloMsg || (tick - soloMsg.createdTick > cfg.ttl);
+      if (canSend) {
+        soloMsg = null;
+        createOneMessage();
+      }
+    } else {
+      for (const n of nodes) {
+        if (Math.random() < cfg.msgChance) createMessageFrom(n);
+      }
     }
   }
 
@@ -848,8 +893,10 @@ function setupControls() {
     cfg.learnRate = parseFloat(el('cLearnRate').value);
     cfg.useWeights = el('cWeights').checked;
     cfg.showRoutes = el('cShowRoutes').checked;
+    cfg.oneRouteOnly = el('cOneRoute').checked;
     tickAccum = 0;
     init();
+    if (cfg.oneRouteOnly) pickOneRoute();
     updateStats();
   });
 
@@ -888,6 +935,27 @@ function setupControls() {
 
   el('cShowRoutes').addEventListener('change', function() {
     cfg.showRoutes = this.checked;
+  });
+
+  const oneRouteBtn = el('btnOneRouteStep');
+  const oneRouteInfo = el('oneRouteInfo');
+  el('cOneRoute').addEventListener('change', function() {
+    cfg.oneRouteOnly = this.checked;
+    oneRouteBtn.style.display = this.checked ? '' : 'none';
+    oneRouteInfo.style.display = this.checked ? '' : 'none';
+    if (this.checked) {
+      pickOneRoute();
+    } else {
+      oneRouteFrom = null;
+      oneRouteTo = null;
+      oneRouteInfo.textContent = '';
+    }
+  });
+
+  oneRouteBtn.addEventListener('click', () => {
+    createFixedRouteMessage();
+    render();
+    updateStats();
   });
 }
 
