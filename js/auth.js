@@ -305,31 +305,7 @@ async function fetchAndShowSuggestedPicture() {
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', (event) => {
         if (event.data?.type === 'notification-click') {
-            const params = new URLSearchParams(event.data.search);
-            if (params.get('action') === 'suggested_picture') {
-                fetchAndShowSuggestedPicture();
-            }
-            const groupId = params.get('group');
-            if (groupId) {
-                const tab = params.get('tab');
-                if (tab) activeTab = tab;
-                navigateTo('groups');
-                const membership = myGroups.find(m => m.group_id === groupId);
-                if (membership) {
-                    selectGroup(membership.groups, membership);
-                } else {
-                    loadMyGroups(groupId);
-                }
-            } else {
-                // Non-group notification (e.g. new selfie, met-date): bust the
-                // selfie cache so the next contact expand always fetches fresh
-                // rows, and immediately refresh any strip that is already open.
-                Object.keys(contactSelfiesCache).forEach(k => delete contactSelfiesCache[k]);
-                const expandedRow = document.querySelector('.contact-row.expanded');
-                if (expandedRow?.dataset?.contactId) {
-                    reloadContactSelfiesStrip(expandedRow.dataset.contactId);
-                }
-            }
+            handleNotificationNavigation('/' + (event.data.search || ''));
         }
     });
 }
