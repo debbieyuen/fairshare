@@ -332,8 +332,6 @@ async function loadContactLocations() {
     }
 }
 
-let _contactMapCounter = 0;
-
 function renderContactLocationMap(contactId) {
     const loc = contactLocationsCache[contactId];
     if (!loc) return;
@@ -342,15 +340,17 @@ function renderContactLocationMap(contactId) {
     if (!el || el.dataset.rendered) return;
     el.dataset.rendered = '1';
 
-    const distEl = document.getElementById('contact-loc-dist-' + contactId);
-    if (distEl) {
-        getGPSLocation().then(myPos => {
-            if (myPos) {
-                const miles = haversineDistance(myPos.lat, myPos.lng, loc.lat, loc.lng);
-                distEl.textContent = formatDistance(miles);
-            }
-        });
-    }
+    try {
+        const distEl = document.getElementById('contact-loc-dist-' + contactId);
+        if (distEl) {
+            getGPSLocation().then(myPos => {
+                if (myPos) {
+                    const miles = haversineDistance(myPos.lat, myPos.lng, loc.lat, loc.lng);
+                    distEl.textContent = formatDistance(miles);
+                }
+            }).catch(() => {});
+        }
+    } catch (e) { /* distance calc is non-critical */ }
 
     requestAnimationFrame(() => {
         const target = document.getElementById(mapElId);
@@ -372,7 +372,8 @@ function renderContactLocationMap(contactId) {
         }).addTo(miniMap);
 
         L.marker([loc.lat, loc.lng]).addTo(miniMap);
-        setTimeout(() => miniMap.invalidateSize(), 200);
+        setTimeout(() => miniMap.invalidateSize(), 100);
+        setTimeout(() => miniMap.invalidateSize(), 400);
     });
 }
 

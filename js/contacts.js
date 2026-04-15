@@ -1567,13 +1567,7 @@ async function captureContactSelfie() {
     closeContactSelfieModal();
 }
 
-function getGPSLocation() {
-    if (IS_NATIVE) {
-        if (nativeLocationLastPosition) return Promise.resolve(nativeLocationLastPosition);
-        return Capacitor.Plugins.BackgroundLocation.getCurrentPosition()
-            .then(pos => ({ lat: pos.lat, lng: pos.lng }))
-            .catch(() => null);
-    }
+function _getGPSLocationBrowser() {
     return new Promise(resolve => {
         if (!('geolocation' in navigator)) { resolve(null); return; }
         navigator.geolocation.getCurrentPosition(
@@ -1582,6 +1576,20 @@ function getGPSLocation() {
             { enableHighAccuracy: true, timeout: 6000, maximumAge: 60000 }
         );
     });
+}
+
+function getGPSLocation() {
+    if (IS_NATIVE) {
+        if (nativeLocationLastPosition) return Promise.resolve(nativeLocationLastPosition);
+        try {
+            return Capacitor.Plugins.BackgroundLocation.getCurrentPosition()
+                .then(pos => ({ lat: pos.lat, lng: pos.lng }))
+                .catch(() => _getGPSLocationBrowser());
+        } catch (e) {
+            return _getGPSLocationBrowser();
+        }
+    }
+    return _getGPSLocationBrowser();
 }
 
 async function reverseGeocode(lat, lng) {

@@ -1977,6 +1977,11 @@ body.drag-sort-active * { user-select: none; -webkit-user-select: none; }
     border-radius: 8px;
     overflow: hidden;
     background: var(--medium-gray);
+    isolation: isolate;
+}
+.contact-location-mini-map .leaflet-container {
+    width: 100% !important;
+    height: 100% !important;
 }
 .contact-location-mini-distance {
     font-size: 0.72rem;
