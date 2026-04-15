@@ -3,7 +3,6 @@
   "appName": "Union",
   "webDir": "www",
   "ios": {
-    "contentInset": "always",
     "backgroundColor": "#3a7ca5"
   },
   "plugins": {
