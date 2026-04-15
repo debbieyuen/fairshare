@@ -6,7 +6,7 @@ function hasAnyNearbyContacts() {
 
 function startNearbyTracking() {
     if (nearbyTrackingInterval) return;
-    if (!('geolocation' in navigator)) return;
+    if (!IS_NATIVE && !('geolocation' in navigator)) return;
     nearbyTrackingActive = true;
     sendLocationUpdate();
     nearbyTrackingInterval = setInterval(sendLocationUpdate, NEARBY_POLL_INTERVAL_MS);

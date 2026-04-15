@@ -67,6 +67,9 @@ async function logout() {
     }
     // Stop nearby location tracking
     stopNearbyTracking();
+    // Stop location sharing updates
+    stopLocationSharingUpdates();
+    unsubscribeFromLocationShares();
     // Reset client state
     selectedGroup = null;
     myGroups = [];
@@ -142,6 +145,8 @@ async function showApp(navigateToGroupId) {
     await checkPendingGroupInvitations();
     await checkPendingSuggestedPictures();
     checkAndStartNearbyTracking();
+    checkAndStartLocationSharing();
+    subscribeToLocationShares();
 }
 
 function subscribeToContactShares() {
@@ -201,6 +206,9 @@ function subscribeToContactNotifications() {
                 const metDate = payload.new?.data?.met_date;
                 if (fromId && metDate) updateContactMetDate(fromId, metDate);
             } else if (payload.new?.notification_type === 'nearby_alert') {
+                const msg = payload.new?.message;
+                if (msg) showToast(msg, 'success');
+            } else if (payload.new?.notification_type === 'location_share_started') {
                 const msg = payload.new?.message;
                 if (msg) showToast(msg, 'success');
             } else if (payload.new?.notification_type === 'new_selfie') {

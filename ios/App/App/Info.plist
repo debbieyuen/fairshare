@@ -48,6 +48,12 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Union uses your camera to scan QR codes and take selfies with contacts.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Union uses your location to find nearby members.</string>
+	<string>Union uses your location to find nearby members and share your location with contacts.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Union uses your location in the background to keep sharing your location with contacts you choose.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 </dict>
 </plist>

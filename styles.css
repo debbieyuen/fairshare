@@ -70,10 +70,12 @@ body {
     opacity: 0.9;
     cursor: pointer;
     white-space: nowrap;
-    flex: 1;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: calc(100% - 160px);
     overflow: hidden;
     text-overflow: ellipsis;
-    min-width: 0;
     text-align: center;
 }
 .header .user-name:hover { opacity: 1; }
@@ -1932,6 +1934,98 @@ body.drag-sort-active * { user-select: none; -webkit-user-select: none; }
     height: 1rem;
     accent-color: var(--primary-color);
     cursor: pointer;
+}
+.contact-detail-share-location {
+    padding: 0.4rem 0;
+    display: flex;
+    align-items: center;
+}
+.contact-share-location-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.85rem;
+    color: var(--dark-gray);
+    cursor: pointer;
+    user-select: none;
+}
+.contact-share-location-checkbox {
+    width: 1rem;
+    height: 1rem;
+    accent-color: var(--primary-color);
+    cursor: pointer;
+}
+.contact-share-location-remaining {
+    display: inline-block;
+    margin-left: 0.5rem;
+    font-size: 0.78rem;
+    color: var(--dark-gray);
+    opacity: 0.85;
+}
+.contact-location-mini {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    cursor: pointer;
+}
+.contact-location-mini-map {
+    width: 100%;
+    height: 90px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--medium-gray);
+}
+.contact-location-mini-distance {
+    font-size: 0.72rem;
+    color: var(--dark-gray);
+    text-align: center;
+    white-space: nowrap;
+}
+.contact-location-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    background: rgba(0,0,0,0.92);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+}
+.contact-location-fullscreen.active {
+    opacity: 1;
+    pointer-events: all;
+}
+.contact-location-fullscreen-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    z-index: 10;
+    background: rgba(0,0,0,0.5);
+    color: #fff;
+    border: none;
+    border-radius: 50%;
+    width: 2.2rem;
+    height: 2.2rem;
+    font-size: 1.1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.contact-location-fullscreen-close:hover {
+    background: rgba(255,255,255,0.3);
+}
+.contact-location-fullscreen-map {
+    width: 92vw;
+    height: 80vh;
+    max-width: 700px;
+    border-radius: 12px;
+    overflow: hidden;
 }
 .contact-detail-selfies-section {
     margin-top: 0.9rem;

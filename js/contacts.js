@@ -189,6 +189,7 @@ function expandContactRow(contactId) {
     loadFamilyTree(contactId);
     loadMutualContacts(contactId);
     reloadContactSelfiesStrip(contactId);
+    renderContactLocationMap(contactId);
     requestAnimationFrame(() => row.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     return true;
 }
@@ -367,7 +368,7 @@ function bindContactRowEvents(content) {
     content.querySelectorAll('.contact-row').forEach((row) => {
         row.addEventListener('click', (e) => {
             if (_dragJustEnded) return;
-            if (e.target.closest('.contact-detail-actions') || e.target.closest('.selfies-strip-container') || e.target.closest('.contact-detail-profile-media') || e.target.closest('.contact-detail-met-on') || e.target.closest('.contact-detail-nearby') || e.target.closest('input') || e.target.closest('button')) return;
+            if (e.target.closest('.contact-detail-actions') || e.target.closest('.selfies-strip-container') || e.target.closest('.contact-detail-profile-media') || e.target.closest('.contact-detail-met-on') || e.target.closest('.contact-detail-nearby') || e.target.closest('.contact-detail-share-location') || e.target.closest('.contact-location-mini') || e.target.closest('input') || e.target.closest('button')) return;
             const wasExpanded = row.classList.contains('expanded');
             if (wasExpanded) {
                 row.classList.remove('expanded');
@@ -386,6 +387,7 @@ function bindContactRowEvents(content) {
                 loadMutualContacts(cid);
                 reloadContactSelfiesStrip(cid);
                 loadContactSponsor(cid);
+                renderContactLocationMap(cid);
             }
         });
     });
@@ -526,6 +528,9 @@ async function loadAndRenderContactList() {
             const { data: sharedRows } = await db.from('contact_shared').select('user_id, shared_phone, shared_email').eq('contact_id', currentUser.id).in('user_id', contactIds);
             if (sharedRows) sharedRows.forEach(r => { sharedByThemMap[r.user_id] = r; });
         } catch (_) { /* contact_shared table may not exist yet */ }
+
+        try { await loadLocationShares(); } catch (_) { /* location_shares table may not exist yet */ }
+        try { await loadContactLocations(); } catch (_) { /* user_locations may not exist yet */ }
 
         contactsLoadedRows = contacts.map((contact) => ({
             contact,
@@ -922,8 +927,13 @@ function renderContactRow(contact, profile, shared) {
                onclick="event.stopPropagation(); openLightbox('${esc(avatarUrl)}')">`
         : `<div class="contact-detail-profile-placeholder" style="cursor:pointer"
                onclick="event.stopPropagation(); openSuggestPicture('${cid}')">👤</div>`;
-    const sharedIconHtml = (hasSharedPhone || hasSharedEmail)
+    const contactLoc = contactLocationsCache[contact.contact_id];
+    const isInboundShare = !!locationSharesInbound[contact.contact_id];
+    const hasLocationShare = !!(isInboundShare || locationSharesOutbound[contact.contact_id]);
+    const hasAnyIcon = hasSharedPhone || hasSharedEmail || hasLocationShare;
+    const sharedIconHtml = hasAnyIcon
         ? `<span class="contact-row-shared-icons" aria-label="Contact details shared with you">
+                ${hasLocationShare ? '<span class="contact-row-shared-icon" title="Location shared">📍</span>' : ''}
                 ${hasSharedPhone ? '<span class="contact-row-shared-icon" title="Phone shared">📞</span>' : ''}
                 ${hasSharedEmail ? '<span class="contact-row-shared-icon contact-row-shared-icon-email" title="Email shared">✉</span>' : ''}
             </span>`
@@ -948,6 +958,10 @@ function renderContactRow(contact, profile, shared) {
                         <div class="contact-detail-profile-media">${largeAvatarHtml}</div>
                         <button type="button" class="btn btn-small btn-suggest-picture" onclick="event.stopPropagation(); openSuggestPicture('${cid}')">Suggest new picture</button>
                     </div>
+                    ${isInboundShare && contactLoc ? `<div class="contact-location-mini" onclick="event.stopPropagation(); openContactLocationFullscreen('${cid}', '${esc(name)}')">
+                        <div class="contact-location-mini-map" id="contact-loc-map-${cid}"></div>
+                        <div class="contact-location-mini-distance" id="contact-loc-dist-${cid}"></div>
+                    </div>` : ''}
                     <div class="contact-detail-top-actions">
                         <button type="button" class="btn btn-small btn-vouch-with-contact" data-contact-id="${cid}" data-contact-name="${esc(name)}">Vouch</button>
                         <button type="button" class="btn btn-primary btn-small btn-share-with-contact" data-contact-id="${cid}" data-contact-name="${esc(name)}">Share</button>
@@ -982,6 +996,17 @@ function renderContactRow(contact, profile, shared) {
                                onchange="event.stopPropagation(); toggleNotifyNearby('${cid}', this.checked)">
                         Notify if nearby
                     </label>
+                </div>
+                <div class="contact-detail-share-location">
+                    <label class="contact-share-location-label">
+                        <input type="checkbox" class="contact-share-location-checkbox"
+                               data-contact-id="${cid}"
+                               ${locationSharesOutbound[contact.contact_id] ? 'checked' : ''}
+                               onchange="event.stopPropagation(); toggleShareLocation('${cid}', this.checked)">
+                        Share My Location
+                    </label>
+                    <span class="contact-share-location-remaining" id="share-loc-remaining-${cid}"
+                          ${locationSharesOutbound[contact.contact_id] && formatLocationShareRemaining(locationSharesOutbound[contact.contact_id].expires_at) ? '' : 'style="display:none"'}>${locationSharesOutbound[contact.contact_id] ? formatLocationShareRemaining(locationSharesOutbound[contact.contact_id].expires_at) : ''}</span>
                 </div>
                 <div class="contact-shared-trust" id="shared-${cid}">
                     <div class="contact-shared-title">Trust</div>
@@ -1543,6 +1568,12 @@ async function captureContactSelfie() {
 }
 
 function getGPSLocation() {
+    if (IS_NATIVE) {
+        if (nativeLocationLastPosition) return Promise.resolve(nativeLocationLastPosition);
+        return Capacitor.Plugins.BackgroundLocation.getCurrentPosition()
+            .then(pos => ({ lat: pos.lat, lng: pos.lng }))
+            .catch(() => null);
+    }
     return new Promise(resolve => {
         if (!('geolocation' in navigator)) { resolve(null); return; }
         navigator.geolocation.getCurrentPosition(

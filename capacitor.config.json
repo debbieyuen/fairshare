@@ -1,5 +1,9 @@
 {
   "appId": "social.fairshare.union",
   "appName": "Union",
-  "webDir": "www"
+  "webDir": "www",
+  "ios": {
+    "contentInset": "always",
+    "backgroundColor": "#3a7ca5"
+  }
 }

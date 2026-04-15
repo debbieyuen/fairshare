@@ -140,17 +140,19 @@ function openMapPicker() {
         });
     }
 
-    if ('geolocation' in navigator) {
-        navigator.geolocation.getCurrentPosition(
-            function (pos) {
-                initMapAt(pos.coords.latitude, pos.coords.longitude);
-            },
-            function () {
+    function initMapWithGPS() {
+        getGPSLocation().then(function (pos) {
+            if (pos) {
+                initMapAt(pos.lat, pos.lng);
+            } else {
                 showToast('Could not get GPS location — place the marker manually', 'error');
                 initMapAt(0, 0);
-            },
-            { enableHighAccuracy: true, timeout: 10000 }
-        );
+            }
+        });
+    }
+
+    if (IS_NATIVE || 'geolocation' in navigator) {
+        initMapWithGPS();
     } else {
         showToast('Geolocation not available', 'error');
         initMapAt(0, 0);
