@@ -1276,6 +1276,24 @@ body {
 
 .hidden { display: none !important; }
 
+/* Loading screen — shown briefly while auth state resolves */
+.loading-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--primary-color);
+}
+.loading-screen-content { text-align: center; }
+.loading-screen-title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 0.02em;
+}
+
 /* Meet / QR contact exchange overlay */
 .meet-overlay {
     position: fixed;

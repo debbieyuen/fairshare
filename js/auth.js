@@ -96,6 +96,8 @@ async function logout() {
 }
 
 function showAuth() {
+    const loadingScreen = document.getElementById('loadingScreen');
+    if (loadingScreen) loadingScreen.classList.add('hidden');
     document.getElementById('authScreen').classList.remove('hidden');
     document.getElementById('appScreen').classList.add('hidden');
     const installHintFloater = document.getElementById('installHintFloater');
@@ -105,17 +107,13 @@ function showAuth() {
 }
 
 async function showApp(navigateToGroupId) {
+    const loadingScreen = document.getElementById('loadingScreen');
+    if (loadingScreen) loadingScreen.classList.add('hidden');
     document.getElementById('authScreen').classList.add('hidden');
     document.getElementById('appScreen').classList.remove('hidden');
     document.getElementById('userDisplay').textContent = currentProfile?.display_name || currentUser.email;
     setHeaderAvatar(currentProfile?.profile_image_url || null);
     initContactsSortPrefs();
-    subscribeToContactShares();
-    subscribeToContactEvents();
-    subscribeToContactNotifications();
-    subscribeToGroupInvitations();
-    maybeShowInstallHintFloater();
-    if (currentProfile?.push_notifications !== false) subscribeToPush();
 
     if (!navigateToGroupId) {
         const storedNav = localStorage.getItem('fairshare_notification_nav');
@@ -141,12 +139,22 @@ async function showApp(navigateToGroupId) {
         navigateTo('groups');
     }
 
-    await openPendingContactDetailsIfAny();
-    await checkPendingGroupInvitations();
-    await checkPendingSuggestedPictures();
-    checkAndStartNearbyTracking();
-    checkAndStartLocationSharing();
-    subscribeToLocationShares();
+    // Defer non-critical work until after the first paint so the UI is
+    // interactive as soon as possible.
+    setTimeout(async () => {
+        subscribeToContactShares();
+        subscribeToContactEvents();
+        subscribeToContactNotifications();
+        subscribeToGroupInvitations();
+        maybeShowInstallHintFloater();
+        if (currentProfile?.push_notifications !== false) subscribeToPush();
+        await openPendingContactDetailsIfAny();
+        await checkPendingGroupInvitations();
+        await checkPendingSuggestedPictures();
+        checkAndStartNearbyTracking();
+        checkAndStartLocationSharing();
+        subscribeToLocationShares();
+    }, 0);
 }
 
 function subscribeToContactShares() {

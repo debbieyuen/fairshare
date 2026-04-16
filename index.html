@@ -42,8 +42,15 @@
     </div>
 </div>
 
+<!-- ===== LOADING SCREEN (visible until auth resolves) ===== -->
+<div id="loadingScreen" class="loading-screen">
+    <div class="loading-screen-content">
+        <div class="loading-screen-title">Union</div>
+    </div>
+</div>
+
 <!-- ===== AUTH SCREEN ===== -->
-<div id="authScreen" class="auth-container">
+<div id="authScreen" class="auth-container hidden">
     <h2>Union</h2>
 
     <!-- Invite banner (shown when arriving via invite link) -->
@@ -271,9 +278,9 @@
 
 <!-- ===== EXTERNAL LIBRARIES ===== -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <!-- ===== APP MODULES ===== -->
 <script src="js/config.js"></script>

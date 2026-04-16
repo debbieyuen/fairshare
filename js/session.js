@@ -43,8 +43,13 @@ function getSessionWithTimeout() {
     return new Promise((resolve) => {
         const timer = setTimeout(() => {
             console.error('[session] getSession() hung for ' +
-                GET_SESSION_TIMEOUT_MS + 'ms — Supabase client is stuck, reloading');
-            window.location.reload();
+                GET_SESSION_TIMEOUT_MS + 'ms — Supabase client is stuck');
+            if (IS_NATIVE) {
+                // On native, avoid full WebView reload — fall through as expired
+                resolve({ data: { session: null }, error: new Error('getSession timeout') });
+            } else {
+                window.location.reload();
+            }
         }, GET_SESSION_TIMEOUT_MS);
 
         db.auth.getSession().then(result => {
@@ -70,14 +75,16 @@ document.addEventListener('visibilitychange', async () => {
     const elapsed = Date.now() - _lastActiveAt;
     console.log(`[visibility] Tab resumed after ${Math.round(elapsed / 1000)}s`);
 
-    if (elapsed > SESSION_STALE_MS) {
-        // Been away too long — hard reload lets init() do a clean token refresh
+    if (!IS_NATIVE && elapsed > SESSION_STALE_MS) {
+        // Web only: been away too long — hard reload lets init() do a clean token refresh.
+        // On native iOS the app is suspended by the OS; reloading restarts the
+        // entire WebView which is far more disruptive than a soft recovery.
         console.log(`[visibility] Idle ${Math.round(elapsed / 60000)} min — reloading`);
         window.location.reload();
         return;
     }
 
-    // Short absence — just verify the session and re-subscribe to Realtime
+    // Verify the session and re-subscribe to Realtime
     try {
         const { data: { session } } = await getSessionWithTimeout();
         if (!session) {
@@ -85,13 +92,9 @@ document.addEventListener('visibilitychange', async () => {
             await logout();
         } else {
             currentUser = session.user;
-            // Re-subscribe to realtime in case channels were dropped while backgrounded
             if (selectedGroup) subscribeToGroup(selectedGroup.id);
             subscribeToContactEvents();
-            // Invalidate the selfie cache so the next contact expand always
-            // fetches fresh rows from the DB instead of serving stale data.
             Object.keys(contactSelfiesCache).forEach(k => delete contactSelfiesCache[k]);
-            // If a contact detail is already open, refresh its strip right now.
             const expandedRow = document.querySelector('.contact-row.expanded');
             if (expandedRow?.dataset?.contactId) {
                 reloadContactSelfiesStrip(expandedRow.dataset.contactId);
@@ -107,10 +110,9 @@ document.addEventListener('visibilitychange', async () => {
 // the request will fail and we reload to get a clean start.
 const HEARTBEAT_MS = 5 * 60 * 1000; // 5 minutes
 setInterval(async () => {
-    if (!currentUser) return;  // not logged in, nothing to check
+    if (!currentUser) return;
     console.log('[heartbeat] checking session…');
     try {
-        // Lightweight RPC: select our own profile row (tiny payload, tests auth)
         const { error } = await Promise.race([
             db.from('profiles').select('id').eq('id', currentUser.id).single(),
             new Promise((_, reject) => setTimeout(() =>
@@ -118,13 +120,35 @@ setInterval(async () => {
                 10000))
         ]);
         if (error) {
-            console.warn('[heartbeat] failed — session likely expired, reloading', error);
-            window.location.reload();
+            console.warn('[heartbeat] failed — session likely expired', error);
+            if (IS_NATIVE) {
+                // On native, try refreshing the session before giving up
+                const { data: { session } } = await getSessionWithTimeout();
+                if (!session) {
+                    showToast('Session expired. Please log in again.', 'error');
+                    await logout();
+                } else {
+                    currentUser = session.user;
+                    console.log('[heartbeat] session refreshed OK after DB failure');
+                }
+            } else {
+                window.location.reload();
+            }
         } else {
             console.log('[heartbeat] OK');
         }
     } catch (e) {
-        console.warn('[heartbeat] exception — reloading', e);
-        window.location.reload();
+        console.warn('[heartbeat] exception', e);
+        if (IS_NATIVE) {
+            const { data: { session } } = await getSessionWithTimeout();
+            if (!session) {
+                showToast('Session expired. Please log in again.', 'error');
+                await logout();
+            } else {
+                currentUser = session.user;
+            }
+        } else {
+            window.location.reload();
+        }
     }
 }, HEARTBEAT_MS);

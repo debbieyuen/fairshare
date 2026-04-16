@@ -1,3 +1,15 @@
+// Synchronous peek: does Supabase have a cached session in localStorage?
+function hasStoredSession() {
+    try {
+        const ref = SUPABASE_URL.match(/\/\/([^.]+)\./)?.[1];
+        if (!ref) return false;
+        const raw = localStorage.getItem('sb-' + ref + '-auth-token');
+        if (!raw) return false;
+        const parsed = JSON.parse(raw);
+        return !!(parsed?.access_token || parsed?.currentSession?.access_token);
+    } catch { return false; }
+}
+
 async function init() {
     document.title = APP_NAME;
     const authHeading = document.querySelector('#authScreen h2');
@@ -10,6 +22,15 @@ async function init() {
         showToast('Could not connect to database. Check Supabase config.', 'error');
         showAuth();
         return;
+    }
+
+    // Optimistic startup: if we have a cached session, show the app shell
+    // immediately so the user never sees the login screen flash.
+    const likelyLoggedIn = hasStoredSession();
+    if (likelyLoggedIn) {
+        const loadingScreen = document.getElementById('loadingScreen');
+        if (loadingScreen) loadingScreen.classList.add('hidden');
+        document.getElementById('appScreen').classList.remove('hidden');
     }
 
     // Check for invite token in URL
