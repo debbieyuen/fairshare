@@ -57,7 +57,7 @@ create table public.groups (
   logo_url text,
   logo_updated_at timestamptz, -- bumps when logo changes; client uses for image cache-busting
   currency_name text not null,
-  currency_symbol text not null default '$',
+  currency_symbol text not null default 'C',
   fee_rate numeric not null default 0,        -- current voted fee rate (0-1)
   daily_income numeric not null default 0,    -- current voted daily income amount
   constitution text,                          -- group constitution with tagged variables

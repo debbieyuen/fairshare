@@ -13,15 +13,15 @@ function showModal(type) {
                         <input type="text" id="newGroupName" required placeholder="e.g. My Community">
                     </div>
                     <div class="form-group">
-                        <label>Currency Name (plural if desired, e.g. "dollars")</label>
-                        <input type="text" id="newCurrencyName" required placeholder="e.g. dollars, coins, credits">
+                        <label>Currency Name (plural if desired, e.g. "credits")</label>
+                        <input type="text" id="newCurrencyName" required placeholder="e.g. credits, coins, points">
                     </div>
                     <div class="form-group">
                         <label>Currency Symbol</label>
-                        <input type="text" id="newCurrencySymbol" required placeholder="e.g. $, FC, ¢" maxlength="5" value="$">
+                        <input type="text" id="newCurrencySymbol" required placeholder="e.g. C, $, ¢" maxlength="5" value="C">
                     </div>
                     <p style="font-size:0.8rem;color:var(--dark-gray);margin-top:0.5rem;">
-                        Balances display as: <strong>$ 100.00 dollars</strong>
+                        Balances display as: <strong>C 100.00 credits</strong>
                     </p>
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>

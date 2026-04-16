@@ -11,7 +11,7 @@ The constitution is a rich plain text document stored in the `groups.constitutio
 ```
 We, the people, hereby give this Group Name: My Community $GROUP_NAME
 
-In economic matters, we choose the Currency Name: dollars $CURRENCY_NAME, and the Currency Symbol: $ $CURRENCY_SYMBOL, and to Change Currency Rates: 66% $CHANGE_CURRENCY_RATES_PERCENTAGE of member's vote is required.
+In economic matters, we choose the Currency Name: credits $CURRENCY_NAME, and the Currency Symbol: C $CURRENCY_SYMBOL, and to Change Currency Rates: 66% $CHANGE_CURRENCY_RATES_PERCENTAGE of member's vote is required.
 
 To Approve New Member: 100% $NEW_MEMBER_PERCENTAGE of member's vote is required.
 
