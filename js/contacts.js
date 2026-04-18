@@ -178,19 +178,10 @@ function getContactRow(contactId) {
 }
 
 function expandContactRow(contactId) {
-    const content = document.getElementById('contactsListContent');
-    const row = getContactRow(contactId);
-    if (!content || !row) return false;
-    content.querySelectorAll('.contact-row.expanded').forEach((expandedRow) => {
-        if (expandedRow !== row) expandedRow.classList.remove('expanded');
-    });
-    row.classList.add('expanded');
-    loadSharedTrust(contactId);
-    loadFamilyTree(contactId);
-    loadMutualContacts(contactId);
-    reloadContactSelfiesStrip(contactId);
-    renderContactLocationMap(contactId);
-    requestAnimationFrame(() => row.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    // Legacy entry point: now navigates to the dedicated Contact Details screen
+    // instead of inline-expanding the row in the contacts list.
+    if (!contactId) return false;
+    navigateTo('contactDetails', contactId);
     return true;
 }
 
@@ -304,9 +295,14 @@ function ensureLightbox() {
     el.innerHTML = `
         <button class="img-lightbox-close" aria-label="Close">✕</button>
         <img class="img-lightbox-img" id="img-lightbox-img" alt="">
-        <div class="img-lightbox-caption" id="img-lightbox-caption"></div>`;
+        <div class="img-lightbox-caption" id="img-lightbox-caption"></div>
+        <div class="img-lightbox-actions" id="img-lightbox-actions"></div>`;
     el.addEventListener('click', (e) => {
-        if (!e.target.closest('.img-lightbox-img') && !e.target.closest('.img-lightbox-caption')) {
+        if (
+            !e.target.closest('.img-lightbox-img')
+            && !e.target.closest('.img-lightbox-caption')
+            && !e.target.closest('.img-lightbox-actions')
+        ) {
             closeLightbox();
         }
     });
@@ -315,13 +311,42 @@ function ensureLightbox() {
     document.body.appendChild(el);
 }
 
-function openLightbox(url, dateStr, locationStr) {
+// openLightbox(url, dateStr?, locationStr?, actions?)
+//   actions: optional array of { label, onClick, variant? } to render as buttons
+//   under the caption. Used e.g. by Contact Details to surface "Suggest a new
+//   profile picture" when viewing a contact's avatar.
+function openLightbox(url, dateStr, locationStr, actions) {
     ensureLightbox();
     document.getElementById('img-lightbox-img').src = url;
     const cap = document.getElementById('img-lightbox-caption');
     const parts = [dateStr, locationStr].filter(Boolean);
     cap.innerHTML = parts.map(p => `<span>${esc(p)}</span>`).join('<br>');
     cap.style.display = parts.length ? '' : 'none';
+
+    const actionsEl = document.getElementById('img-lightbox-actions');
+    if (actionsEl) {
+        actionsEl.innerHTML = '';
+        const list = Array.isArray(actions) ? actions : [];
+        if (list.length === 0) {
+            actionsEl.style.display = 'none';
+        } else {
+            actionsEl.style.display = '';
+            list.forEach((action) => {
+                if (!action || typeof action.onClick !== 'function') return;
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'img-lightbox-action-btn'
+                    + (action.variant ? ' img-lightbox-action-' + action.variant : '');
+                btn.textContent = action.label || 'Action';
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    try { action.onClick(); } catch (err) { console.error(err); }
+                });
+                actionsEl.appendChild(btn);
+            });
+        }
+    }
+
     document.getElementById('img-lightbox').classList.add('active');
     document.body.style.overflow = 'hidden';
 }
@@ -368,27 +393,12 @@ function bindContactRowEvents(content) {
     content.querySelectorAll('.contact-row').forEach((row) => {
         row.addEventListener('click', (e) => {
             if (_dragJustEnded) return;
-            if (e.target.closest('.contact-detail-actions') || e.target.closest('.selfies-strip-container') || e.target.closest('.contact-detail-profile-media') || e.target.closest('.contact-detail-met-on') || e.target.closest('.contact-detail-nearby') || e.target.closest('.contact-detail-share-location') || e.target.closest('.contact-location-mini') || e.target.closest('input') || e.target.closest('button')) return;
-            const wasExpanded = row.classList.contains('expanded');
-            if (wasExpanded) {
-                row.classList.remove('expanded');
-                return;
-            }
-
-            content.querySelectorAll('.contact-row.expanded').forEach((expandedRow) => {
-                expandedRow.classList.remove('expanded');
-            });
-            row.classList.add('expanded');
-            requestAnimationFrame(() => row.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+            // Tapping a row navigates to the redesigned Contact Details screen.
+            // The legacy inline-expand markup remains in the DOM but is no longer
+            // toggled from this click handler (kept only for the drag-sort ghost).
+            if (e.target.closest('input') || e.target.closest('button') || e.target.closest('a')) return;
             const cid = row.dataset.contactId;
-            if (cid) {
-                loadSharedTrust(cid);
-                loadFamilyTree(cid);
-                loadMutualContacts(cid);
-                reloadContactSelfiesStrip(cid);
-                loadContactSponsor(cid);
-                renderContactLocationMap(cid);
-            }
+            if (cid) navigateTo('contactDetails', cid);
         });
     });
 }
@@ -452,34 +462,27 @@ function renderContactsForCurrentQuery() {
 
 async function openContactDetailsById(contactId) {
     if (!contactId || !currentUser) return false;
-    const content = document.getElementById('contactsListContent');
-    if (!content) return false;
-
-    navigateTo('contacts');
-    clearContactSearchState();
-    await loadAndRenderContactList();
-
-    if (expandContactRow(contactId)) {
-        return true;
-    }
-
-    for (let i = 0; i < 3; i++) {
-        await new Promise(resolve => setTimeout(resolve, 250));
+    // Make sure the contacts list is loaded so contactsLoadedRows has the row
+    // when the detail screen reads it. The list itself stays mounted but hidden.
+    if (!contactsLoadedRows || contactsLoadedRows.length === 0) {
         await loadAndRenderContactList();
-        if (expandContactRow(contactId)) return true;
     }
-    return false;
+    navigateTo('contactDetails', contactId);
+    return true;
 }
 
 async function openNewestContactDetails() {
     if (!currentUser) return false;
-    navigateTo('contacts');
-    clearContactSearchState();
-    await loadAndRenderContactList();
+    if (!contactsLoadedRows || contactsLoadedRows.length === 0) {
+        await loadAndRenderContactList();
+    }
     const firstRow = document.querySelector('.contact-row');
-    const contactId = firstRow?.dataset?.contactId || '';
+    const contactId = firstRow?.dataset?.contactId
+        || contactsLoadedRows?.[0]?.contact?.contact_id
+        || '';
     if (!contactId) return false;
-    return expandContactRow(contactId);
+    navigateTo('contactDetails', contactId);
+    return true;
 }
 
 async function openPendingContactDetailsIfAny() {

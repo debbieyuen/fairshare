@@ -14,6 +14,13 @@ async function sendAttestation(contactId, type) {
             help: 'Help recorded'
         };
         showToast(messageMap[type] || 'Attestation recorded', 'info');
+        // Notify any open Contact Details screen so it can flip Vouch -> Vouched,
+        // fire confetti and a haptic. No-op on screens that aren't listening.
+        try {
+            window.dispatchEvent(new CustomEvent('union:attested', {
+                detail: { contactId, type }
+            }));
+        } catch (_) { /* best effort */ }
     } catch (e) {
         console.error('Attestation error:', e);
         showToast(e.message || 'Could not send attestation', 'error');

@@ -85,6 +85,12 @@ function updateShareLocationCheckbox(contactId, checked, expiresAt) {
         span.textContent = text;
         span.style.display = text ? '' : 'none';
     }
+    // Broadcast so the Contact Details screen can re-sync its toggle.
+    try {
+        window.dispatchEvent(new CustomEvent('union:locationShareChanged', {
+            detail: { contactId, sharing: !!checked, expiresAt: expiresAt || null }
+        }));
+    } catch (_) { /* best effort */ }
 }
 
 function hasAnyActiveLocationShares() {
@@ -320,13 +326,20 @@ async function loadContactLocations() {
     try {
         const { data, error } = await db
             .from('user_locations')
-            .select('user_id, lat, lng')
+            .select('user_id, lat, lng, updated_at')
             .in('user_id', inboundIds);
         if (error) throw error;
         contactLocationsCache = {};
         (data || []).forEach(r => {
-            contactLocationsCache[r.user_id] = { lat: r.lat, lng: r.lng };
+            contactLocationsCache[r.user_id] = {
+                lat: r.lat,
+                lng: r.lng,
+                updated_at: r.updated_at || null
+            };
         });
+        try {
+            window.dispatchEvent(new CustomEvent('union:contactLocationsLoaded'));
+        } catch (_) { /* best effort */ }
     } catch (e) {
         console.error('loadContactLocations error:', e);
     }

@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Union — Contact Details</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:ital,wght@0,400;0,500;0,600;0,700;1,500;1,600&display=swap" rel="stylesheet"/>
+<style>
+  html, body { margin:0; padding:0; background:#E8ECF2; font-family: Inter, system-ui; -webkit-font-smoothing: antialiased; }
+  * { box-sizing: border-box; }
+  .no-scrollbar::-webkit-scrollbar { display:none; }
+  button { font-family: inherit; }
+  input::placeholder, textarea::placeholder { color:#9AA6B0; }
+  @keyframes confetti {
+    0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+    100% { transform: translateY(500px) rotate(720deg); opacity: 0; }
+  }
+  @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+  @keyframes slideUp { from { transform: translateY(100%) } to { transform: translateY(0) } }
+  @keyframes pulse {
+    0% { transform: scale(1); opacity: 1 }
+    50% { transform: scale(1.08); opacity: 0.9 }
+    100% { transform: scale(1); opacity: 1 }
+  }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="app/data.jsx"></script>
+<script type="text/babel" src="app/icons.jsx"></script>
+<script type="text/babel" src="app/shell.jsx"></script>
+<script type="text/babel" src="app/contacts-list.jsx"></script>
+<script type="text/babel" src="app/detail-a.jsx"></script>
+<script type="text/babel" src="app/detail-b.jsx"></script>
+<script type="text/babel" src="app/detail-c.jsx"></script>
+
+<script type="text/babel" data-presets="react">
+const TWEAKS = /*EDITMODE-BEGIN*/{
+  "variant": "A",
+  "headerColor": "#3B7CA0"
+}/*EDITMODE-END*/;
+
+function PhoneFrame({ children, width=380, height=800 }) {
+  return (
+    <div style={{
+      width, height, background:'#fff', borderRadius: 44,
+      boxShadow:'0 30px 70px rgba(20,35,60,0.28), 0 0 0 10px #1a1f2a, 0 0 0 12px #2a2f3a',
+      overflow:'hidden', position:'relative',
+      fontFamily: 'Inter, system-ui',
+    }}>
+      {/* dynamic island */}
+      <div style={{
+        position:'absolute', top: 10, left:'50%', transform:'translateX(-50%)',
+        width: 110, height: 32, borderRadius: 20, background:'#000', zIndex: 100,
+      }}/>
+      {/* status bar */}
+      <div style={{
+        position:'absolute', top:0, left:0, right:0, height: 44,
+        padding: '14px 24px 0', display:'flex', alignItems:'flex-start',
+        justifyContent:'space-between', zIndex: 5, color:'#fff',
+        fontFamily:'Inter, system-ui', fontSize: 14, fontWeight: 600,
+        pointerEvents:'none',
+      }}>
+        <span>9:41</span>
+        <span style={{ opacity: 0 }}>.</span>
+      </div>
+      {/* home indicator */}
+      <div style={{
+        position:'absolute', bottom: 6, left:'50%', transform:'translateX(-50%)',
+        width: 120, height: 4, borderRadius: 2, background:'rgba(0,0,0,0.3)', zIndex: 100,
+      }}/>
+      <div style={{
+        width:'100%', height:'100%', overflow:'hidden', position:'relative',
+        display: 'flex', flexDirection: 'column',
+      }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [tweaks, setTweaks] = React.useState(TWEAKS);
+  const [tweaksOpen, setTweaksOpen] = React.useState(false);
+  const [tweakModeActive, setTweakModeActive] = React.useState(false);
+  const [tab, setTab] = React.useState('contacts');
+  // view state: 'list' | 'detail' | 'profile' | 'share'
+  const [view, setView] = React.useState(() => {
+    try { return localStorage.getItem('union:view') || 'detail'; } catch { return 'detail'; }
+  });
+  const [contact, setContact] = React.useState(CAPRI);
+
+  React.useEffect(() => { try { localStorage.setItem('union:view', view); } catch {} }, [view]);
+
+  React.useEffect(() => {
+    const handler = (e) => {
+      if (!e.data) return;
+      if (e.data.type === '__activate_edit_mode') setTweakModeActive(true);
+      if (e.data.type === '__deactivate_edit_mode') { setTweakModeActive(false); setTweaksOpen(false); }
+    };
+    window.addEventListener('message', handler);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  function updateTweak(key, val) {
+    const next = { ...tweaks, [key]: val };
+    setTweaks(next);
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { [key]: val } }, '*');
+  }
+
+  const VariantMap = { A: DetailA, B: DetailB, C: DetailC };
+  const DetailComp = VariantMap[tweaks.variant] || DetailA;
+
+  return (
+    <div style={{
+      minHeight: '100vh', background:'#E8ECF2',
+      display:'flex', alignItems:'center', justifyContent:'center',
+      padding: '32px 16px', gap: 40, flexWrap: 'wrap',
+    }}>
+      <div>
+        <div style={{
+          textAlign:'center', marginBottom: 12,
+          fontFamily:'Inter, system-ui', fontSize: 12, fontWeight: 600, letterSpacing: 1,
+          textTransform: 'uppercase', color: '#5E6B7A',
+        }}>Union · Contact Details</div>
+        <div style={{
+          textAlign:'center', marginBottom: 18, fontFamily:'Inter, system-ui', fontSize: 13, color: '#8792A0',
+        }}>
+          {tweaks.variant === 'A' && 'Variation A — Trust-Forward'}
+          {tweaks.variant === 'B' && 'Variation B — Memory Journal'}
+          {tweaks.variant === 'C' && 'Variation C — Sticky Actions'}
+        </div>
+
+        <PhoneFrame>
+          {view !== 'detail' || tab !== 'contacts' ? (
+            <>
+              <UnionHeader color={tweaks.headerColor}
+                onAvatarTap={() => setView('profile')}
+                onHeartTap={() => setView('share')} />
+              <div style={{ flex: 1, overflow: 'auto' }}>
+                {view === 'profile' && <ProfilePage onBack={() => setView('list')} />}
+                {view === 'share' && <SharePage onClose={() => setView('list')} />}
+                {view === 'list' && tab === 'contacts' && <ContactsList onSelect={(c) => { setContact(CAPRI); setView('detail'); }} />}
+                {view === 'list' && tab === 'groups' && <GroupsList />}
+              </div>
+              {view !== 'share' && (
+                <UnionTabBar tab={tab}
+                  onChange={(t) => { setTab(t); setView('list'); }}
+                  onHandshake={() => setView('share')} />
+              )}
+            </>
+          ) : (
+            <>
+              <UnionHeader color={tweaks.headerColor}
+                onAvatarTap={() => setView('profile')}
+                onHeartTap={() => setView('share')} />
+              <div style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+                <DetailComp contact={contact} onBack={() => setView('list')} headerColor={tweaks.headerColor}/>
+              </div>
+              {tweaks.variant !== 'C' && (
+                <UnionTabBar tab={tab}
+                  onChange={(t) => { setTab(t); setView('list'); }}
+                  onHandshake={() => setView('share')} />
+              )}
+            </>
+          )}
+        </PhoneFrame>
+      </div>
+
+      {/* Tweaks panel */}
+      {tweakModeActive && (
+        <div style={{
+          position:'fixed', right: 16, bottom: 16, zIndex: 1000,
+          fontFamily:'Inter, system-ui',
+        }}>
+          {!tweaksOpen && (
+            <button onClick={() => setTweaksOpen(true)} style={{
+              background:'#1A2433', color:'#fff', border:'none', borderRadius: 100,
+              padding: '12px 18px', cursor:'pointer', fontSize: 13, fontWeight: 600,
+              boxShadow: '0 8px 22px rgba(0,0,0,0.18)',
+            }}>✨ Tweaks</button>
+          )}
+          {tweaksOpen && (
+            <div style={{
+              width: 280, background:'#fff', borderRadius: 16, padding: 16,
+              boxShadow:'0 20px 50px rgba(0,0,0,0.2)',
+            }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom: 12 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color:'#1A2433' }}>Tweaks</div>
+                <button onClick={() => setTweaksOpen(false)} style={{
+                  background:'none', border:'none', cursor:'pointer', padding: 4,
+                }}><Icon.X size={16} color="#8792A0"/></button>
+              </div>
+
+              <div style={{ fontSize: 11, fontWeight: 600, color:'#8792A0', textTransform:'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
+                Variation
+              </div>
+              <div style={{ display:'flex', gap: 6, marginBottom: 16 }}>
+                {[
+                  ['A', 'Trust-forward'],
+                  ['B', 'Journal'],
+                  ['C', 'Sticky'],
+                ].map(([k, label]) => (
+                  <button key={k} onClick={() => updateTweak('variant', k)} style={{
+                    flex: 1, padding: '8px 6px', borderRadius: 8,
+                    background: tweaks.variant === k ? UNION_BLUE : '#F2F4F7',
+                    color: tweaks.variant === k ? '#fff' : '#1A2433',
+                    border:'none', cursor:'pointer',
+                    fontSize: 11, fontWeight: 600,
+                  }}>{k}<br/><span style={{ fontSize: 9, fontWeight: 500, opacity: 0.8 }}>{label}</span></button>
+                ))}
+              </div>
+
+              <div style={{ fontSize: 11, fontWeight: 600, color:'#8792A0', textTransform:'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
+                Header vibe
+              </div>
+              <div style={{ display:'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+                {[
+                  ['#3B7CA0', 'Union blue'],
+                  ['#2D5F7D', 'Deep ocean'],
+                  ['#1A2433', 'Night'],
+                  ['#8B6F47', 'Warm clay'],
+                  ['#5CA68A', 'Sage'],
+                  ['#B85C3C', 'Rust'],
+                ].map(([c, name]) => (
+                  <button key={c} onClick={() => updateTweak('headerColor', c)} style={{
+                    width: 36, height: 36, borderRadius: 10, background: c,
+                    border: tweaks.headerColor === c ? '2px solid #1A2433' : '2px solid transparent',
+                    cursor:'pointer', padding: 0,
+                  }} title={name}/>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, color:'#8792A0', marginTop: 4 }}>
+                Try different variations and header vibes.
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Stub supporting pages (profile, share, groups) ---
+function ProfilePage({ onBack }) {
+  return (
+    <div style={{ padding: 16, background:'#F2F4F7', minHeight: '100%' }}>
+      <div style={{ background:'#fff', borderRadius: 14, padding: 16, boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom: 12 }}>
+          <div style={{ fontFamily:'Inter, system-ui', fontSize: 22, fontWeight: 700, color:'#1A2433' }}>Public Profile</div>
+          <button onClick={onBack} style={{ background:'#fff', border:'1px solid #D7DBE0', borderRadius: 8, padding:'6px 10px', cursor:'pointer' }}>Back</button>
+        </div>
+        <div style={{ color:'#5E6B7A', fontSize: 13 }}>Your profile info appears here.</div>
+      </div>
+    </div>
+  );
+}
+function SharePage({ onClose }) {
+  return (
+    <div style={{ background:'#000', height:'100%', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding: 24, position:'relative' }}>
+      <button onClick={onClose} style={{ position:'absolute', top: 16, right: 16, width: 36, height: 36, borderRadius:'50%', background:'rgba(255,255,255,0.15)', border:'none', color:'#fff', cursor:'pointer' }}>
+        <Icon.X color="#fff" size={18}/>
+      </button>
+      <Avatar id="philip" size={72}/>
+      <div style={{ width: 180, height: 180, background:'#fff', borderRadius: 16, margin:'20px 0', display:'flex', alignItems:'center', justifyContent:'center', color:'#1A2433', fontFamily:'Inter, system-ui', fontSize: 12, fontWeight: 600 }}>QR code</div>
+      <div style={{ color:'#fff', fontFamily:'Inter, system-ui', fontSize: 18, fontWeight: 600 }}>Philip Rosedale</div>
+      <div style={{ color:'rgba(255,255,255,0.6)', fontSize: 12, marginTop: 20 }}>(Show your phones to each other)</div>
+    </div>
+  );
+}
+function GroupsList() {
+  const groups = [
+    { name:'Lindens', members: 5 }, { name:'CIMC', members: 1 },
+    { name:'Test after refactor', members: 2 }, { name:'Strong Capitalists', members: 4 },
+    { name:'Fairshare', members: 7 },
+  ];
+  return (
+    <div style={{ padding: 12, background:'#F2F4F7' }}>
+      {groups.map(g => (
+        <div key={g.name} style={{
+          background:'#fff', borderRadius: 10, padding: 12, marginBottom: 6,
+          display:'flex', alignItems:'center', gap: 12, boxShadow:'0 1px 2px rgba(0,0,0,0.04)',
+        }}>
+          <div style={{ width: 44, height: 44, borderRadius:'50%', background:'#D7DBE0', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <Icon.Group size={22} color="#8792A0"/>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontFamily:'Inter, system-ui', fontSize: 15, fontWeight: 600, color:'#1A2433' }}>{g.name}</div>
+            <div style={{ fontFamily:'Inter, system-ui', fontSize: 12, color:'#8792A0' }}>{g.members} members</div>
+          </div>
+          <button style={{ background:'#fff', border:'1px solid #D7DBE0', borderRadius: 8, padding:'4px 12px', fontSize: 12, cursor:'pointer' }}>Leave</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Mount
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
