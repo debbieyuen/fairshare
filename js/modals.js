@@ -36,25 +36,52 @@ function showModal(type) {
             loadSendModal();
             break;
 
-        case 'shareChoice':
+        case 'shareChoice': {
+            const hasPhone = !!currentProfile?.phone;
+            const hasEmail = !!currentProfile?.email;
+            const phoneVal = hasPhone ? esc(currentProfile.phone) : 'Add a phone in your profile';
+            const emailVal = hasEmail ? esc(currentProfile.email) : 'Add an email in your profile';
+            const phoneChecked = shareWithInitialPhone && hasPhone ? 'checked' : '';
+            const emailChecked = shareWithInitialEmail && hasEmail ? 'checked' : '';
+            document.getElementById('modalBody').classList.add('share-modal');
             body.innerHTML = `
-                <h3>Share with ${esc(shareWithContactName || 'contact')}</h3>
-                <p style="font-size:0.9rem;color:var(--dark-gray);margin-bottom:1rem;">Choose one item to share now.</p>
-                <div class="choice-list" style="min-width:0;overflow-wrap:break-word;">
-                    <div class="choice-item">
-                        <button type="button" class="btn btn-outline choice-button" ${(currentProfile?.phone) ? '' : 'disabled'} onclick="shareWithContactChoice('phone')">Phone Number</button>
-                    </div>
-                    ${!(currentProfile?.phone) ? '<p style="font-size:0.8rem;color:var(--dark-gray);">Add your phone in Profile first.</p>' : ''}
-                    <div class="choice-item">
-                        <button type="button" class="btn btn-outline choice-button" ${(currentProfile?.email) ? '' : 'disabled'} onclick="shareWithContactChoice('email')">Email</button>
-                    </div>
-                    ${!(currentProfile?.email) ? '<p style="font-size:0.8rem;color:var(--dark-gray);">Add your email in Profile first.</p>' : ''}
-                    <div class="form-actions">
-                        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-                    </div>
+                <h3 class="share-modal-title">Share with ${esc(shareWithContactName || 'contact')}</h3>
+                <p class="share-modal-sub">Pick the contact details you'd like to share.</p>
+                <div class="share-list">
+                    <label class="share-row ${hasPhone ? '' : 'share-row-disabled'}" for="shareCheckPhone">
+                        <span class="share-icon">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+                            </svg>
+                        </span>
+                        <span class="share-text">
+                            <span class="share-label">Phone number</span>
+                            <span class="share-value">${phoneVal}</span>
+                        </span>
+                        <input type="checkbox" class="share-check" id="shareCheckPhone" ${phoneChecked} ${hasPhone ? '' : 'disabled'}>
+                    </label>
+                    <div class="share-divider"></div>
+                    <label class="share-row ${hasEmail ? '' : 'share-row-disabled'}" for="shareCheckEmail">
+                        <span class="share-icon">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                                <polyline points="22,6 12,13 2,6"/>
+                            </svg>
+                        </span>
+                        <span class="share-text">
+                            <span class="share-label">Email</span>
+                            <span class="share-value">${emailVal}</span>
+                        </span>
+                        <input type="checkbox" class="share-check" id="shareCheckEmail" ${emailChecked} ${hasEmail ? '' : 'disabled'}>
+                    </label>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="shareSaveBtn" onclick="saveShareWithContact()">Save</button>
                 </div>
             `;
             break;
+        }
 
         case 'vouchChoice':
             body.innerHTML = `
@@ -168,6 +195,8 @@ function closeModal(options = {}) {
     }
     shareWithContactId = null;
     shareWithContactName = '';
+    shareWithInitialPhone = false;
+    shareWithInitialEmail = false;
     vouchWithContactId = null;
     vouchWithContactName = '';
     if (contactSelfieStream) {
@@ -180,6 +209,7 @@ function closeModal(options = {}) {
     stopSuggestPicStream();
     document.getElementById('modalOverlay').classList.add('hidden');
     document.getElementById('modalBody').classList.remove('modal-wide');
+    document.getElementById('modalBody').classList.remove('share-modal');
 }
 
 async function savePreferences(e) {
