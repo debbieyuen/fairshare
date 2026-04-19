@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "npx http-server . -p 3000 -c-1",
-    "build": "rsync -a --delete --exclude node_modules --exclude ios --exclude www --exclude .git --exclude .github --exclude .cursor --exclude docs --exclude sql --exclude supabase --exclude package.json --exclude package-lock.json --exclude capacitor.config.json --exclude CNAME --exclude README.md . www/",
+    "build": "rsync -a --delete --exclude node_modules --exclude ios --exclude www --exclude .git --exclude .github --exclude .cursor --exclude docs --exclude sql --exclude supabase --exclude scripts --exclude package.json --exclude package-lock.json --exclude capacitor.config.json --exclude CNAME --exclude README.md . www/ && node scripts/stamp-build.js",
     "cap:sync": "npm run build && npx cap sync ios"
   },
   "keywords": [],

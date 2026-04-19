@@ -66,6 +66,7 @@ function renderProfileScreen() {
                 <p id="prefPushHint" class="pref-help-text pref-push-hint"></p>
                 ` : ''}
             </form>
+            <div class="screen-version" aria-hidden="true">${esc(window.BUILD_VERSION || '')}</div>
         </div>
     `;
 

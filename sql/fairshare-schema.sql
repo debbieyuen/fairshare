@@ -1857,52 +1857,94 @@ end;
 $$ language plpgsql security definer;
 
 
--- Notify a contact when the user sets or updates the date they first met.
--- Only fires when a date is provided (not when clearing).
+-- Set the "first met" date for a contact pair.
+-- Writes BOTH sides of the pair in a single transaction so the caller and the
+-- contact always see the same date. When p_met_date is non-null we also notify
+-- the contact (in-app + Web Push); clearing the date silently syncs both sides
+-- with no notification.
+create or replace function public.set_first_met_date(
+  p_contact_id uuid,
+  p_met_date timestamptz
+)
+returns void as $$
+declare
+  v_caller_id uuid := auth.uid();
+  v_name text;
+  v_date_str text;
+  v_msg text;
+begin
+  if v_caller_id is null then
+    raise exception 'You must be logged in';
+  end if;
+
+  if p_contact_id is null then
+    raise exception 'Contact is required';
+  end if;
+
+  -- Verify the caller actually has p_contact_id as a contact.
+  if not exists (
+    select 1 from public.contacts
+    where user_id = v_caller_id and contact_id = p_contact_id
+  ) then
+    raise exception 'Not a contact';
+  end if;
+
+  -- Update BOTH sides of the pair in one statement so the date is always
+  -- identical between the caller and the contact.
+  update public.contacts
+  set first_met_at = p_met_date
+  where (user_id = v_caller_id  and contact_id = p_contact_id)
+     or (user_id = p_contact_id and contact_id = v_caller_id);
+
+  -- Only notify the contact when a real date is set (skip on clearing).
+  if p_met_date is null then
+    return;
+  end if;
+
+  select display_name into v_name from public.profiles where id = v_caller_id;
+  v_date_str := trim(to_char(p_met_date, 'Month DD, YYYY'));
+  v_msg := coalesce(v_name, 'Someone') || ' says you met on ' || v_date_str;
+
+  -- Insert in-app notification row (include date in data so the recipient's UI
+  -- can update live without an extra fetch).
+  insert into public.contact_notifications (to_user_id, from_user_id, notification_type, message, data)
+  values (p_contact_id, v_caller_id, 'met_date_set', v_msg, jsonb_build_object('met_date', p_met_date));
+
+  -- Send Web Push.
+  perform public.send_push_to_users(ARRAY[p_contact_id], v_caller_id, 'FairShare', v_msg);
+end;
+$$ language plpgsql security definer;
+
+
+-- Backwards-compatible shim for any client that still calls the old name.
+-- Delegates to set_first_met_date; ignores p_actor_id (auth.uid() is the
+-- source of truth in the new function).
 create or replace function public.notify_contact_of_met_date(
   p_actor_id uuid,
   p_contact_id uuid,
   p_met_date timestamptz
 )
 returns void as $$
-declare
-  v_name text;
-  v_date_str text;
-  v_msg text;
 begin
   if auth.uid() is distinct from p_actor_id then
     raise exception 'Unauthorized';
   end if;
-
-  if p_met_date is null then
-    return;
-  end if;
-
-  -- Verify p_contact_id is actually a contact of p_actor_id
-  if not exists (
-    select 1 from public.contacts
-    where user_id = p_actor_id and contact_id = p_contact_id
-  ) then
-    raise exception 'Not a contact';
-  end if;
-
-  -- Update the mirror contact row so both parties share the same date
-  update public.contacts
-  set first_met_at = p_met_date
-  where user_id = p_contact_id and contact_id = p_actor_id;
-
-  select display_name into v_name from public.profiles where id = p_actor_id;
-  v_date_str := trim(to_char(p_met_date, 'Month DD, YYYY'));
-  v_msg := coalesce(v_name, 'Someone') || ' says you met on ' || v_date_str;
-
-  -- Insert in-app notification row (include date in data so the recipient's UI can update live)
-  insert into public.contact_notifications (to_user_id, from_user_id, notification_type, message, data)
-  values (p_contact_id, p_actor_id, 'met_date_set', v_msg, jsonb_build_object('met_date', p_met_date));
-
-  -- Send Web Push
-  perform public.send_push_to_users(ARRAY[p_contact_id], p_actor_id, 'FairShare', v_msg);
+  perform public.set_first_met_date(p_contact_id, p_met_date);
 end;
 $$ language plpgsql security definer;
+
+
+-- One-time backfill: where one side of a contact pair has first_met_at set
+-- but the other side does not, copy it across so both sides agree.
+-- Pairs where both sides have differing non-null values are left alone (we
+-- can't know which is correct); the next user-driven change will resync them.
+update public.contacts dst
+set first_met_at = src.first_met_at
+from public.contacts src
+where src.user_id = dst.contact_id
+  and src.contact_id = dst.user_id
+  and src.first_met_at is not null
+  and dst.first_met_at is null;
 
 
 -- Suggest a new profile picture for a contact.

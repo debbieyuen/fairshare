@@ -600,35 +600,15 @@ async function saveFirstMetAt(contactId, dateValue) {
     if (!currentUser) return;
     const isoDate = dateValue ? new Date(dateValue + 'T12:00:00').toISOString() : null;
     try {
-        const { error } = await db
-            .from('contacts')
-            .update({ first_met_at: isoDate })
-            .eq('user_id', currentUser.id)
-            .eq('contact_id', contactId);
+        // Single RPC writes BOTH sides of the contact pair so the date never
+        // diverges between the caller and the contact, and notifies the contact
+        // (in-app + Web Push) when a real date is set.
+        const { error } = await db.rpc('set_first_met_date', {
+            p_contact_id: contactId,
+            p_met_date: isoDate
+        });
         if (error) throw error;
-        const row = contactsLoadedRows.find(r => r.contact.contact_id === contactId);
-        if (row) {
-            row.contact.first_met_at = isoDate;
-            const rowEl = document.querySelector(`.contact-row[data-contact-id="${contactId}"]`);
-            if (rowEl) {
-                const durationEl = rowEl.querySelector('.contact-row-known-duration');
-                const newDuration = formatKnownDuration(isoDate || row.contact.created_at);
-                if (durationEl) {
-                    durationEl.textContent = newDuration;
-                    durationEl.style.display = newDuration ? '' : 'none';
-                }
-                const displayEl = rowEl.querySelector(`#met-on-display-${contactId}`);
-                if (displayEl) displayEl.textContent = formatFirstMetDisplay(isoDate);
-            }
-        }
-        // Notify the contact that this user recorded a met date
-        if (isoDate) {
-            db.rpc('notify_contact_of_met_date', {
-                p_actor_id: currentUser.id,
-                p_contact_id: contactId,
-                p_met_date: isoDate
-            }).then(({ error: rpcErr }) => { if (rpcErr) console.warn('notify met date error:', rpcErr); });
-        }
+        updateContactMetDate(contactId, isoDate);
     } catch (e) {
         console.error('Failed to save first met date:', e);
     }
@@ -651,6 +631,15 @@ function updateContactMetDate(contactId, isoDate) {
             const inputEl = rowEl.querySelector(`#met-on-${contactId}`);
             if (inputEl) inputEl.value = isoDate ? new Date(isoDate).toISOString().slice(0, 10) : '';
         }
+    }
+    // Also patch the contact-details screen if it's currently showing this contact,
+    // so a date change pushed from the other party (or from another tab) appears
+    // immediately without requiring the user to back out and re-open the screen.
+    if (typeof cdCurrentContactId !== 'undefined' && cdCurrentContactId === contactId) {
+        const display = document.getElementById('cd-met-display');
+        if (display) display.textContent = formatFirstMetDisplay(isoDate);
+        const input = document.getElementById('cd-met-input');
+        if (input) input.value = isoDate ? new Date(isoDate).toISOString().slice(0, 10) : '';
     }
 }
 

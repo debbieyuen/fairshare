@@ -29,13 +29,14 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="styles.css?v=2">
+
+    <script>window.BUILD_VERSION = '__BUILD_VERSION__';</script>
 </head>
 <body>
 
 <!-- ===== HEADER ===== -->
 <div class="header">
     <img id="headerAvatar" class="header-avatar hidden" src="" alt="Your profile photo" onclick="navigateTo('profile')" title="My Profile">
-    <span id="versionFloater" class="version-floater hidden">__BUILD_VERSION__</span>
     <span class="user-name" id="userDisplay" onclick="navigateTo('profile')" title="My Profile"></span>
     <div class="header-right">
         <button type="button" class="header-icon-btn header-heart-btn" onclick="openHeartDialog()" title="Love &amp; Trust" aria-label="Love and Trust">❤️</button>
@@ -100,7 +101,6 @@
             </div>
         </div>
     </form>
-    <div class="screen-version" aria-hidden="true">__BUILD_VERSION__</div>
 </div>
 
 <!-- ===== APP (hidden until logged in) ===== -->
@@ -214,8 +214,6 @@
         <div id="contactDetailsScreen" class="hidden">
             <!-- Populated dynamically by openContactDetailsScreen() -->
         </div>
-
-        <div class="screen-version" aria-hidden="true">__BUILD_VERSION__</div>
     </div>
 
     <!-- ===== BOTTOM BAR ===== -->
