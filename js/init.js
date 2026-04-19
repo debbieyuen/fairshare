@@ -248,7 +248,7 @@ async function showMeetBanner(token) {
         document.getElementById('inviteBannerText').innerHTML = html;
         document.getElementById('inviteBanner').classList.remove('hidden');
 
-        const meetUrl = `${window.location.origin}${window.location.pathname}?meet=${encodeURIComponent(token)}`;
+        const meetUrl = publicAppUrl(`?meet=${encodeURIComponent(token)}`);
         const addContactLink = document.getElementById('meetAddContact');
         if (addContactLink) {
             prepareMeetVcfLink(addContactLink, name, phone, email, meetUrl, photoUrl);

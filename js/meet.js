@@ -100,7 +100,7 @@ async function openMeetScreen(options) {
     // 5. Generate QR code encoding a navigable URL so non-members
     //    scanning with their phone camera land on the signup page.
     const qr = qrcode(0, 'M');
-    const meetUrl = `${window.location.origin}${window.location.pathname}?meet=${token}`;
+    const meetUrl = publicAppUrl(`?meet=${encodeURIComponent(token)}`);
     currentMeetUrl = meetUrl;
     qr.addData(meetUrl);
     qr.make();
