@@ -2233,6 +2233,14 @@ body.drag-sort-active * { user-select: none; -webkit-user-select: none; }
     object-fit: cover;
     display: block;
 }
+/* Front-facing camera previews are shown mirrored so they behave like a
+   real mirror to the user. Capture/scan logic reads the raw video frames
+   via canvas, so saved images and QR decoding are unaffected. */
+#contactSelfieVideo,
+#newContactSelfieVideo,
+#meetVideo {
+    transform: scaleX(-1);
+}
 .new-contact-selfie-banner {
     position: absolute;
     top: 0;
