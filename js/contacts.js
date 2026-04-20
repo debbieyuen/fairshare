@@ -1579,12 +1579,19 @@ function _getGPSLocationBrowser() {
 function getGPSLocation() {
     if (IS_NATIVE) {
         if (nativeLocationLastPosition) return Promise.resolve(nativeLocationLastPosition);
+        // Never fall back to navigator.geolocation in native builds: inside
+        // the iOS WKWebView the page origin is capacitor://localhost, and
+        // calling the web geolocation API there triggers the WebKit system
+        // prompt ("Localhost would like to use your current location"),
+        // which is jarring and unrelated to our native location flow.
         try {
-            return Capacitor.Plugins.BackgroundLocation.getCurrentPosition()
+            const plugin = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.BackgroundLocation;
+            if (!plugin) return Promise.resolve(null);
+            return plugin.getCurrentPosition()
                 .then(pos => ({ lat: pos.lat, lng: pos.lng }))
-                .catch(() => _getGPSLocationBrowser());
+                .catch(() => null);
         } catch (e) {
-            return _getGPSLocationBrowser();
+            return Promise.resolve(null);
         }
     }
     return _getGPSLocationBrowser();
