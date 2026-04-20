@@ -602,22 +602,53 @@ function formatKnownDuration(dateStr) {
     return parts.join(', ');
 }
 
-async function saveFirstMetAt(contactId, dateValue) {
-    if (!currentUser) return;
-    const isoDate = dateValue ? new Date(dateValue + 'T12:00:00').toISOString() : null;
-    try {
-        // Single RPC writes BOTH sides of the contact pair so the date never
-        // diverges between the caller and the contact, and notifies the contact
-        // (in-app + Web Push) when a real date is set.
-        const { error } = await db.rpc('set_first_met_date', {
-            p_contact_id: contactId,
-            p_met_date: isoDate
-        });
+// iOS' wheel-style <input type="date"> picker fires `change` on every spin
+// of the wheel. The underlying RPC (`set_first_met_date`) sends a push
+// notification to the contact, so committing on every tick would spam them.
+// Strategy: while the picker is open we only mirror the change in the local
+// UI. The actual RPC fires once on blur (picker dismiss) and only when the
+// value actually changed from what it was before the picker opened.
+const _firstMetEdits = {};
+
+function _writeFirstMetAt(contactId, isoDate) {
+    return db.rpc('set_first_met_date', {
+        p_contact_id: contactId,
+        p_met_date: isoDate
+    }).then(({ error }) => {
         if (error) throw error;
         updateContactMetDate(contactId, isoDate);
-    } catch (e) {
+    }).catch((e) => {
         console.error('Failed to save first met date:', e);
+    });
+}
+
+function saveFirstMetAt(contactId, dateValue) {
+    if (!currentUser) return;
+    const isoDate = dateValue ? new Date(dateValue + 'T12:00:00').toISOString() : null;
+
+    // First change since the picker opened: capture the original value so we
+    // can decide on blur whether anything actually changed.
+    if (!_firstMetEdits[contactId]) {
+        const row = contactsLoadedRows.find(r => r.contact?.contact_id === contactId);
+        const original = row?.contact?.first_met_at || null;
+        _firstMetEdits[contactId] = { originalIsoDate: original, pendingIsoDate: isoDate };
+    } else {
+        _firstMetEdits[contactId].pendingIsoDate = isoDate;
     }
+
+    // Reflect the chosen date in the local UI right away so the change feels
+    // instant; the server (and the contact's notification) waits for blur.
+    updateContactMetDate(contactId, isoDate);
+}
+
+// Commit on picker dismiss: write to the server only if the value actually
+// changed from what it was when the picker opened.
+function commitPendingFirstMetAt(contactId) {
+    const edit = _firstMetEdits[contactId];
+    if (!edit) return;
+    delete _firstMetEdits[contactId];
+    if (edit.pendingIsoDate === edit.originalIsoDate) return;
+    _writeFirstMetAt(contactId, edit.pendingIsoDate);
 }
 
 function updateContactMetDate(contactId, isoDate) {
@@ -973,7 +1004,8 @@ function renderContactRow(contact, profile, shared) {
                     <input type="date" class="contact-detail-met-on-input" id="met-on-${cid}"
                         value="${firstMetValue}"
                         onclick="try { this.showPicker(); } catch(e) {}"
-                        onchange="event.stopPropagation(); saveFirstMetAt('${cid}', this.value)">
+                        onchange="event.stopPropagation(); saveFirstMetAt('${cid}', this.value)"
+                        onblur="commitPendingFirstMetAt('${cid}')">
                 </div>
                 <div class="contact-detail-selfies-section">
                     <div class="contact-shared-title">Selfies Together</div>

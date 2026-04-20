@@ -133,7 +133,8 @@ function renderContactDetailsScreen(root, row) {
                         <input type="date" class="cd-met-input" id="cd-met-input"
                             value="${c.first_met_at ? new Date(c.first_met_at).toISOString().slice(0, 10) : ''}"
                             onclick="try { this.showPicker(); } catch(e) {}"
-                            onchange="cdSaveMetOn('${esc(id)}', this.value)">
+                            onchange="cdSaveMetOn('${esc(id)}', this.value)"
+                            onblur="commitPendingFirstMetAt('${esc(id)}')">
                     </div>
                 </div>
             </div>
