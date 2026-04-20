@@ -1,0 +1,26 @@
+---
+description: Never edit files under www/ — it is a build output directory
+alwaysApply: true
+---
+
+# `www/` is a build artifact — do not edit
+
+The `www/` directory is **regenerated** by `npm run build` (which `npm run cap:sync` calls). The build is an `rsync -a --delete` from the repo root into `www/`, then `scripts/stamp-build.js` swaps in the build version.
+
+This means:
+
+- **The source of truth lives at the repo root**, not under `www/`.
+- Any edits made directly to `www/` will be **silently overwritten** the next time the user runs `npm run build` or `npm run cap:sync`.
+- If a file appears to exist in both `www/foo/bar.html` and `foo/bar.html`, the root one is the source — edit that one.
+
+## Examples
+
+- ❌ Editing `www/admin/index.html`
+- ✅ Editing `admin/index.html` (then optionally running `npm run cap:sync` for iOS)
+
+- ❌ Editing `www/index.html`
+- ✅ Editing `index.html` at the repo root
+
+## Searching
+
+When using Grep/Glob to find code, prefer excluding `www/` so you don't see duplicate build-output hits, e.g. add `!www/**` or just search the root and other top-level dirs directly.

@@ -65,6 +65,111 @@ begin
 end;
 $$;
 
+-- Look up an account by email (reads auth.users, which clients can't query directly).
+-- Returns the matching profile info + group membership count for the admin UI preview.
+create or replace function public.admin_lookup_account_by_email(p_email text)
+returns jsonb
+language plpgsql
+security definer
+as $$
+declare
+  v_admin_id uuid := 'a8253eea-e76a-46d1-a92d-6fe36911f038';
+  v_target_id uuid;
+  v_target_email text;
+  v_display_name text;
+  v_created_at timestamptz;
+  v_group_count int;
+begin
+  if auth.uid() is null or auth.uid() != v_admin_id then
+    raise exception 'Unauthorized: admin access required';
+  end if;
+
+  select id, email into v_target_id, v_target_email
+    from auth.users
+   where lower(email) = lower(trim(p_email));
+
+  if v_target_id is null then
+    return jsonb_build_object('error', 'No account found with email: ' || p_email);
+  end if;
+
+  select display_name, created_at into v_display_name, v_created_at
+    from public.profiles
+   where id = v_target_id;
+
+  select count(*) into v_group_count
+    from public.members
+   where user_id = v_target_id and status in ('active', 'pending');
+
+  return jsonb_build_object(
+    'id', v_target_id,
+    'email', v_target_email,
+    'display_name', v_display_name,
+    'created_at', v_created_at,
+    'group_count', v_group_count
+  );
+end;
+$$;
+
+-- Delete an account (and its auth user) by email.
+-- Mirrors admin_delete_profile but keys off auth.users.email instead of profile display_name.
+create or replace function public.admin_delete_account_by_email(p_email text)
+returns jsonb
+language plpgsql
+security definer
+as $$
+declare
+  v_admin_id uuid := 'a8253eea-e76a-46d1-a92d-6fe36911f038';
+  v_target_id uuid;
+  v_target_email text;
+  v_target_name text;
+begin
+  if auth.uid() is null or auth.uid() != v_admin_id then
+    raise exception 'Unauthorized: admin access required';
+  end if;
+
+  select id, email into v_target_id, v_target_email
+    from auth.users
+   where lower(email) = lower(trim(p_email));
+
+  if v_target_id is null then
+    return jsonb_build_object('error', 'No account found with email: ' || p_email);
+  end if;
+
+  if v_target_id = v_admin_id then
+    return jsonb_build_object('error', 'Cannot delete the admin account');
+  end if;
+
+  select display_name into v_target_name
+    from public.profiles
+   where id = v_target_id;
+
+  -- Same non-cascading FK cleanup as admin_delete_profile.
+  update public.profiles        set sponsor_id   = null where sponsor_id   = v_target_id;
+  update public.groups          set created_by   = null where created_by   = v_target_id;
+  update public.group_events    set actor_id     = null where actor_id     = v_target_id;
+  update public.group_documents set updated_by   = null where updated_by   = v_target_id;
+  update public.sponsorships    set candidate_id = null where candidate_id = v_target_id;
+  update public.transactions    set from_user    = null where from_user    = v_target_id;
+  update public.meet_requests   set used_by      = null where used_by      = v_target_id;
+
+  delete from public.transactions     where to_user     = v_target_id;
+  delete from public.sponsorships     where sponsor_id  = v_target_id;
+  delete from public.amendments       where proposed_by = v_target_id;
+  delete from public.amendment_votes  where user_id     = v_target_id;
+  delete from public.chat_messages    where user_id     = v_target_id;
+  delete from public.document_history where user_id     = v_target_id;
+
+  delete from auth.users where id = v_target_id;
+
+  return jsonb_build_object(
+    'success', true,
+    'deleted_id', v_target_id,
+    'deleted_email', v_target_email,
+    'deleted_name', v_target_name
+  );
+end;
+$$;
+
 -- Delete a group by name.
 -- Cascade handles: members, transactions, endorsements,
 -- sponsorships, amendments, chat_messages, group_documents, etc.

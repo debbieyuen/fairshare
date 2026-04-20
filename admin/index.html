@@ -239,6 +239,23 @@
         </div>
     </div>
 
+    <!-- Delete Account by Email -->
+    <div class="card">
+        <h2>Delete Account by Email</h2>
+        <div class="input-row">
+            <input type="email" id="accountEmailInput" placeholder="email@example.com" autocomplete="off">
+            <button class="btn btn-primary btn-sm" onclick="lookupAccount()">Look up</button>
+        </div>
+        <div class="result-box" id="accountResult"></div>
+        <div class="confirm-row" id="accountConfirm">
+            <div class="warning">This will permanently delete this user and all their data (memberships, transactions, messages, etc.).</div>
+            <div class="confirm-input-row">
+                <input type="text" id="accountConfirmInput" placeholder="Type the email to confirm" autocomplete="off">
+                <button class="btn btn-danger btn-sm" onclick="deleteAccount()">Delete</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Delete Group -->
     <div class="card">
         <h2>Delete Group</h2>
@@ -271,6 +288,8 @@ let _lookupProfileId = null;
 let _lookupProfileName = null;
 let _lookupGroupId = null;
 let _lookupGroupName = null;
+let _lookupAccountId = null;
+let _lookupAccountEmail = null;
 
 function esc(str) {
     if (!str) return '';
@@ -411,6 +430,78 @@ async function deleteProfile() {
     _lookupProfileName = null;
     document.getElementById('profileNameInput').value = '';
     document.getElementById('profileConfirmInput').value = '';
+}
+
+// --- Account (by email) lookup & delete ---
+
+async function lookupAccount() {
+    const email = document.getElementById('accountEmailInput').value.trim();
+    if (!email) return;
+
+    _lookupAccountId = null;
+    _lookupAccountEmail = null;
+    const resultBox = document.getElementById('accountResult');
+    const confirmRow = document.getElementById('accountConfirm');
+    confirmRow.classList.remove('visible');
+    document.getElementById('accountConfirmInput').value = '';
+
+    const { data, error } = await db.rpc('admin_lookup_account_by_email', { p_email: email });
+
+    if (error) {
+        resultBox.className = 'result-box visible error';
+        resultBox.textContent = 'RPC error: ' + error.message;
+        return;
+    }
+    if (data?.error) {
+        resultBox.className = 'result-box visible error';
+        resultBox.textContent = data.error;
+        return;
+    }
+
+    _lookupAccountId = data.id;
+    _lookupAccountEmail = data.email;
+
+    resultBox.className = 'result-box visible';
+    resultBox.innerHTML =
+        `<span class="label">Email:</span> <span class="value">${esc(data.email)}</span><br>` +
+        `<span class="label">Name:</span> <span class="value">${esc(data.display_name || '(no profile)')}</span><br>` +
+        `<span class="label">ID:</span> <span class="value">${esc(data.id)}</span><br>` +
+        `<span class="label">Created:</span> <span class="value">${data.created_at ? new Date(data.created_at).toLocaleDateString() : '?'}</span><br>` +
+        `<span class="label">Group memberships:</span> <span class="value">${data.group_count ?? '?'}</span>`;
+    confirmRow.classList.add('visible');
+}
+
+async function deleteAccount() {
+    if (!_lookupAccountEmail) return;
+    const typed = document.getElementById('accountConfirmInput').value.trim();
+    if (typed.toLowerCase() !== _lookupAccountEmail.toLowerCase()) {
+        showToast('Confirmation email does not match.', 'error');
+        return;
+    }
+
+    const { data, error } = await db.rpc('admin_delete_account_by_email', { p_email: _lookupAccountEmail });
+    const resultBox = document.getElementById('accountResult');
+    const confirmRow = document.getElementById('accountConfirm');
+
+    if (error) {
+        resultBox.className = 'result-box visible error';
+        resultBox.textContent = 'RPC error: ' + error.message;
+        return;
+    }
+    if (data?.error) {
+        resultBox.className = 'result-box visible error';
+        resultBox.textContent = data.error;
+        return;
+    }
+
+    resultBox.className = 'result-box visible success';
+    const label = data?.deleted_name ? `${data.deleted_name} (${data.deleted_email})` : data?.deleted_email || _lookupAccountEmail;
+    resultBox.textContent = 'Deleted account: ' + label;
+    confirmRow.classList.remove('visible');
+    _lookupAccountId = null;
+    _lookupAccountEmail = null;
+    document.getElementById('accountEmailInput').value = '';
+    document.getElementById('accountConfirmInput').value = '';
 }
 
 // --- Group lookup & delete ---
