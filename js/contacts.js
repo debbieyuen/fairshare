@@ -1608,9 +1608,20 @@ function _getGPSLocationBrowser() {
     });
 }
 
+// Max age of a cached native GPS fix before we force a refresh. Kept short so
+// background pollers (location sharing, nearby) never upload stale coordinates,
+// but long enough to deduplicate ad-hoc callers (e.g. rendering a contact card)
+// firing within the same interaction.
+const NATIVE_GPS_CACHE_MAX_AGE_MS = 30000;
+
 function getGPSLocation() {
     if (IS_NATIVE) {
-        if (nativeLocationLastPosition) return Promise.resolve(nativeLocationLastPosition);
+        if (
+            nativeLocationLastPosition &&
+            (Date.now() - nativeLocationLastAt) < NATIVE_GPS_CACHE_MAX_AGE_MS
+        ) {
+            return Promise.resolve(nativeLocationLastPosition);
+        }
         // Never fall back to navigator.geolocation in native builds: inside
         // the iOS WKWebView the page origin is capacitor://localhost, and
         // calling the web geolocation API there triggers the WebKit system
@@ -1620,7 +1631,11 @@ function getGPSLocation() {
             const plugin = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.BackgroundLocation;
             if (!plugin) return Promise.resolve(null);
             return plugin.getCurrentPosition()
-                .then(pos => ({ lat: pos.lat, lng: pos.lng }))
+                .then(pos => {
+                    nativeLocationLastPosition = { lat: pos.lat, lng: pos.lng };
+                    nativeLocationLastAt = Date.now();
+                    return nativeLocationLastPosition;
+                })
                 .catch(() => null);
         } catch (e) {
             return Promise.resolve(null);

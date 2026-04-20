@@ -53,6 +53,7 @@ ALTER TABLE public.contact_notifications
 -- 3. Allow contacts to read the sharer's location when an active share exists.
 --    (The existing "Users can read own location" policy from nearby-schema.sql
 --     already covers auth.uid() = user_id; Postgres OR's all SELECT policies.)
+DROP POLICY IF EXISTS "Contacts can read shared locations" ON public.user_locations;
 CREATE POLICY "Contacts can read shared locations"
   ON public.user_locations FOR SELECT
   USING (
@@ -63,3 +64,19 @@ CREATE POLICY "Contacts can read shared locations"
         AND (ls.expires_at IS NULL OR ls.expires_at > now())
     )
   );
+
+-- 4. Enable Realtime on user_locations so viewers receive the sharer's live
+--    position updates. RLS above already limits which rows each viewer is
+--    permitted to receive, so publishing the whole table is safe.
+ALTER TABLE public.user_locations REPLICA IDENTITY FULL;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime'
+      AND schemaname = 'public'
+      AND tablename = 'user_locations'
+  ) THEN
+    EXECUTE 'ALTER PUBLICATION supabase_realtime ADD TABLE public.user_locations';
+  END IF;
+END $$;

@@ -1,4 +1,9 @@
 const LOCATION_SHARING_POLL_MS = 60000;
+// How often the viewer polls inbound-sharer positions as a safety net. Realtime
+// (when enabled on user_locations) does the heavy lifting; this catches any
+// missed events and covers the case where the publication migration hasn't
+// been applied yet.
+const INBOUND_LOCATION_POLL_MS = 60000;
 let contactLocationsCache = {}; // contact_id -> { lat, lng }
 
 function toggleShareLocation(contactId, enabled) {
@@ -101,7 +106,11 @@ function hasAnyActiveLocationShares() {
 }
 
 function checkAndStartLocationSharing() {
-    if (hasAnyActiveLocationShares()) {
+    const active = hasAnyActiveLocationShares();
+    const outboundIds = Object.keys(locationSharesOutbound || {});
+    console.log('[location-sharing] checkAndStartLocationSharing: active=', active,
+        'outbound contact ids=', outboundIds);
+    if (active) {
         startLocationSharingUpdates();
     } else {
         stopLocationSharingUpdates();
@@ -111,14 +120,25 @@ function checkAndStartLocationSharing() {
 function startLocationSharingUpdates() {
     if (locationSharingInterval) return;
 
+    console.log('[location-sharing] startLocationSharingUpdates: IS_NATIVE=', IS_NATIVE,
+        'outboundShares=', Object.keys(locationSharesOutbound || {}).length);
+
     if (IS_NATIVE) {
         try {
             const plugin = Capacitor.Plugins.BackgroundLocation;
-            plugin.addListener('locationUpdate', (pos) => {
-                nativeLocationLastPosition = { lat: pos.lat, lng: pos.lng };
-                sendSharingLocationUpdate(pos.lat, pos.lng);
-            });
-            plugin.start();
+            if (!plugin) {
+                console.warn('[location-sharing] BackgroundLocation plugin not registered on this native build');
+            } else {
+                plugin.addListener('locationUpdate', (pos) => {
+                    console.log('[location-sharing] native locationUpdate', pos);
+                    nativeLocationLastPosition = { lat: pos.lat, lng: pos.lng };
+                    nativeLocationLastAt = Date.now();
+                    sendSharingLocationUpdate(pos.lat, pos.lng);
+                });
+                plugin.start()
+                    .then(() => console.log('[location-sharing] native plugin.start resolved'))
+                    .catch(err => console.warn('[location-sharing] native plugin.start rejected:', err));
+            }
         } catch (e) {
             console.warn('Native BackgroundLocation start failed:', e);
         }
@@ -130,17 +150,21 @@ function startLocationSharingUpdates() {
 }
 
 function stopLocationSharingUpdates() {
+    const wasRunning = !!locationSharingInterval;
     if (locationSharingInterval) {
         clearInterval(locationSharingInterval);
         locationSharingInterval = null;
     }
     stopShareRemainingTimer();
 
-    if (IS_NATIVE) {
+    // Only touch the native plugin if we'd previously started it. Calling
+    // plugin.stop() when start() was never invoked just produces a confusing
+    // "stop failed" log.
+    if (IS_NATIVE && wasRunning) {
         try {
             const plugin = Capacitor.Plugins.BackgroundLocation;
-            if (!hasAnyNearbyContacts()) {
-                plugin.stop();
+            if (plugin && !hasAnyNearbyContacts()) {
+                plugin.stop().catch(err => console.warn('[location-sharing] plugin.stop rejected:', err));
             }
         } catch (e) {
             console.warn('Native BackgroundLocation stop failed:', e);
@@ -150,10 +174,21 @@ function stopLocationSharingUpdates() {
 
 async function sendSharingLocationPoll() {
     if (!currentUser) return;
-    if (IS_NATIVE && nativeLocationLastPosition) return;
+    // Always request a fresh fix on every poll tick. We used to short-circuit
+    // on native whenever `nativeLocationLastPosition` was non-null, relying on
+    // the `locationUpdate` listener for updates. But Core Location's
+    // distanceFilter suppresses those events until the device moves ~100m, so
+    // a stationary user would keep the DB's `updated_at` fresh (via nearby
+    // tracking) while lat/lng stayed hours old — contacts then saw
+    // "updated just now" at the wrong location.
     try {
+        console.log('[location-sharing] poll tick, requesting GPS');
         const pos = await getGPSLocation();
-        if (!pos) return;
+        if (!pos) {
+            console.warn('[location-sharing] poll got no GPS position');
+            return;
+        }
+        console.log('[location-sharing] poll got GPS', pos);
         await sendSharingLocationUpdate(pos.lat, pos.lng);
     } catch (e) {
         console.warn('Location sharing poll failed:', e);
@@ -163,7 +198,7 @@ async function sendSharingLocationPoll() {
 async function sendSharingLocationUpdate(lat, lng) {
     if (!currentUser) return;
     try {
-        await db
+        const { error } = await db
             .from('user_locations')
             .upsert({
                 user_id: currentUser.id,
@@ -171,6 +206,11 @@ async function sendSharingLocationUpdate(lat, lng) {
                 lng: lng,
                 updated_at: new Date().toISOString()
             }, { onConflict: 'user_id' });
+        if (error) {
+            console.warn('[location-sharing] upsert error:', error);
+        } else {
+            console.log('[location-sharing] upserted user_locations', { lat, lng });
+        }
     } catch (e) {
         console.warn('Location sharing update failed:', e);
     }
@@ -270,11 +310,78 @@ function unsubscribeFromLocationShares() {
 async function handleLocationSharesChanged() {
     await loadLocationShares();
     await loadContactLocations();
+    refreshContactLocationsSubscriptions();
     if (activeMainView === 'contacts') {
         const openRow = document.querySelector('.contact-row.expanded');
         const openCid = openRow?.dataset?.contactId;
         await loadAndRenderContactList();
         if (openCid) expandContactRow(openCid);
+    }
+}
+
+// Keep the viewer's view of each inbound sharer's position fresh. We both
+// subscribe to Realtime UPDATE/INSERT events on `user_locations` (server-side
+// filtered by RLS to rows this user is allowed to see) and run a slow poll as
+// a fallback in case Realtime is not enabled on the table yet.
+function refreshContactLocationsSubscriptions() {
+    const inboundIds = Object.keys(locationSharesInbound || {});
+    if (inboundIds.length === 0) {
+        stopContactLocationsRefresh();
+        return;
+    }
+    startContactLocationsRealtime();
+    startContactLocationsPolling();
+}
+
+function startContactLocationsRealtime() {
+    if (contactLocationsChannel) return;
+    if (!currentUser) return;
+    try {
+        contactLocationsChannel = db.channel('contact-locations')
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'user_locations'
+            }, (payload) => {
+                const row = payload.new || payload.old;
+                if (!row || !row.user_id) return;
+                // We only care about inbound sharers. RLS should already limit
+                // what we receive, but double-check client-side.
+                if (!locationSharesInbound[row.user_id]) return;
+                if (payload.eventType === 'DELETE') {
+                    delete contactLocationsCache[row.user_id];
+                } else if (typeof row.lat === 'number' && typeof row.lng === 'number') {
+                    contactLocationsCache[row.user_id] = {
+                        lat: row.lat,
+                        lng: row.lng,
+                        updated_at: row.updated_at || new Date().toISOString()
+                    };
+                }
+                try {
+                    window.dispatchEvent(new CustomEvent('union:contactLocationsLoaded'));
+                } catch (_) { /* best effort */ }
+            })
+            .subscribe();
+    } catch (e) {
+        console.warn('startContactLocationsRealtime failed:', e);
+    }
+}
+
+function startContactLocationsPolling() {
+    if (contactLocationsPollInterval) return;
+    contactLocationsPollInterval = setInterval(() => {
+        loadContactLocations();
+    }, INBOUND_LOCATION_POLL_MS);
+}
+
+function stopContactLocationsRefresh() {
+    if (contactLocationsChannel) {
+        try { db.removeChannel(contactLocationsChannel); } catch (_) { /* noop */ }
+        contactLocationsChannel = null;
+    }
+    if (contactLocationsPollInterval) {
+        clearInterval(contactLocationsPollInterval);
+        contactLocationsPollInterval = null;
     }
 }
 
@@ -350,20 +457,22 @@ function renderContactLocationMap(contactId) {
     if (!loc) return;
     const mapElId = 'contact-loc-map-' + contactId;
     const el = document.getElementById(mapElId);
-    if (!el || el.dataset.rendered) return;
-    el.dataset.rendered = '1';
+    if (!el) return;
 
-    try {
-        const distEl = document.getElementById('contact-loc-dist-' + contactId);
-        if (distEl) {
-            getGPSLocation().then(myPos => {
-                if (myPos) {
-                    const miles = haversineDistance(myPos.lat, myPos.lng, loc.lat, loc.lng);
-                    distEl.textContent = formatDistance(miles);
-                }
-            }).catch(() => {});
-        }
-    } catch (e) { /* distance calc is non-critical */ }
+    updateContactLocationDistance(contactId);
+
+    // If we've already built a Leaflet map in this element, just move it to
+    // the new position instead of rebuilding. This lets realtime updates
+    // animate the marker while the card stays open.
+    if (el._leafletMap && el._leafletMarker) {
+        try {
+            el._leafletMap.setView([loc.lat, loc.lng], el._leafletMap.getZoom() || 14);
+            el._leafletMarker.setLatLng([loc.lat, loc.lng]);
+        } catch (_) { /* best effort */ }
+        return;
+    }
+
+    el.dataset.rendered = '1';
 
     requestAnimationFrame(() => {
         const target = document.getElementById(mapElId);
@@ -384,11 +493,40 @@ function renderContactLocationMap(contactId) {
             subdomains: 'abcd'
         }).addTo(miniMap);
 
-        L.marker([loc.lat, loc.lng]).addTo(miniMap);
+        const marker = L.marker([loc.lat, loc.lng]).addTo(miniMap);
+        target._leafletMap = miniMap;
+        target._leafletMarker = marker;
         setTimeout(() => miniMap.invalidateSize(), 100);
         setTimeout(() => miniMap.invalidateSize(), 400);
     });
 }
+
+function updateContactLocationDistance(contactId) {
+    const loc = contactLocationsCache[contactId];
+    if (!loc) return;
+    const distEl = document.getElementById('contact-loc-dist-' + contactId);
+    if (!distEl) return;
+    try {
+        getGPSLocation().then(myPos => {
+            if (myPos) {
+                const miles = haversineDistance(myPos.lat, myPos.lng, loc.lat, loc.lng);
+                distEl.textContent = formatDistance(miles);
+            }
+        }).catch(() => {});
+    } catch (_) { /* non-critical */ }
+}
+
+// When any inbound sharer's position updates, nudge any rendered mini-map(s)
+// to the new spot and refresh the distance label. The contact details pane
+// re-renders itself via its own `union:contactLocationsLoaded` listener, and
+// the fullscreen map always reads from the cache when opened — so together
+// these keep every surface live.
+window.addEventListener('union:contactLocationsLoaded', () => {
+    Object.keys(contactLocationsCache || {}).forEach(cid => {
+        const el = document.getElementById('contact-loc-map-' + cid);
+        if (el) renderContactLocationMap(cid);
+    });
+});
 
 function openContactLocationFullscreen(contactId, contactName) {
     const loc = contactLocationsCache[contactId];
@@ -430,15 +568,31 @@ function openContactLocationFullscreen(contactId, contactName) {
             subdomains: 'abcd'
         }).addTo(fullMap);
 
-        L.marker([loc.lat, loc.lng])
+        const fullMarker = L.marker([loc.lat, loc.lng])
             .addTo(fullMap)
             .bindPopup(esc(contactName || 'Contact'))
             .openPopup();
 
         overlay._leafletMap = fullMap;
+        overlay._leafletMarker = fullMarker;
+        overlay._contactId = contactId;
         setTimeout(() => fullMap.invalidateSize(), 200);
     });
 }
+
+// Keep an open fullscreen map in sync with realtime updates.
+window.addEventListener('union:contactLocationsLoaded', () => {
+    const overlay = document.getElementById('contact-location-fullscreen');
+    if (!overlay || !overlay.classList.contains('active')) return;
+    const cid = overlay._contactId;
+    if (!cid) return;
+    const loc = contactLocationsCache[cid];
+    if (!loc || !overlay._leafletMap || !overlay._leafletMarker) return;
+    try {
+        overlay._leafletMarker.setLatLng([loc.lat, loc.lng]);
+        overlay._leafletMap.panTo([loc.lat, loc.lng]);
+    } catch (_) { /* best effort */ }
+});
 
 function closeContactLocationFullscreen() {
     const overlay = document.getElementById('contact-location-fullscreen');

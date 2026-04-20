@@ -70,6 +70,7 @@ async function logout() {
     // Stop location sharing updates
     stopLocationSharingUpdates();
     unsubscribeFromLocationShares();
+    stopContactLocationsRefresh();
     // Reset client state
     selectedGroup = null;
     myGroups = [];
@@ -152,8 +153,19 @@ async function showApp(navigateToGroupId) {
         await checkPendingGroupInvitations();
         await checkPendingSuggestedPictures();
         checkAndStartNearbyTracking();
+        // Populate locationSharesOutbound/Inbound from the DB before deciding
+        // whether to start the native location pipeline. Without this, a user
+        // who has an existing outbound share from a prior session would never
+        // kick off plugin.start() at launch (locationSharesOutbound would stay
+        // empty until the contact list finished rendering and ran its own
+        // loadLocationShares() as a side effect).
+        try { await loadLocationShares(); } catch (e) { console.warn('loadLocationShares at login failed:', e); }
         checkAndStartLocationSharing();
         subscribeToLocationShares();
+        // Fetch current positions of anyone sharing with us and wire up the
+        // realtime/poll refresh so the card/map stays current.
+        try { await loadContactLocations(); } catch (e) { console.warn('loadContactLocations at login failed:', e); }
+        refreshContactLocationsSubscriptions();
     }, 0);
 }
 
