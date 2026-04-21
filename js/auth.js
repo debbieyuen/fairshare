@@ -6,13 +6,24 @@ function hasInviteOrMeetToken() {
 }
 
 function switchAuthTab(tab) {
-    document.querySelectorAll('.auth-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+    // The "forgot" view is link-triggered (not a real tab), so when it's
+    // active we still highlight "login" on the tab bar to reinforce that
+    // forgot-password is part of the login flow.
+    const tabHighlight = tab === 'forgot' ? 'login' : tab;
+    document.querySelectorAll('.auth-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabHighlight));
     document.getElementById('loginForm').classList.toggle('hidden', tab !== 'login');
     document.getElementById('signupForm').classList.toggle('hidden', tab !== 'signup');
+    const forgotForm = document.getElementById('forgotForm');
+    if (forgotForm) forgotForm.classList.toggle('hidden', tab !== 'forgot');
     if (tab === 'signup') {
         const hasToken = hasInviteOrMeetToken();
         document.getElementById('signupGate').classList.toggle('hidden', hasToken);
         document.getElementById('signupFields').classList.toggle('hidden', !hasToken);
+    }
+    if (tab === 'forgot') {
+        const loginEmail = document.getElementById('loginEmail')?.value?.trim();
+        const forgotEmail = document.getElementById('forgotEmail');
+        if (forgotEmail && loginEmail && !forgotEmail.value) forgotEmail.value = loginEmail;
     }
 }
 
@@ -25,6 +36,25 @@ async function handleLogin(e) {
     if (error) {
         showToast(error.message, 'error');
     }
+}
+
+async function handleForgotPassword(e) {
+    e.preventDefault();
+    const email = document.getElementById('forgotEmail').value.trim();
+    if (!email) return;
+
+    // Always target the public web origin so the email link works even when
+    // the user kicked off the flow from the native iOS shell (where
+    // window.location.origin is capacitor://localhost).
+    const redirectTo = PUBLIC_APP_ORIGIN + '/reset-password.html';
+
+    const { error } = await db.auth.resetPasswordForEmail(email, { redirectTo });
+    if (error) {
+        showToast(error.message, 'error');
+        return;
+    }
+    showToast('If that email is registered, a reset link has been sent.', 'success');
+    switchAuthTab('login');
 }
 
 async function handleSignup(e) {

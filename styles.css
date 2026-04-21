@@ -365,6 +365,18 @@ body {
     color: var(--primary-color);
     border-bottom-color: var(--primary-color);
 }
+.auth-forgot-row {
+    text-align: right;
+    margin-top: 0.75rem;
+    font-size: 0.85rem;
+}
+.auth-forgot-row a {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+.auth-forgot-row a:hover {
+    text-decoration: underline;
+}
 
 .invite-sponsor-row {
     display: flex;

@@ -76,6 +76,25 @@
         <div class="form-actions">
             <button type="submit" class="btn btn-primary">Log In</button>
         </div>
+        <div class="auth-forgot-row">
+            <a href="#" onclick="switchAuthTab('forgot'); return false;">Forgot password?</a>
+        </div>
+    </form>
+
+    <form id="forgotForm" class="hidden" onsubmit="handleForgotPassword(event)">
+        <p style="font-size:0.9rem;color:var(--dark-gray);margin-bottom:1rem;">
+            Enter your email and we'll send you a link to reset your password.
+        </p>
+        <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="forgotEmail" required placeholder="you@example.com">
+        </div>
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Send reset link</button>
+        </div>
+        <div class="auth-forgot-row">
+            <a href="#" onclick="switchAuthTab('login'); return false;">Back to log in</a>
+        </div>
     </form>
 
     <form id="signupForm" class="hidden" onsubmit="handleSignup(event)">
