@@ -755,6 +755,45 @@ function firstName(s) {
     return String(s).trim().split(/\s+/)[0];
 }
 
+// Patch the hero avatar on the Contact Details screen when the contact's
+// profile picture changes. No-ops unless the details screen is currently
+// showing this contact. Uses cacheBust (e.g. notification timestamp) to defeat
+// HTTP caching when the storage URL stays the same across replacements.
+function cdUpdateHeroAvatar(contactId, avatarUrl, cacheBust) {
+    if (!contactId) return;
+    if (typeof cdCurrentContactId === 'undefined' || cdCurrentContactId !== contactId) return;
+    const heroEl = document.querySelector('#contactDetailsScreen .cd-hero-avatar');
+    if (!heroEl) return;
+
+    const row = (typeof contactsLoadedRows !== 'undefined' ? contactsLoadedRows : [])
+        .find(r => r.contact?.contact_id === contactId);
+    const name = row?.profile?.display_name || 'Unknown';
+    const displayUrl = avatarUrl ? withImageCacheBust(avatarUrl, cacheBust) : null;
+
+    if (displayUrl) {
+        const onclickAttr = `event.stopPropagation(); cdOpenAvatarLightbox('${esc(contactId)}', '${esc(displayUrl)}', '${esc(name)}')`;
+        if (heroEl.tagName === 'IMG') {
+            heroEl.src = displayUrl;
+            heroEl.setAttribute('onclick', onclickAttr);
+        } else {
+            const img = document.createElement('img');
+            img.className = 'cd-hero-avatar';
+            img.src = displayUrl;
+            img.alt = '';
+            img.setAttribute('onclick', onclickAttr);
+            heroEl.replaceWith(img);
+        }
+    } else {
+        const initial = (name || '?').trim().charAt(0).toUpperCase() || '?';
+        const placeholder = document.createElement('div');
+        placeholder.className = 'cd-hero-avatar cd-hero-avatar-fallback';
+        placeholder.textContent = initial;
+        placeholder.title = 'Suggest a profile picture';
+        placeholder.setAttribute('onclick', `event.stopPropagation(); openSuggestPicture('${esc(contactId)}')`);
+        heroEl.replaceWith(placeholder);
+    }
+}
+
 // Open the lightbox on a contact's avatar with a "Suggest a new picture"
 // action button, restoring the feature that lived on the old inline-expanded
 // contact card.

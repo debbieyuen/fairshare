@@ -69,6 +69,18 @@ async function init() {
         }
     }
 
+    // Cold-start deep link from a "profile picture updated" (or similar) push
+    // notification. Survives a sign-in round-trip via pendingOpenContactId,
+    // which showApp()'s openPendingContactDetailsIfAny() consumes once the
+    // contacts list is ready.
+    if (urlParams.get('action') === 'view_contact') {
+        const notifContactId = urlParams.get('contact');
+        if (notifContactId) {
+            pendingOpenContactId = notifContactId;
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    }
+
     try {
         const { data: { session } } = await db.auth.getSession();
         if (session) {

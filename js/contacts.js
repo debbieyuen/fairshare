@@ -192,6 +192,59 @@ function updateContactSelfieInList(contactId, selfieUrl) {
     return true;
 }
 
+// Patch a contact's avatar in the contacts list (both the collapsed row avatar
+// and the expanded detail photo) when we learn their picture changed via
+// Realtime. `cacheBust` is an optional token (e.g. notification timestamp) used
+// to defeat HTTP caching when the public URL is reused for a replaced file.
+function updateContactAvatarInList(contactId, avatarUrl, cacheBust) {
+    if (!contactId) return;
+    const row = (contactsLoadedRows || []).find(r => r.contact?.contact_id === contactId);
+    if (row) {
+        if (!row.profile) row.profile = {};
+        row.profile.profile_image_url = avatarUrl || null;
+    }
+    const displayUrl = avatarUrl ? withImageCacheBust(avatarUrl, cacheBust) : null;
+    const name = row?.profile?.display_name || 'Unknown';
+    const cid = esc(contactId);
+
+    const rowEl = document.querySelector(`.contact-row[data-contact-id="${contactId}"]`);
+    if (!rowEl) return;
+
+    // Row header avatar (img or placeholder div)
+    const rowAvatar = rowEl.querySelector('.contact-row-avatar, .contact-row-avatar-placeholder');
+    if (rowAvatar) {
+        if (displayUrl) {
+            if (rowAvatar.tagName === 'IMG') {
+                rowAvatar.src = displayUrl;
+            } else {
+                const img = document.createElement('img');
+                img.className = 'contact-row-avatar';
+                img.src = displayUrl;
+                img.alt = '';
+                rowAvatar.replaceWith(img);
+            }
+        } else if (rowAvatar.tagName === 'IMG') {
+            const placeholder = document.createElement('div');
+            placeholder.className = 'contact-row-avatar-placeholder';
+            placeholder.textContent = '\u{1F464}';
+            rowAvatar.replaceWith(placeholder);
+        }
+    }
+
+    // Expanded detail photo
+    const detailMedia = rowEl.querySelector('.contact-detail-profile-media');
+    if (detailMedia) {
+        if (displayUrl) {
+            detailMedia.innerHTML = `<img class="contact-detail-profile-photo" src="${esc(displayUrl)}" alt="${esc(name)} profile"
+                style="cursor:pointer"
+                onclick="event.stopPropagation(); openLightbox('${esc(displayUrl)}')">`;
+        } else {
+            detailMedia.innerHTML = `<div class="contact-detail-profile-placeholder" style="cursor:pointer"
+                onclick="event.stopPropagation(); openSuggestPicture('${cid}')">\u{1F464}</div>`;
+        }
+    }
+}
+
 async function loadContactSelfies(contactId) {
     if (contactSelfiesCache[contactId]) return contactSelfiesCache[contactId];
     try {

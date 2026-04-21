@@ -285,12 +285,21 @@ async function savePreferences(e) {
         setHeaderAvatar(profileImageUrl || null);
         showToast('Saved.', 'success');
 
-        // Notify contacts of profile changes (photo, email, phone)
-        const changes = [];
-        if (profileImageUrl && profileImageUrl !== prevProfileImageUrl) changes.push('profile picture');
-        if ((email || '') !== prevEmail) changes.push('email');
-        if ((phone || '') !== prevPhone) changes.push('phone number');
-        if (changes.length > 0) {
+        // Notify contacts of profile changes (photo, email, phone).
+        const pictureChanged = !!(profileImageUrl && profileImageUrl !== prevProfileImageUrl);
+        const emailChanged = (email || '') !== prevEmail;
+        const phoneChanged = (phone || '') !== prevPhone;
+        if (pictureChanged) {
+            // Dedicated RPC: sends 'profile_picture_updated' notifications so
+            // contacts can refresh their cached avatar via Realtime without a
+            // full app reload.
+            db.rpc('notify_contacts_of_profile_picture_change', { p_actor_id: currentUser.id })
+                .then(({ error }) => { if (error) console.warn('notify profile pic change error:', error); });
+        }
+        if (emailChanged || phoneChanged) {
+            const changes = [];
+            if (emailChanged) changes.push('email');
+            if (phoneChanged) changes.push('phone number');
             const msg = payload.display_name + ' updated their ' + changes.join(' and ') + '.';
             db.rpc('notify_contacts_of_profile_update', { p_actor_id: currentUser.id, p_message: msg })
                 .then(({ error }) => { if (error) console.warn('notify profile update error:', error); });

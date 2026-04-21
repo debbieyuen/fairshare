@@ -264,6 +264,32 @@ function subscribeToContactNotifications() {
             } else if (payload.new?.notification_type === 'new_selfie') {
                 // In-app display is handled by the contacts.selfie_url UPDATE Realtime event,
                 // which also refreshes the selfie strip. This notification exists for push delivery only.
+            } else if (payload.new?.notification_type === 'profile_picture_updated'
+                    || payload.new?.notification_type === 'profile_updated') {
+                const fromId = payload.new?.from_user_id;
+                const msg = payload.new?.message;
+                if (fromId) {
+                    try {
+                        const { data: fresh } = await db.from('profiles')
+                            .select('profile_image_url')
+                            .eq('id', fromId)
+                            .single();
+                        // Use the notification's created_at as the cache-bust token so
+                        // same-URL replacements (upsert into the same storage path)
+                        // actually reload in the browser.
+                        const bust = payload.new?.created_at || Date.now();
+                        const url = fresh?.profile_image_url || null;
+                        if (typeof updateContactAvatarInList === 'function') {
+                            updateContactAvatarInList(fromId, url, bust);
+                        }
+                        if (typeof cdUpdateHeroAvatar === 'function') {
+                            cdUpdateHeroAvatar(fromId, url, bust);
+                        }
+                    } catch (e) {
+                        console.warn('refresh contact avatar after profile update failed:', e);
+                    }
+                }
+                if (msg) showToast(msg, 'info');
             } else {
                 const msg = payload.new?.message;
                 if (msg) showToast(msg, 'info');

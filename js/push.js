@@ -184,6 +184,19 @@ function handleNotificationNavigation(url) {
             fetchAndShowSuggestedPicture();
         }
 
+        if (params.get('action') === 'view_contact') {
+            const cid = params.get('contact');
+            if (cid) {
+                if (typeof openContactDetailsById === 'function') {
+                    openContactDetailsById(cid);
+                } else {
+                    // App not fully wired up yet — stash for showApp() to pick up.
+                    pendingOpenContactId = cid;
+                }
+                return;
+            }
+        }
+
         const groupId = params.get('group');
         if (groupId) {
             const tab = params.get('tab');

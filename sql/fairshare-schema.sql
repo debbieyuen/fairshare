@@ -1851,8 +1851,13 @@ begin
     values (v_cid, p_actor_id, 'profile_picture_updated', v_msg);
   end loop;
 
-  -- Send Web Push to subscribed contacts
-  perform public.send_push_to_users(v_contact_ids, p_actor_id, 'FairShare', v_msg);
+  -- Send Web Push to subscribed contacts. The URL carries the actor's id so a
+  -- tap on the OS notification deep-links straight to that contact's details
+  -- screen (via handleNotificationNavigation).
+  perform public.send_push_to_users(
+    v_contact_ids, p_actor_id, 'FairShare', v_msg,
+    '/?action=view_contact&contact=' || p_actor_id::text
+  );
 end;
 $$ language plpgsql security definer;
 
