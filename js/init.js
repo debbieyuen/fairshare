@@ -76,6 +76,13 @@ async function init() {
             await loadProfile();
             const claimedGroup = await handlePendingInvite();
             const claimedGroupFromMeet = await handlePendingMeet();
+            // Either claim may have just updated profiles.sponsor_id (and
+            // inserted contacts / pending memberships) server-side. Refresh
+            // currentProfile so the UI renders with the post-claim state
+            // instead of the stale snapshot from before the RPC ran.
+            if (claimedGroup || claimedGroupFromMeet) {
+                await loadProfile();
+            }
             showApp(claimedGroup || claimedGroupFromMeet);
         } else {
             showAuth();
@@ -96,6 +103,14 @@ async function init() {
                         await loadProfile();
                         const claimedGroup = await handlePendingInvite();
                         const claimedGroupFromMeet = await handlePendingMeet();
+                        // Refresh currentProfile if a claim ran — complete_meet /
+                        // claim_sponsorship set sponsor_id server-side, so the
+                        // snapshot we loaded above is stale. Without this, the
+                        // Preferences screen shows "Root user (no sponsor)"
+                        // until the user logs out and back in.
+                        if (claimedGroup || claimedGroupFromMeet) {
+                            await loadProfile();
+                        }
                         showApp(claimedGroup || claimedGroupFromMeet);
                     } catch (e) {
                         console.error('[auth] post-SIGNED_IN error:', e);
