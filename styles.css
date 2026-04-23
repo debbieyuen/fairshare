@@ -3515,3 +3515,198 @@ a.contact-shared-group-link:active {
     color: var(--cd-text);
     border-radius: 10px;
 }
+
+/* Globe screen */
+#globeScreen {
+    position: relative;
+    width: 100%;
+}
+/* Compact (initial) state: centered square, leaves room for the stats panel
+   below on even the smallest iPhone. */
+.globe-viz-wrap {
+    position: relative;
+    width: min(80vw, 62vh, 400px);
+    height: min(80vw, 62vh, 400px);
+    margin: 0.5rem auto 0 auto;
+    overflow: hidden;
+    background: #000;
+    border-radius: 16px;
+    cursor: pointer;
+}
+/* Expanded state: full-bleed canvas the user drops into on first interaction. */
+.globe-viz-wrap.expanded {
+    width: calc(100% + 4rem);
+    height: calc(100vh - 180px);
+    height: calc(100dvh - 180px);
+    min-height: 400px;
+    margin: 0 -2rem;
+    border-radius: 12px;
+    cursor: default;
+}
+.globe-viz-wrap .globe-viz {
+    width: 100%;
+    height: 100%;
+}
+.globe-viz-wrap .globe-viz canvas {
+    display: block;
+    touch-action: none;
+}
+.globe-empty-hint {
+    position: absolute;
+    left: 1rem;
+    right: 1rem;
+    bottom: 2rem;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 0.95rem;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+    pointer-events: none;
+}
+@media (max-width: 600px) {
+    .globe-viz-wrap.expanded {
+        width: calc(100% + 2rem);
+        margin: 0 -1rem;
+        border-radius: 0;
+    }
+}
+.globe-stats-panel {
+    padding: 1.5rem 0 1rem 0;
+}
+.globe-stats-cities {
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--accent-color);
+    margin-bottom: 0.75rem;
+}
+.globe-stats-list {
+    font-size: 1rem;
+    line-height: 1.55;
+    color: var(--dark-gray);
+}
+.globe-stats-list p {
+    margin: 0.3rem 0;
+}
+
+/* Cluster popup (pics at a clicked location) */
+.globe-cluster-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.82);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    padding: 1rem;
+    padding-top: calc(env(safe-area-inset-top, 0) + 1rem);
+    padding-bottom: calc(env(safe-area-inset-bottom, 0) + 1rem);
+}
+.globe-cluster-modal {
+    position: relative;
+    background: #111;
+    color: #fff;
+    border-radius: 14px;
+    width: min(520px, 100%);
+    max-height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+}
+.globe-cluster-close {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    font-size: 1.05rem;
+    cursor: pointer;
+    z-index: 2;
+}
+.globe-cluster-close:hover {
+    background: rgba(255, 255, 255, 0.22);
+}
+.globe-cluster-header {
+    padding: 1rem 3rem 0.5rem 1.25rem;
+}
+.globe-cluster-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin: 0;
+    line-height: 1.3;
+}
+.globe-cluster-subtitle {
+    font-size: 0.85rem;
+    opacity: 0.7;
+    margin-top: 2px;
+}
+.globe-cluster-carousel {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    min-height: 200px;
+    max-height: 55vh;
+}
+.globe-cluster-img {
+    display: block;
+    max-width: 100%;
+    max-height: 55vh;
+    object-fit: contain;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+.globe-cluster-caption {
+    padding: 0.75rem 0.9rem 0.9rem 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.globe-cluster-caption-info {
+    flex: 1;
+    min-width: 0;
+}
+.globe-cluster-caption-name {
+    font-weight: 600;
+    font-size: 1rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.globe-cluster-caption-date {
+    font-size: 0.85rem;
+    opacity: 0.7;
+}
+.globe-cluster-counter {
+    font-size: 0.8rem;
+    opacity: 0.75;
+    white-space: nowrap;
+}
+.globe-cluster-nav {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    font-size: 1.4rem;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.globe-cluster-nav:hover {
+    background: rgba(255, 255, 255, 0.28);
+}
+.globe-cluster-nav:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+

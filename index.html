@@ -39,7 +39,7 @@
     <img id="headerAvatar" class="header-avatar hidden" src="" alt="Your profile photo" onclick="navigateTo('profile')" title="My Profile">
     <span class="user-name" id="userDisplay" onclick="navigateTo('profile')" title="My Profile"></span>
     <div class="header-right">
-        <button type="button" class="header-icon-btn header-heart-btn" onclick="openHeartDialog()" title="Love &amp; Trust" aria-label="Love and Trust">❤️</button>
+        <button type="button" class="header-icon-btn header-heart-btn" onclick="navigateTo('globe')" title="Globe" aria-label="Globe">❤️</button>
     </div>
 </div>
 
@@ -233,6 +233,18 @@
         <div id="contactDetailsScreen" class="hidden">
             <!-- Populated dynamically by openContactDetailsScreen() -->
         </div>
+
+        <!-- ===== GLOBE VIEW ===== -->
+        <div id="globeScreen" class="hidden">
+            <div class="globe-viz-wrap">
+                <div id="globeViz" class="globe-viz"></div>
+                <div id="globeEmptyHint" class="globe-empty-hint hidden">No selfie locations yet. Take a selfie with someone to see them here.</div>
+            </div>
+            <div class="globe-stats-panel">
+                <div id="globeCitiesLine" class="globe-stats-cities"></div>
+                <div id="globeStatsList" class="globe-stats-list"></div>
+            </div>
+        </div>
     </div>
 
     <!-- ===== BOTTOM BAR ===== -->
@@ -303,6 +315,7 @@
 <script defer src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script defer src="https://unpkg.com/globe.gl"></script>
 
 <!-- ===== APP MODULES ===== -->
 <script src="js/config.js"></script>
@@ -330,6 +343,7 @@
 <script src="js/vote.js"></script>
 <script src="js/realtime.js"></script>
 <script src="js/navigation.js"></script>
+<script src="js/globe.js"></script>
 <script src="js/meet.js"></script>
 <script src="js/nearby.js"></script>
 <script src="js/location-sharing.js"></script>

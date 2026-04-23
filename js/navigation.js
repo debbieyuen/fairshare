@@ -18,11 +18,13 @@ function navigateTo(view, arg) {
     const groupsContent = document.getElementById('groupsContent');
     const profileScreen = document.getElementById('profileScreen');
     const contactDetailsScreen = document.getElementById('contactDetailsScreen');
+    const globeScreen = document.getElementById('globeScreen');
 
     contactsScreen.classList.add('hidden');
     groupsContent.classList.add('hidden');
     profileScreen.classList.add('hidden');
     if (contactDetailsScreen) contactDetailsScreen.classList.add('hidden');
+    if (globeScreen) globeScreen.classList.add('hidden');
 
     switch (view) {
         case 'contacts': {
@@ -57,6 +59,13 @@ function navigateTo(view, arg) {
                 // where async hydration (selfies, history) bumps page height.
                 window.scrollTo(0, 0);
                 requestAnimationFrame(() => window.scrollTo(0, 0));
+            }
+            break;
+        case 'globe':
+            if (globeScreen) {
+                globeScreen.classList.remove('hidden');
+                window.scrollTo(0, 0);
+                if (typeof openGlobeScreen === 'function') openGlobeScreen();
             }
             break;
     }
