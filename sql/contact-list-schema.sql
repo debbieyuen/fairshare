@@ -147,7 +147,12 @@ BEGIN
   INSERT INTO public.contact_notifications (to_user_id, from_user_id, notification_type, message)
   VALUES (p_contact_id, v_caller_id, 'new_selfie', v_msg);
 
-  PERFORM public.send_push_to_users(ARRAY[p_contact_id], v_caller_id, 'FairShare', v_msg);
+  -- Deep-link the push so tapping the OS notification opens the caller's
+  -- contact details screen (handled in push.js handleNotificationNavigation).
+  PERFORM public.send_push_to_users(
+    ARRAY[p_contact_id], v_caller_id, 'FairShare', v_msg,
+    '/?action=view_contact&contact=' || v_caller_id::text
+  );
 END;
 $$;
 

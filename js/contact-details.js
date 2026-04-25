@@ -272,6 +272,31 @@ async function hydrateContactDetailsScreen(contactId) {
         });
 }
 
+// Refresh the selfies strip (and history timeline) on the Contact Details
+// screen if it's currently open for this contact. Safe no-op otherwise.
+// Called from the contacts.selfie_url realtime UPDATE handler (recipient side)
+// and from captureContactSelfie() right after a successful upload (uploader
+// side) so the carousel doesn't go stale until the user re-enters the screen.
+function cdRefreshSelfiesIfOpen(contactId) {
+    if (!contactId || cdCurrentContactId !== contactId) return;
+    if (typeof loadContactSelfies === 'function') {
+        loadContactSelfies(contactId)
+            .then((selfies) => {
+                if (cdCurrentContactId !== contactId) return;
+                cdRenderSelfies(contactId, selfies || []);
+            })
+            .catch(() => {});
+    }
+    // Also refresh the history timeline so the new selfie event shows up.
+    if (typeof db !== 'undefined' && db && typeof db.rpc === 'function') {
+        db.rpc('get_contact_history', { p_contact_id: contactId, p_limit: 6 })
+            .then(({ data, error }) => {
+                if (error || cdCurrentContactId !== contactId) return;
+                cdRenderHistory(Array.isArray(data) ? data : []);
+            });
+    }
+}
+
 function cdRenderSelfies(contactId, selfies) {
     const strip = document.getElementById('cd-selfies');
     const head = document.getElementById('cd-selfies-head');

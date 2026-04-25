@@ -189,6 +189,11 @@ function updateContactSelfieInList(contactId, selfieUrl) {
     // Legacy helper kept for compatibility; now delegates to strip reload
     delete contactSelfiesCache[contactId];
     reloadContactSelfiesStrip(contactId);
+    // Also refresh the new full-page Contact Details carousel if it's open
+    // for this contact (the legacy strip is usually absent there).
+    if (typeof cdRefreshSelfiesIfOpen === 'function') {
+        cdRefreshSelfiesIfOpen(contactId);
+    }
     return true;
 }
 
@@ -1640,6 +1645,10 @@ async function captureContactSelfie() {
         }
         // Otherwise reload the selfies strip inline
         reloadContactSelfiesStrip(cid);
+        // Also refresh the full-page Contact Details carousel/history if open.
+        if (typeof cdRefreshSelfiesIfOpen === 'function') {
+            cdRefreshSelfiesIfOpen(cid);
+        }
         closeContactSelfieModal({ refreshContacts: false });
         return;
     }
