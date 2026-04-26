@@ -1,5 +1,31 @@
 const NEARBY_POLL_INTERVAL_MS = 60000; // 1 minute
 
+// Reverse-geocode cache: only re-hit Nominatim when we've moved more than
+// ~500m (≈0.005°) from the last geocoded fix. Polling every minute would
+// otherwise hammer the public OSM endpoint even when the user is stationary.
+const NEARBY_GEOCODE_MOVE_DEG = 0.005;
+let nearbyGeocodeLat = null;
+let nearbyGeocodeLng = null;
+let nearbyGeocodeLabel = '';
+
+async function nearbyResolveLocationLabel(lat, lng) {
+    const moved =
+        nearbyGeocodeLat == null ||
+        Math.abs(lat - nearbyGeocodeLat) > NEARBY_GEOCODE_MOVE_DEG ||
+        Math.abs(lng - nearbyGeocodeLng) > NEARBY_GEOCODE_MOVE_DEG;
+    if (!moved && nearbyGeocodeLabel) return nearbyGeocodeLabel;
+    if (typeof reverseGeocode !== 'function') return nearbyGeocodeLabel || '';
+    try {
+        const label = await reverseGeocode(lat, lng);
+        nearbyGeocodeLat = lat;
+        nearbyGeocodeLng = lng;
+        nearbyGeocodeLabel = label || '';
+        return nearbyGeocodeLabel;
+    } catch {
+        return nearbyGeocodeLabel || '';
+    }
+}
+
 function hasAnyNearbyContacts() {
     return contactsLoadedRows.some(r => r.contact && r.contact.notify_nearby);
 }
@@ -41,9 +67,11 @@ async function sendLocationUpdate() {
     try {
         const pos = await getGPSLocation();
         if (!pos) return;
+        const label = await nearbyResolveLocationLabel(pos.lat, pos.lng);
         await db.rpc('update_location_and_check_nearby', {
             p_lat: pos.lat,
-            p_lng: pos.lng
+            p_lng: pos.lng,
+            p_location_label: label || null
         });
     } catch (e) {
         console.warn('Nearby location update failed:', e);

@@ -42,12 +42,20 @@ ALTER TABLE public.contact_notifications
     'new_selfie'
   ));
 
+-- Optional reverse-geocoded label (e.g. "San Francisco, California") attached
+-- to the nearby_alert rows so the contact-history timeline can display
+-- "Nearby together in <city>". Populated by the caller via the RPC below.
+ALTER TABLE public.contact_notifications
+  ADD COLUMN IF NOT EXISTS location_label text;
+
 -- 4. RPC: update caller's location and check for nearby mutual contacts.
 --    If a mutual-notify contact is within 1 mile and hasn't been notified in the
 --    last hour, sends an in-app notification + Web Push.
+DROP FUNCTION IF EXISTS public.update_location_and_check_nearby(double precision, double precision);
 CREATE OR REPLACE FUNCTION public.update_location_and_check_nearby(
   p_lat double precision,
-  p_lng double precision
+  p_lng double precision,
+  p_location_label text DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -112,17 +120,19 @@ BEGIN
 
         -- In-app notification for the contact
         INSERT INTO public.contact_notifications
-          (to_user_id, from_user_id, notification_type, message)
+          (to_user_id, from_user_id, notification_type, message, location_label)
         VALUES
           (v_nearby.contact_id, v_user_id, 'nearby_alert',
-           coalesce(v_my_name, 'Someone') || ' is nearby!');
+           coalesce(v_my_name, 'Someone') || ' is nearby!',
+           p_location_label);
 
         -- In-app notification for the caller
         INSERT INTO public.contact_notifications
-          (to_user_id, from_user_id, notification_type, message)
+          (to_user_id, from_user_id, notification_type, message, location_label)
         VALUES
           (v_user_id, v_nearby.contact_id, 'nearby_alert',
-           coalesce(v_contact_name, 'Someone') || ' is nearby!');
+           coalesce(v_contact_name, 'Someone') || ' is nearby!',
+           p_location_label);
 
         -- Web Push to both parties
         PERFORM public.send_push_to_users(

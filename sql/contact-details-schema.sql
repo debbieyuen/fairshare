@@ -219,7 +219,11 @@ BEGIN
     SELECT
       ('n:' || cn.id::text)        AS id,
       'nearby'::text               AS kind,
-      'Nearby together'::text      AS text,
+      CASE
+        WHEN cn.location_label IS NOT NULL AND cn.location_label <> ''
+          THEN 'Nearby together in ' || cn.location_label
+        ELSE 'Nearby together'
+      END                          AS text,
       cn.created_at                AS occurred_at
     FROM public.contact_notifications cn
     WHERE cn.notification_type = 'nearby_alert'
