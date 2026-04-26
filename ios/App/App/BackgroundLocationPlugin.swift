@@ -19,9 +19,25 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
     private let cachedLocationMaxAge: TimeInterval = 30
 
     // Hard deadline for a pending getCurrentPosition call waiting on a fresh
-    // fix. If Core Location hasn't delivered anything new by then we fall back
-    // to whatever we have.
+    // fix. If Core Location hasn't delivered anything new by then we give up
+    // and let JS treat this poll as "no fix" rather than writing stale
+    // coordinates to the DB.
     private let freshFixDeadline: TimeInterval = 12
+
+    // Maximum age, in seconds, of a `CLLocation.timestamp` we'll accept from
+    // Core Location. iOS often replays a cached fix (sometimes hours or days
+    // old, e.g. after the device travels with the app force-quit) when
+    // `startUpdatingLocation` first runs or when the app foregrounds. Those
+    // cached fixes were getting forwarded to JS as if they were "live", which
+    // is how a phone in Denver kept reporting San Francisco coordinates with
+    // a fresh `updated_at`.
+    private let acceptedFixMaxAge: TimeInterval = 60
+
+    // Reject fixes whose horizontal accuracy is non-positive (Core Location
+    // uses negative values to signal an invalid fix). We don't apply a strict
+    // upper bound because that disqualifies indoor users entirely; the age
+    // check above is the main defense against stale-cache replay.
+    private let minAcceptableHorizontalAccuracy: CLLocationAccuracy = 0
 
     // MARK: - Plugin methods
 
@@ -59,9 +75,12 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
     }
 
     @objc func getCurrentPosition(_ call: CAPPluginCall) {
-        // Fresh enough? Return immediately.
+        // Fresh enough? Return immediately. We require both a recent timestamp
+        // and a valid horizontal accuracy — Core Location returns negative
+        // accuracy for invalid/cached fixes, which we never want to write.
         if let loc = lastPosition,
-           Date().timeIntervalSince(loc.timestamp) < cachedLocationMaxAge {
+           Date().timeIntervalSince(loc.timestamp) < cachedLocationMaxAge,
+           loc.horizontalAccuracy > minAcceptableHorizontalAccuracy {
             call.resolve([
                 "lat": loc.coordinate.latitude,
                 "lng": loc.coordinate.longitude
@@ -91,8 +110,10 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
 
             DispatchQueue.main.asyncAfter(deadline: .now() + self.freshFixDeadline) { [weak self] in
                 guard let self = self else { return }
-                // Time is up. Resolve any of our pending calls with whatever
-                // we have (even if it's the stale fix, so JS isn't stuck).
+                // Time is up. flushPendingCalls(force: true) will reject any
+                // pending callers if we still don't have a sufficiently
+                // fresh fix — JS treats that as "no fix this poll" and
+                // skips the upsert, which is the desired behavior here.
                 self.flushPendingCalls(force: true)
             }
         }
@@ -102,10 +123,26 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
 
     public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         // Use the most recent acceptable fix. Core Location occasionally
-        // hands back cached locations many seconds old when updates first
-        // start; skip those in favor of newer ones if present.
+        // hands back cached locations that are seconds — or, after travel
+        // with the app force-quit, hours/days — old. We need to drop those
+        // before they get forwarded to JS, otherwise they end up in the DB
+        // stamped with a fresh `updated_at`.
         guard let location = mostRecent(of: locations) else { return }
         let age = Date().timeIntervalSince(location.timestamp)
+
+        if location.horizontalAccuracy <= minAcceptableHorizontalAccuracy {
+            NSLog("[BackgroundLocation] discarding fix with invalid accuracy=\(location.horizontalAccuracy) age=\(String(format: "%.1f", age))s")
+            return
+        }
+        if age > acceptedFixMaxAge {
+            NSLog("[BackgroundLocation] discarding stale cached fix age=\(String(format: "%.1f", age))s lat=\(location.coordinate.latitude) lng=\(location.coordinate.longitude)")
+            // Kick the manager so we get a real fix soon. requestLocation()
+            // is idempotent and forces Core Location to deliver a single
+            // fresh sample, which will overwrite the cached one.
+            manager.requestLocation()
+            return
+        }
+
         NSLog("[BackgroundLocation] didUpdateLocations lat=\(location.coordinate.latitude) lng=\(location.coordinate.longitude) horizAcc=\(location.horizontalAccuracy)m age=\(String(format: "%.1f", age))s")
         lastPosition = location
         notifyListeners("locationUpdate", data: [
@@ -182,22 +219,31 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
     /// Resolve any pending getCurrentPosition calls. When `force` is false,
     /// we only resolve calls whose `previousTimestamp` differs from the
     /// current `lastPosition.timestamp` (i.e. a new fix has genuinely
-    /// arrived). When `force` is true we resolve everyone with whatever we
-    /// have so callers aren't stuck waiting forever.
+    /// arrived). When `force` is true the caller's deadline is up; in that
+    /// case we still only resolve with `lastPosition` if it's *both* newer
+    /// than what the caller had AND fresh enough to be worth writing. We'd
+    /// rather have JS treat this poll as "no fix" and skip the upsert than
+    /// send stale coordinates to Supabase with a fresh `updated_at`.
     private func flushPendingCalls(force: Bool) {
         guard !pendingFreshCalls.isEmpty else { return }
         let current = lastPosition
         var remaining: [(call: CAPPluginCall, previousTimestamp: Date?)] = []
 
         for entry in pendingFreshCalls {
-            if let loc = current,
-               force || loc.timestamp != entry.previousTimestamp {
+            let isNew = current.map { $0.timestamp != entry.previousTimestamp } ?? false
+            let isFreshEnough = current.map {
+                Date().timeIntervalSince($0.timestamp) <= acceptedFixMaxAge &&
+                    $0.horizontalAccuracy > minAcceptableHorizontalAccuracy
+            } ?? false
+
+            if let loc = current, isNew, isFreshEnough {
                 entry.call.resolve([
                     "lat": loc.coordinate.latitude,
                     "lng": loc.coordinate.longitude
                 ])
             } else if force {
-                entry.call.reject("Could not get location")
+                NSLog("[BackgroundLocation] getCurrentPosition timed out without a fresh fix (had cached fix: \(current != nil))")
+                entry.call.reject("Could not get fresh location")
             } else {
                 remaining.append(entry)
             }
