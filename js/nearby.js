@@ -71,7 +71,10 @@ async function sendLocationUpdate() {
         await db.rpc('update_location_and_check_nearby', {
             p_lat: pos.lat,
             p_lng: pos.lng,
-            p_location_label: label || null
+            p_location_label: label || null,
+            p_source_instance_id: typeof getLocationSharingInstanceId === 'function' ? getLocationSharingInstanceId() : null,
+            p_source_platform: typeof getLocationSharingPlatform === 'function' ? getLocationSharingPlatform() : null,
+            p_source_user_agent: typeof getLocationSharingUserAgent === 'function' ? getLocationSharingUserAgent() : null
         });
     } catch (e) {
         console.warn('Nearby location update failed:', e);

@@ -1,11 +1,16 @@
 import Foundation
 import Capacitor
 import CoreLocation
+import UIKit
 
 @objc(BackgroundLocationPlugin)
 public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
     private var locationManager: CLLocationManager?
     private var lastPosition: CLLocation?
+    private var supabaseConfig: SupabaseLocationConfig?
+    private var pendingUploadLocation: CLLocation?
+    private var uploadInFlight = false
+    private var uploadRetryWorkItem: DispatchWorkItem?
 
     // Queue of pending one-shot getCurrentPosition calls waiting on a fresh fix.
     // Each entry pairs a call with the previous fix timestamp it considers
@@ -38,6 +43,24 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
     // upper bound because that disqualifies indoor users entirely; the age
     // check above is the main defense against stale-cache replay.
     private let minAcceptableHorizontalAccuracy: CLLocationAccuracy = 0
+    private let locationUploadRetryDelay: TimeInterval = 15
+
+    private struct SupabaseLocationConfig: Codable {
+        let supabaseUrl: String
+        let anonKey: String
+        let accessToken: String
+        let userId: String
+        let instanceId: String?
+        let sourcePlatform: String?
+        let sourceUserAgent: String?
+    }
+
+    private let configDefaultsKey = "BackgroundLocationSupabaseConfig"
+    private let isoFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
 
     // MARK: - Plugin methods
 
@@ -45,6 +68,7 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.ensureLocationManager()
+            self.updateSupabaseConfig(from: call)
 
             let status = self.locationManager?.authorizationStatus ?? .notDetermined
             NSLog("[BackgroundLocation] start() called, authorizationStatus=\(self.describe(status))")
@@ -134,6 +158,10 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
             NSLog("[BackgroundLocation] discarding fix with invalid accuracy=\(location.horizontalAccuracy) age=\(String(format: "%.1f", age))s")
             return
         }
+        if isSimulatedLocation(location) {
+            NSLog("[BackgroundLocation] discarding simulated location lat=\(location.coordinate.latitude) lng=\(location.coordinate.longitude)")
+            return
+        }
         if age > acceptedFixMaxAge {
             NSLog("[BackgroundLocation] discarding stale cached fix age=\(String(format: "%.1f", age))s lat=\(location.coordinate.latitude) lng=\(location.coordinate.longitude)")
             // Kick the manager so we get a real fix soon. requestLocation()
@@ -145,6 +173,7 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
 
         NSLog("[BackgroundLocation] didUpdateLocations lat=\(location.coordinate.latitude) lng=\(location.coordinate.longitude) horizAcc=\(location.horizontalAccuracy)m age=\(String(format: "%.1f", age))s")
         lastPosition = location
+        postLocationToSupabase(location)
         notifyListeners("locationUpdate", data: [
             "lat": location.coordinate.latitude,
             "lng": location.coordinate.longitude
@@ -180,7 +209,172 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
             manager.distanceFilter = 10
             manager.pausesLocationUpdatesAutomatically = false
             locationManager = manager
+            loadSupabaseConfig()
         }
+    }
+
+    private func updateSupabaseConfig(from call: CAPPluginCall) {
+        guard
+            let supabaseUrl = call.getString("supabaseUrl"), !supabaseUrl.isEmpty,
+            let anonKey = call.getString("anonKey"), !anonKey.isEmpty,
+            let accessToken = call.getString("accessToken"), !accessToken.isEmpty,
+            let userId = call.getString("userId"), !userId.isEmpty
+        else {
+            loadSupabaseConfig()
+            return
+        }
+
+        let config = SupabaseLocationConfig(
+            supabaseUrl: supabaseUrl,
+            anonKey: anonKey,
+            accessToken: accessToken,
+            userId: userId,
+            instanceId: call.getString("instanceId"),
+            sourcePlatform: call.getString("sourcePlatform"),
+            sourceUserAgent: call.getString("sourceUserAgent")
+        )
+        supabaseConfig = config
+        if let encoded = try? JSONEncoder().encode(config) {
+            UserDefaults.standard.set(encoded, forKey: configDefaultsKey)
+        }
+        startNextLocationUploadIfNeeded()
+    }
+
+    private func loadSupabaseConfig() {
+        if supabaseConfig != nil { return }
+        guard let data = UserDefaults.standard.data(forKey: configDefaultsKey),
+              let config = try? JSONDecoder().decode(SupabaseLocationConfig.self, from: data)
+        else { return }
+        supabaseConfig = config
+    }
+
+    private func postLocationToSupabase(_ location: CLLocation) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.pendingUploadLocation = location
+            self.uploadRetryWorkItem?.cancel()
+            self.uploadRetryWorkItem = nil
+            self.startNextLocationUploadIfNeeded()
+        }
+    }
+
+    private func startNextLocationUploadIfNeeded() {
+        guard !uploadInFlight else { return }
+        guard let location = pendingUploadLocation else { return }
+        guard let config = supabaseConfig else {
+            NSLog("[BackgroundLocation] no Supabase config; keeping latest location pending")
+            return
+        }
+        pendingUploadLocation = nil
+        uploadInFlight = true
+
+        guard var components = URLComponents(string: config.supabaseUrl + "/rest/v1/user_locations") else {
+            NSLog("[BackgroundLocation] invalid Supabase URL")
+            uploadInFlight = false
+            pendingUploadLocation = location
+            return
+        }
+        components.queryItems = [URLQueryItem(name: "on_conflict", value: "user_id")]
+        guard let url = components.url else {
+            NSLog("[BackgroundLocation] could not build user_locations URL")
+            uploadInFlight = false
+            pendingUploadLocation = location
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 20
+        request.setValue(config.anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(config.accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("resolution=merge-duplicates,return=minimal", forHTTPHeaderField: "Prefer")
+
+        var body: [String: Any] = [
+            "user_id": config.userId,
+            "lat": location.coordinate.latitude,
+            "lng": location.coordinate.longitude,
+            "updated_at": isoFormatter.string(from: Date())
+        ]
+        if let instanceId = config.instanceId { body["source_instance_id"] = instanceId }
+        if let sourcePlatform = config.sourcePlatform { body["source_platform"] = sourcePlatform }
+        if let sourceUserAgent = config.sourceUserAgent { body["source_user_agent"] = sourceUserAgent }
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
+        } catch {
+            NSLog("[BackgroundLocation] failed to encode location body: \(error.localizedDescription)")
+            uploadInFlight = false
+            pendingUploadLocation = location
+            return
+        }
+
+        var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "UploadLocation") {
+            if backgroundTask != .invalid {
+                UIApplication.shared.endBackgroundTask(backgroundTask)
+                backgroundTask = .invalid
+            }
+        }
+
+        let session = makeLocationUploadSession()
+        session.dataTask(with: request) { [weak self] _, response, error in
+            defer {
+                if backgroundTask != .invalid {
+                    UIApplication.shared.endBackgroundTask(backgroundTask)
+                }
+            }
+            if let error = error {
+                NSLog("[BackgroundLocation] Supabase location upload failed: \(error.localizedDescription)")
+                DispatchQueue.main.async {
+                    self?.handleLocationUploadFinished(location: location, succeeded: false)
+                }
+                return
+            }
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if statusCode < 200 || statusCode >= 300 {
+                NSLog("[BackgroundLocation] Supabase location upload returned HTTP \(statusCode)")
+                DispatchQueue.main.async {
+                    self?.handleLocationUploadFinished(location: location, succeeded: false)
+                }
+                return
+            }
+            NSLog("[BackgroundLocation] Supabase location upload succeeded")
+            DispatchQueue.main.async {
+                self?.handleLocationUploadFinished(location: location, succeeded: true)
+            }
+        }.resume()
+    }
+
+    private func makeLocationUploadSession() -> URLSession {
+        let config = URLSessionConfiguration.ephemeral
+        config.waitsForConnectivity = true
+        config.timeoutIntervalForRequest = 20
+        config.timeoutIntervalForResource = 30
+        return URLSession(configuration: config)
+    }
+
+    private func handleLocationUploadFinished(location: CLLocation, succeeded: Bool) {
+        uploadInFlight = false
+        if !succeeded {
+            if pendingUploadLocation == nil ||
+                (pendingUploadLocation?.timestamp ?? .distantPast) <= location.timestamp {
+                pendingUploadLocation = location
+            }
+            scheduleLocationUploadRetry()
+            return
+        }
+        startNextLocationUploadIfNeeded()
+    }
+
+    private func scheduleLocationUploadRetry() {
+        guard uploadRetryWorkItem == nil else { return }
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.uploadRetryWorkItem = nil
+            self.startNextLocationUploadIfNeeded()
+        }
+        uploadRetryWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + locationUploadRetryDelay, execute: workItem)
     }
 
     /// `allowsBackgroundLocationUpdates` requires Always authorization at the
@@ -203,6 +397,13 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
 
     private func mostRecent(of locations: [CLLocation]) -> CLLocation? {
         return locations.max(by: { $0.timestamp < $1.timestamp })
+    }
+
+    private func isSimulatedLocation(_ location: CLLocation) -> Bool {
+        if #available(iOS 15.0, *) {
+            return location.sourceInformation?.isSimulatedBySoftware == true
+        }
+        return false
     }
 
     private func describe(_ status: CLAuthorizationStatus) -> String {

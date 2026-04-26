@@ -10,8 +10,16 @@ CREATE TABLE IF NOT EXISTS public.user_locations (
   user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   lat double precision NOT NULL,
   lng double precision NOT NULL,
-  updated_at timestamptz DEFAULT now()
+  updated_at timestamptz DEFAULT now(),
+  source_instance_id text,
+  source_platform text,
+  source_user_agent text
 );
+
+ALTER TABLE public.user_locations
+  ADD COLUMN IF NOT EXISTS source_instance_id text,
+  ADD COLUMN IF NOT EXISTS source_platform text,
+  ADD COLUMN IF NOT EXISTS source_user_agent text;
 
 ALTER TABLE public.user_locations ENABLE ROW LEVEL SECURITY;
 
@@ -52,10 +60,14 @@ ALTER TABLE public.contact_notifications
 --    If a mutual-notify contact is within 1 mile and hasn't been notified in the
 --    last hour, sends an in-app notification + Web Push.
 DROP FUNCTION IF EXISTS public.update_location_and_check_nearby(double precision, double precision);
+DROP FUNCTION IF EXISTS public.update_location_and_check_nearby(double precision, double precision, text);
 CREATE OR REPLACE FUNCTION public.update_location_and_check_nearby(
   p_lat double precision,
   p_lng double precision,
-  p_location_label text DEFAULT NULL
+  p_location_label text DEFAULT NULL,
+  p_source_instance_id text DEFAULT NULL,
+  p_source_platform text DEFAULT NULL,
+  p_source_user_agent text DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -73,11 +85,37 @@ BEGIN
     RAISE EXCEPTION 'Not authenticated';
   END IF;
 
+  IF EXISTS (
+    SELECT 1 FROM public.location_shares ls
+    WHERE ls.from_user_id = v_user_id
+      AND (ls.expires_at IS NULL OR ls.expires_at > now())
+      AND ls.source_instance_id IS NOT NULL
+  ) AND NOT EXISTS (
+    SELECT 1 FROM public.location_shares ls
+    WHERE ls.from_user_id = v_user_id
+      AND (ls.expires_at IS NULL OR ls.expires_at > now())
+      AND ls.source_instance_id = p_source_instance_id
+  ) THEN
+    RAISE EXCEPTION 'Location updates for active sharing must come from the sharing device';
+  END IF;
+
   -- Upsert our location
-  INSERT INTO public.user_locations (user_id, lat, lng, updated_at)
-  VALUES (v_user_id, p_lat, p_lng, now())
+  INSERT INTO public.user_locations (
+    user_id, lat, lng, updated_at,
+    source_instance_id, source_platform, source_user_agent
+  )
+  VALUES (
+    v_user_id, p_lat, p_lng, now(),
+    p_source_instance_id, p_source_platform, p_source_user_agent
+  )
   ON CONFLICT (user_id)
-  DO UPDATE SET lat = p_lat, lng = p_lng, updated_at = now();
+  DO UPDATE SET
+    lat = p_lat,
+    lng = p_lng,
+    updated_at = now(),
+    source_instance_id = p_source_instance_id,
+    source_platform = p_source_platform,
+    source_user_agent = p_source_user_agent;
 
   -- Look up our display name once
   SELECT display_name INTO v_my_name

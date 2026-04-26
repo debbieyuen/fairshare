@@ -190,6 +190,7 @@ async function showApp(navigateToGroupId) {
         // empty until the contact list finished rendering and ran its own
         // loadLocationShares() as a side effect).
         try { await loadLocationShares(); } catch (e) { console.warn('loadLocationShares at login failed:', e); }
+        try { await claimUnownedLocationSharesForThisDevice(); } catch (e) { console.warn('claim location shares at login failed:', e); }
         checkAndStartLocationSharing();
         subscribeToLocationShares();
         // Fetch current positions of anyone sharing with us and wire up the

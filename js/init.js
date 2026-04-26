@@ -129,6 +129,7 @@ async function init() {
                     }
                 }, 0);
             } else if (event === 'SIGNED_OUT') {
+                try { stopLocationSharingUpdates(); } catch (_) { /* best effort */ }
                 currentUser = null;
                 currentProfile = null;
                 showAuth();
@@ -136,6 +137,9 @@ async function init() {
                 // Session refreshed successfully — update user reference
                 console.log('[auth] Token refreshed OK');
                 currentUser = session.user;
+                if (typeof refreshNativeLocationSharingAuth === 'function') {
+                    refreshNativeLocationSharingAuth();
+                }
             }
         });
     } catch (e) {

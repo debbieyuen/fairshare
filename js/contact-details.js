@@ -632,6 +632,7 @@ function cdRenderSharingLocationPane(contactId) {
     const name = row?.profile?.display_name || 'Contact';
     const loc  = contactLocationsCache[contactId];
 
+    const locKey = loc ? cdLocationKey(loc) : '';
     const updatedText = loc?.updated_at ? 'Updated ' + formatLastSeen(loc.updated_at) : 'Waiting for location\u2026';
     const headlinePlaceholder = loc ? 'Locating\u2026' : 'No location yet';
 
@@ -645,7 +646,7 @@ function cdRenderSharingLocationPane(contactId) {
                     <span class="cd-sharing-loc-dot"></span>
                     Sharing location
                 </div>
-                <div class="cd-sharing-loc-headline" id="cd-sharing-loc-headline">${esc(headlinePlaceholder)}</div>
+                <div class="cd-sharing-loc-headline" id="cd-sharing-loc-headline" data-loc-key="${esc(locKey)}">${esc(headlinePlaceholder)}</div>
                 <div class="cd-sharing-loc-updated" id="cd-sharing-loc-updated">${esc(updatedText)}</div>
             </div>
             ${loc ? `<span class="cd-sharing-loc-view">
@@ -661,6 +662,7 @@ function cdRenderSharingLocationPane(contactId) {
 }
 
 async function cdHydrateSharingLocationPane(contactId, loc) {
+    const locKey = cdLocationKey(loc);
     // Distance from me — best effort.
     let miles = null;
     try {
@@ -679,10 +681,16 @@ async function cdHydrateSharingLocationPane(contactId, loc) {
     if (cdCurrentContactId !== contactId) return;
     const headlineEl = document.getElementById('cd-sharing-loc-headline');
     if (!headlineEl) return;
+    if (headlineEl.dataset.locKey !== locKey) return;
 
     const distanceText = miles != null ? cdFormatDistanceShort(miles) : '';
     const parts = [distanceText, label].filter(Boolean);
     headlineEl.textContent = parts.length ? parts.join(' \u00B7 ') : 'Location available';
+}
+
+function cdLocationKey(loc) {
+    if (!loc) return '';
+    return [loc.lat, loc.lng, loc.updated_at || ''].join('|');
 }
 
 function cdFormatDistanceShort(miles) {

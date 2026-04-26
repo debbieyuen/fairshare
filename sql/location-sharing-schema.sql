@@ -8,8 +8,21 @@ CREATE TABLE IF NOT EXISTS public.location_shares (
   to_user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   started_at timestamptz DEFAULT now(),
   expires_at timestamptz, -- NULL = indefinitely
+  source_instance_id text,
+  source_platform text,
+  source_user_agent text,
   UNIQUE(from_user_id, to_user_id)
 );
+
+ALTER TABLE public.location_shares
+  ADD COLUMN IF NOT EXISTS source_instance_id text,
+  ADD COLUMN IF NOT EXISTS source_platform text,
+  ADD COLUMN IF NOT EXISTS source_user_agent text;
+
+ALTER TABLE public.user_locations
+  ADD COLUMN IF NOT EXISTS source_instance_id text,
+  ADD COLUMN IF NOT EXISTS source_platform text,
+  ADD COLUMN IF NOT EXISTS source_user_agent text;
 
 ALTER TABLE public.location_shares ENABLE ROW LEVEL SECURITY;
 
@@ -62,6 +75,52 @@ CREATE POLICY "Contacts can read shared locations"
       WHERE ls.from_user_id = user_locations.user_id
         AND ls.to_user_id = auth.uid()
         AND (ls.expires_at IS NULL OR ls.expires_at > now())
+    )
+  );
+
+-- During active sharing, only the device instance that owns the outbound share
+-- may update the sharer's single public location row. This prevents another
+-- logged-in device from the same account from overwriting live sharing.
+DROP POLICY IF EXISTS "Users can insert own location" ON public.user_locations;
+CREATE POLICY "Users can insert own location"
+  ON public.user_locations FOR INSERT
+  WITH CHECK (
+    auth.uid() = user_id
+    AND (
+      NOT EXISTS (
+        SELECT 1 FROM public.location_shares ls
+        WHERE ls.from_user_id = auth.uid()
+          AND (ls.expires_at IS NULL OR ls.expires_at > now())
+          AND ls.source_instance_id IS NOT NULL
+      )
+      OR EXISTS (
+        SELECT 1 FROM public.location_shares ls
+        WHERE ls.from_user_id = auth.uid()
+          AND (ls.expires_at IS NULL OR ls.expires_at > now())
+          AND ls.source_instance_id = user_locations.source_instance_id
+      )
+    )
+  );
+
+DROP POLICY IF EXISTS "Users can update own location" ON public.user_locations;
+CREATE POLICY "Users can update own location"
+  ON public.user_locations FOR UPDATE
+  USING (auth.uid() = user_id)
+  WITH CHECK (
+    auth.uid() = user_id
+    AND (
+      NOT EXISTS (
+        SELECT 1 FROM public.location_shares ls
+        WHERE ls.from_user_id = auth.uid()
+          AND (ls.expires_at IS NULL OR ls.expires_at > now())
+          AND ls.source_instance_id IS NOT NULL
+      )
+      OR EXISTS (
+        SELECT 1 FROM public.location_shares ls
+        WHERE ls.from_user_id = auth.uid()
+          AND (ls.expires_at IS NULL OR ls.expires_at > now())
+          AND ls.source_instance_id = user_locations.source_instance_id
+      )
     )
   );
 

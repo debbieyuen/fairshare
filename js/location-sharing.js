@@ -1,10 +1,37 @@
 const LOCATION_SHARING_POLL_MS = 60000;
+const LOCATION_SHARING_INSTANCE_KEY = 'union_location_sharing_instance_id';
 // How often the viewer polls inbound-sharer positions as a safety net. Realtime
 // (when enabled on user_locations) does the heavy lifting; this catches any
 // missed events and covers the case where the publication migration hasn't
 // been applied yet.
 const INBOUND_LOCATION_POLL_MS = 60000;
 let contactLocationsCache = {}; // contact_id -> { lat, lng }
+
+function getLocationSharingInstanceId() {
+    try {
+        let id = localStorage.getItem(LOCATION_SHARING_INSTANCE_KEY);
+        if (!id) {
+            id = crypto?.randomUUID ? crypto.randomUUID() : String(Date.now()) + '-' + Math.random().toString(16).slice(2);
+            localStorage.setItem(LOCATION_SHARING_INSTANCE_KEY, id);
+        }
+        return id;
+    } catch (_) {
+        return 'volatile-' + String(Date.now());
+    }
+}
+
+function getLocationSharingPlatform() {
+    if (IS_NATIVE) return 'ios';
+    return 'web';
+}
+
+function getLocationSharingUserAgent() {
+    try {
+        return String(navigator.userAgent || '').slice(0, 500);
+    } catch (_) {
+        return '';
+    }
+}
 
 function toggleShareLocation(contactId, enabled) {
     if (!currentUser) return;
@@ -28,7 +55,10 @@ async function shareLocationWithContact(contactId, duration) {
                 from_user_id: currentUser.id,
                 to_user_id: contactId,
                 started_at: new Date().toISOString(),
-                expires_at: expiresAt
+                expires_at: expiresAt,
+                source_instance_id: getLocationSharingInstanceId(),
+                source_platform: getLocationSharingPlatform(),
+                source_user_agent: getLocationSharingUserAgent()
             }, { onConflict: 'from_user_id,to_user_id' });
         if (error) throw error;
 
@@ -101,8 +131,13 @@ function updateShareLocationCheckbox(contactId, checked, expiresAt) {
 function hasAnyActiveLocationShares() {
     const now = Date.now();
     return Object.values(locationSharesOutbound).some(s =>
-        s.expires_at === null || new Date(s.expires_at).getTime() > now
+        isLocationShareOwnedByThisDevice(s) &&
+        (s.expires_at === null || new Date(s.expires_at).getTime() > now)
     );
+}
+
+function isLocationShareOwnedByThisDevice(share) {
+    return !share?.source_instance_id || share.source_instance_id === getLocationSharingInstanceId();
 }
 
 function checkAndStartLocationSharing() {
@@ -123,30 +158,63 @@ function startLocationSharingUpdates() {
     console.log('[location-sharing] startLocationSharingUpdates: IS_NATIVE=', IS_NATIVE,
         'outboundShares=', Object.keys(locationSharesOutbound || {}).length);
 
-    if (IS_NATIVE) {
-        try {
-            const plugin = Capacitor.Plugins.BackgroundLocation;
-            if (!plugin) {
-                console.warn('[location-sharing] BackgroundLocation plugin not registered on this native build');
-            } else {
-                plugin.addListener('locationUpdate', (pos) => {
-                    console.log('[location-sharing] native locationUpdate', pos);
-                    nativeLocationLastPosition = { lat: pos.lat, lng: pos.lng };
-                    nativeLocationLastAt = Date.now();
-                    sendSharingLocationUpdate(pos.lat, pos.lng);
-                });
-                plugin.start()
-                    .then(() => console.log('[location-sharing] native plugin.start resolved'))
-                    .catch(err => console.warn('[location-sharing] native plugin.start rejected:', err));
-            }
-        } catch (e) {
-            console.warn('Native BackgroundLocation start failed:', e);
-        }
-    }
+    startNativeLocationSharing();
 
     sendSharingLocationPoll();
     locationSharingInterval = setInterval(sendSharingLocationPoll, LOCATION_SHARING_POLL_MS);
     startShareRemainingTimer();
+}
+
+async function getNativeLocationSharingConfig() {
+    if (!currentUser || !db?.auth?.getSession) return null;
+    const { data, error } = await db.auth.getSession();
+    if (error) {
+        console.warn('[location-sharing] could not read auth session for native location:', error);
+        return null;
+    }
+    const accessToken = data?.session?.access_token;
+    if (!accessToken) return null;
+    return {
+        supabaseUrl: SUPABASE_URL,
+        anonKey: SUPABASE_ANON_KEY,
+        accessToken,
+        userId: currentUser.id,
+        instanceId: getLocationSharingInstanceId(),
+        sourcePlatform: getLocationSharingPlatform(),
+        sourceUserAgent: getLocationSharingUserAgent()
+    };
+}
+
+async function startNativeLocationSharing() {
+    if (!IS_NATIVE) return;
+    try {
+        const plugin = Capacitor.Plugins.BackgroundLocation;
+        if (!plugin) {
+            console.warn('[location-sharing] BackgroundLocation plugin not registered on this native build');
+            return;
+        }
+        if (!startNativeLocationSharing._listenerAttached) {
+            plugin.addListener('locationUpdate', (pos) => {
+                console.log('[location-sharing] native locationUpdate', pos);
+                nativeLocationLastPosition = { lat: pos.lat, lng: pos.lng };
+                nativeLocationLastAt = Date.now();
+                // Foreground fallback. The native plugin also writes accepted
+                // fixes directly so background suspension does not stop sharing.
+                sendSharingLocationUpdate(pos.lat, pos.lng);
+            });
+            startNativeLocationSharing._listenerAttached = true;
+        }
+        const config = await getNativeLocationSharingConfig();
+        await plugin.start(config || {});
+        console.log('[location-sharing] native plugin.start resolved');
+    } catch (e) {
+        console.warn('Native BackgroundLocation start failed:', e);
+    }
+}
+
+function refreshNativeLocationSharingAuth() {
+    if (!IS_NATIVE || !hasAnyActiveLocationShares()) return;
+    startNativeLocationSharing();
 }
 
 function stopLocationSharingUpdates() {
@@ -197,6 +265,7 @@ async function sendSharingLocationPoll() {
 
 async function sendSharingLocationUpdate(lat, lng) {
     if (!currentUser) return;
+    if (!hasAnyActiveLocationShares()) return;
     try {
         const { error } = await db
             .from('user_locations')
@@ -204,7 +273,10 @@ async function sendSharingLocationUpdate(lat, lng) {
                 user_id: currentUser.id,
                 lat: lat,
                 lng: lng,
-                updated_at: new Date().toISOString()
+                updated_at: new Date().toISOString(),
+                source_instance_id: getLocationSharingInstanceId(),
+                source_platform: getLocationSharingPlatform(),
+                source_user_agent: getLocationSharingUserAgent()
             }, { onConflict: 'user_id' });
         if (error) {
             console.warn('[location-sharing] upsert error:', error);
@@ -260,10 +332,18 @@ function refreshShareRemainingTimers() {
 async function loadLocationShares() {
     if (!currentUser) return;
     try {
-        const { data: shares, error } = await db
+        let { data: shares, error } = await db
             .from('location_shares')
-            .select('from_user_id, to_user_id, expires_at')
+            .select('from_user_id, to_user_id, expires_at, source_instance_id')
             .or('from_user_id.eq.' + currentUser.id + ',to_user_id.eq.' + currentUser.id);
+        if (error && /source_instance_id/i.test(error.message || '')) {
+            const fallback = await db
+                .from('location_shares')
+                .select('from_user_id, to_user_id, expires_at')
+                .or('from_user_id.eq.' + currentUser.id + ',to_user_id.eq.' + currentUser.id);
+            shares = fallback.data;
+            error = fallback.error;
+        }
         if (error) throw error;
 
         locationSharesOutbound = {};
@@ -272,13 +352,36 @@ async function loadLocationShares() {
         (shares || []).forEach(s => {
             if (s.expires_at && s.expires_at < now) return;
             if (s.from_user_id === currentUser.id) {
-                locationSharesOutbound[s.to_user_id] = { expires_at: s.expires_at };
+                locationSharesOutbound[s.to_user_id] = {
+                    expires_at: s.expires_at,
+                    source_instance_id: s.source_instance_id || null
+                };
             } else {
                 locationSharesInbound[s.from_user_id] = { expires_at: s.expires_at };
             }
         });
     } catch (e) {
         console.error('loadLocationShares error:', e);
+    }
+}
+
+async function claimUnownedLocationSharesForThisDevice() {
+    if (!currentUser) return;
+    try {
+        const { error } = await db
+            .from('location_shares')
+            .update({
+                source_instance_id: getLocationSharingInstanceId(),
+                source_platform: getLocationSharingPlatform(),
+                source_user_agent: getLocationSharingUserAgent()
+            })
+            .eq('from_user_id', currentUser.id)
+            .is('source_instance_id', null)
+            .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString());
+        if (error) throw error;
+        await loadLocationShares();
+    } catch (e) {
+        console.warn('claimUnownedLocationSharesForThisDevice failed:', e);
     }
 }
 
@@ -369,6 +472,8 @@ function startContactLocationsRealtime() {
 
 function startContactLocationsPolling() {
     if (contactLocationsPollInterval) return;
+    document.addEventListener('visibilitychange', handleContactLocationsVisibility);
+    window.addEventListener('focus', handleContactLocationsFocus);
     contactLocationsPollInterval = setInterval(() => {
         loadContactLocations();
     }, INBOUND_LOCATION_POLL_MS);
@@ -383,6 +488,18 @@ function stopContactLocationsRefresh() {
         clearInterval(contactLocationsPollInterval);
         contactLocationsPollInterval = null;
     }
+    document.removeEventListener('visibilitychange', handleContactLocationsVisibility);
+    window.removeEventListener('focus', handleContactLocationsFocus);
+}
+
+function handleContactLocationsVisibility() {
+    if (document.visibilityState === 'visible') {
+        loadContactLocations();
+    }
+}
+
+function handleContactLocationsFocus() {
+    loadContactLocations();
 }
 
 function shareLocationDurationChoice(duration) {
