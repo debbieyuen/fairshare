@@ -183,6 +183,64 @@ body {
     gap: 0.4rem;
     align-items: flex-start;
 }
+.chat-msg-body {
+    min-width: 0;
+    flex: 1;
+}
+.chat-msg-report {
+    flex-shrink: 0;
+    background: transparent;
+    border: none;
+    color: var(--dark-gray);
+    cursor: pointer;
+    padding: 0.1rem 0.35rem;
+    font-size: 1.1rem;
+    line-height: 1;
+    border-radius: 4px;
+    opacity: 0.6;
+    transition: opacity 0.15s, background 0.15s;
+}
+.chat-msg-report:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.05);
+}
+.chat-msg-report:active {
+    background: rgba(0, 0, 0, 0.1);
+}
+.blocked-users-list {
+    max-height: 50vh;
+    overflow-y: auto;
+    margin-bottom: 0.5rem;
+}
+.blocked-user-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--light-gray);
+}
+.blocked-user-row:last-child { border-bottom: none; }
+.blocked-user-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+.blocked-user-avatar-fallback {
+    background: var(--medium-gray);
+    color: var(--accent-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+.blocked-user-name {
+    flex: 1;
+    font-size: 0.92rem;
+    color: var(--text-color);
+}
 
 /* Buttons */
 .btn {
@@ -377,6 +435,27 @@ body {
 .auth-forgot-row a:hover {
     text-decoration: underline;
 }
+.auth-agree-row {
+    margin-top: 0.5rem;
+}
+.auth-agree-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    font-size: 0.82rem;
+    color: var(--dark-gray);
+    line-height: 1.45;
+    cursor: pointer;
+}
+.auth-agree-label input[type="checkbox"] {
+    margin-top: 0.2rem;
+    flex-shrink: 0;
+}
+.auth-agree-label a {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+.auth-agree-label a:hover { text-decoration: underline; }
 
 .invite-sponsor-row {
     display: flex;
@@ -750,6 +829,25 @@ body {
 }
 .pref-push-hint {
     margin-top: -0.4rem;
+}
+.pref-link-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+    margin-bottom: 1rem;
+}
+.pref-link {
+    color: var(--primary-color);
+    font-size: 0.9rem;
+    text-decoration: none;
+}
+.pref-link:hover { text-decoration: underline; }
+.pref-danger-row {
+    margin-top: 0.5rem;
+}
+.pref-delete-btn {
+    width: 100%;
+    margin-bottom: 0.4rem;
 }
 
 /* Notification toast */
@@ -3420,6 +3518,25 @@ a.contact-shared-group-link:active {
     font-size: 12px;
     color: var(--cd-text-subtle);
     margin-top: 2px;
+}
+
+/* ----- Safety actions (report / block) ----- */
+
+#contactDetailsScreen .cd-safety-card { padding: 16px; }
+#contactDetailsScreen .cd-safety-card .cd-overline { display: block; margin-bottom: 12px; }
+#contactDetailsScreen .cd-safety-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+#contactDetailsScreen .cd-safety-btn {
+    width: 100%;
+    text-align: center;
+}
+#contactDetailsScreen .cd-safety-hint {
+    font-size: 12px;
+    color: var(--cd-text-subtle);
+    margin-top: 10px;
 }
 
 /* ----- Confetti overlay ----- */

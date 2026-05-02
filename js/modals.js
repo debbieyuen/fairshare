@@ -182,6 +182,7 @@ function closeModal(_options = {}) {
     shareWithInitialEmail = false;
     vouchWithContactId = null;
     vouchWithContactName = '';
+    if (typeof _pendingReportTarget !== 'undefined') _pendingReportTarget = null;
     stopSuggestPicStream();
     document.getElementById('modalOverlay').classList.add('hidden');
     document.getElementById('modalBody').classList.remove('modal-wide');

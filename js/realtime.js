@@ -16,6 +16,10 @@ function subscribeToGroup(groupId) {
               filter: `group_id=eq.${groupId}` },
             async (payload) => {
                 const msg = payload.new;
+                // Drop messages from users this user has blocked, both
+                // in the chat view and in toast previews.
+                if (typeof isUserBlocked === 'function' && isUserBlocked(msg.user_id)) return;
+
                 const msgsEl = document.getElementById('chatMessages');
                 if (msgsEl) {
                     appendChatMessage(msg);

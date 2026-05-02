@@ -88,6 +88,17 @@ async function handleSignup(e) {
     const name = document.getElementById('signupName').value;
     const email = document.getElementById('signupEmail').value;
     const password = document.getElementById('signupPassword').value;
+    const agree = document.getElementById('signupAgree');
+
+    // Apple expects an explicit, blocking agreement to Terms / Privacy /
+    // age (17+) at signup for social-with-UGC apps. The checkbox is also
+    // marked `required` in the markup, but we double-check here in case
+    // someone JS-bypasses it.
+    if (agree && !agree.checked) {
+        showToast('Please confirm you are 17+ and agree to the Terms.', 'error');
+        try { agree.focus(); } catch (_) {}
+        return;
+    }
 
     const { error } = await db.auth.signUp({
         email,
@@ -99,6 +110,24 @@ async function handleSignup(e) {
     } else {
         showToast('Account created! Check your email to confirm, then log in.', 'success');
         switchAuthTab('login');
+    }
+}
+
+// Open Terms / Privacy from the signup form. Routes through the shared
+// openExternalUrl helper (defined in preferences.js) so the iOS shell
+// pops Safari instead of replacing the WebView.
+function openSignupTerms() {
+    if (typeof openExternalUrl === 'function') {
+        openExternalUrl(PUBLIC_APP_ORIGIN + '/terms.html');
+    } else {
+        window.open(PUBLIC_APP_ORIGIN + '/terms.html', '_blank', 'noopener');
+    }
+}
+function openSignupPrivacy() {
+    if (typeof openExternalUrl === 'function') {
+        openExternalUrl(PUBLIC_APP_ORIGIN + '/privacy.html');
+    } else {
+        window.open(PUBLIC_APP_ORIGIN + '/privacy.html', '_blank', 'noopener');
     }
 }
 
@@ -239,6 +268,9 @@ async function logout() {
     currentUser = null;
     currentProfile = null;
     profileCache = {};
+    if (typeof blockedUserIds !== 'undefined' && typeof blockedUserIds.clear === 'function') {
+        blockedUserIds.clear();
+    }
 
     try {
         // Use local scope so signOut clears the local session immediately
@@ -320,6 +352,10 @@ async function showApp(navigateToGroupId) {
     if (navigateToGroupId) {
         navigateTo('groups');
     }
+
+    // Refresh the blocked-users cache before contacts/chat render so the
+    // UI never momentarily shows content from a blocked user.
+    try { await loadBlockedUsers(); } catch (e) { console.warn('loadBlockedUsers at login failed:', e); }
 
     // Defer non-critical work until after the first paint so the UI is
     // interactive as soon as possible.

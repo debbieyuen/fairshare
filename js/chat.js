@@ -109,8 +109,12 @@ async function loadChatMessages(before) {
     const loadMoreEl = document.getElementById('chatLoadMore');
     if (!msgsEl) return;
 
-    // Messages come newest-first; reverse so oldest is at top
-    const messages = (data || []).reverse();
+    // Messages come newest-first; reverse so oldest is at top.
+    // Drop any messages from users the current user has blocked — Apple
+    // requires that blocked-user content not be visible.
+    const messages = (data || [])
+        .filter(m => typeof isUserBlocked !== 'function' || !isUserBlocked(m.user_id))
+        .reverse();
 
     if (messages.length > 0) {
         // Remember scroll position to restore after prepending
@@ -170,6 +174,16 @@ async function createMessageElement(msg) {
     const loc = parseLocationBody(msg.body);
     const bubbleContent = loc ? '<div class="chat-location-wrap"></div>' : esc(msg.body);
 
+    // Other people's messages get a small "Report" affordance so users
+    // can flag objectionable content (Apple Guideline 1.2). Own messages
+    // skip it.
+    const reportBtnHtml = !isMine
+        ? `<button type="button" class="chat-msg-report"
+                   title="Report this message"
+                   aria-label="Report this message"
+                   onclick="onReportChatMessage('${esc(msg.id)}', '${esc(msg.user_id)}')">\u22EE</button>`
+        : '';
+
     if (isMine) {
         div.innerHTML = `<div class="chat-bubble">${bubbleContent}</div><div class="chat-msg-time">${timeStr}</div>`;
     } else {
@@ -180,10 +194,11 @@ async function createMessageElement(msg) {
             <div class="chat-msg-sender">${esc(name)}</div>
             <div class="chat-msg-row">
                 ${avatarHtml}
-                <div>
+                <div class="chat-msg-body">
                     <div class="chat-bubble">${bubbleContent}</div>
                     <div class="chat-msg-time">${timeStr}</div>
                 </div>
+                ${reportBtnHtml}
             </div>`;
     }
 
@@ -195,6 +210,18 @@ async function createMessageElement(msg) {
     }
 
     return div;
+}
+
+// Open the report dialog for a chat message. Hooked from the report
+// button rendered next to non-self messages.
+function onReportChatMessage(messageId, userId) {
+    if (typeof openReportDialog !== 'function') return;
+    openReportDialog({
+        userId: userId,
+        contentType: 'chat_message',
+        contentId: messageId,
+        contextLabel: 'message'
+    });
 }
 
 async function sendChatMessage() {

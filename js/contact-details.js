@@ -243,7 +243,40 @@ function renderContactDetailsScreen(root, row) {
                 <div class="cd-history-loading">Loading\u2026</div>
             </div>
         </div>
+
+        <div class="cd-card cd-safety-card">
+            <div class="cd-overline">Safety</div>
+            <div class="cd-safety-row">
+                <button type="button" class="btn btn-outline cd-safety-btn"
+                        onclick="cdOnReportContact('${esc(id)}', '${esc(name)}')">
+                    Report ${esc(firstName(name))}
+                </button>
+                <button type="button" class="btn btn-danger cd-safety-btn"
+                        onclick="cdOnBlockContact('${esc(id)}', '${esc(name)}')">
+                    Block ${esc(firstName(name))}
+                </button>
+            </div>
+            <p class="cd-safety-hint">
+                Reports are reviewed within 24 hours. Blocking removes them from
+                your contacts, chat, nearby alerts, and the map.
+            </p>
+        </div>
     `;
+}
+
+function cdOnReportContact(contactId, name) {
+    if (typeof openReportDialog !== 'function') return;
+    openReportDialog({
+        userId: contactId,
+        contentType: 'profile',
+        contentId: contactId,
+        contextLabel: name || 'this user'
+    });
+}
+
+function cdOnBlockContact(contactId, name) {
+    if (typeof openBlockUserConfirm !== 'function') return;
+    openBlockUserConfirm(contactId, name);
 }
 
 // ----- Hydration -------------------------------------------------------------

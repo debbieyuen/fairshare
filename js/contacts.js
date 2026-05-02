@@ -582,13 +582,21 @@ async function loadAndRenderContactList() {
 
         if (error) throw error;
 
-        if (!contacts || contacts.length === 0) {
+        // Strip out any blocked users locally so they never appear in the
+        // list, even if the server momentarily races a delete with a fresh
+        // contact insert. block_user() also clears the contacts row, so
+        // this is just a belt-and-suspenders filter.
+        const visibleContacts = (contacts || []).filter(c =>
+            typeof isUserBlocked !== 'function' || !isUserBlocked(c.contact_id)
+        );
+
+        if (visibleContacts.length === 0) {
             contactsLoadedRows = [];
             content.innerHTML = getNoContactsHtml();
             return;
         }
 
-        const contactIds = [...new Set(contacts.map(c => c.contact_id))];
+        const contactIds = [...new Set(visibleContacts.map(c => c.contact_id))];
         let profileMap = {};
         if (contactIds.length > 0) {
             const { data: profiles } = await db.from('profiles').select('id, display_name, profile_image_url, phone, email, sponsor_id, created_at').in('id', contactIds);
@@ -609,7 +617,7 @@ async function loadAndRenderContactList() {
         try { await loadLocationShares(); } catch (_) { /* location_shares table may not exist yet */ }
         try { await loadContactLocations(); } catch (_) { /* user_locations may not exist yet */ }
 
-        contactsLoadedRows = contacts.map((contact) => ({
+        contactsLoadedRows = visibleContacts.map((contact) => ({
             contact,
             profile: profileMap[contact.contact_id] || {},
             shared: sharedByThemMap[contact.contact_id] || {},

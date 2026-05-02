@@ -66,6 +66,21 @@ function renderProfileScreen() {
                 <p id="prefPushHint" class="pref-help-text pref-push-hint"></p>
                 ` : ''}
             </form>
+            <hr class="pref-divider">
+            <h4 class="pref-section-title">Safety</h4>
+            <div class="pref-link-row">
+                <a href="#" class="pref-link" onclick="openBlockedUsersModal(); return false;">Manage blocked users</a>
+            </div>
+            <hr class="pref-divider">
+            <h4 class="pref-section-title">Legal & Account</h4>
+            <div class="pref-link-row">
+                <a href="#" class="pref-link" onclick="openPrivacyPolicy(); return false;">Privacy Policy</a>
+                <a href="#" class="pref-link" onclick="openTermsOfUse(); return false;">Terms of Use</a>
+            </div>
+            <div class="pref-danger-row">
+                <button type="button" class="btn btn-danger pref-delete-btn" onclick="openDeleteAccountModal()">Delete Account</button>
+                <p class="pref-help-text">Permanently removes your account and all your data. This cannot be undone.</p>
+            </div>
             <div class="screen-version" aria-hidden="true">${esc(window.BUILD_VERSION || '')}</div>
         </div>
     `;
@@ -144,5 +159,99 @@ function renderProfileScreen() {
                 pushHint.textContent = 'Enable to receive notifications when the app is closed.';
             }
         });
+    }
+}
+
+// ---- Privacy / Terms links --------------------------------------------------
+
+function openPrivacyPolicy() {
+    openExternalUrl(PUBLIC_APP_ORIGIN + '/privacy.html');
+}
+
+function openTermsOfUse() {
+    openExternalUrl(PUBLIC_APP_ORIGIN + '/terms.html');
+}
+
+// Open an external URL in the system browser. On the Capacitor iOS shell
+// `window.location` would replace the WebView; using App.openUrl (when
+// available) or window.open with _system / _blank pops Safari instead.
+function openExternalUrl(url) {
+    if (!url) return;
+    try {
+        const App = IS_NATIVE ? window.Capacitor?.Plugins?.App : null;
+        if (App && typeof App.openUrl === 'function') {
+            App.openUrl({ url }).catch(() => window.open(url, '_blank'));
+            return;
+        }
+    } catch (_) { /* fall through to window.open */ }
+    window.open(url, '_blank', 'noopener');
+}
+
+// ---- Delete Account ---------------------------------------------------------
+
+function openDeleteAccountModal() {
+    const overlay = document.getElementById('modalOverlay');
+    const body = document.getElementById('modalBody');
+    if (!overlay || !body) return;
+    const confirmWord = 'DELETE';
+    body.innerHTML = `
+        <h3>Delete your account?</h3>
+        <p style="font-size:0.92rem;color:var(--dark-gray);margin-bottom:0.75rem;">
+            This permanently removes your profile, contacts, group memberships, messages, photos, and location data.
+            <strong>It cannot be undone.</strong>
+        </p>
+        <p style="font-size:0.92rem;color:var(--dark-gray);margin-bottom:0.75rem;">
+            Type <strong>${confirmWord}</strong> below to confirm.
+        </p>
+        <div class="form-group">
+            <input type="text" id="deleteAccountConfirmInput" autocomplete="off" autocapitalize="characters"
+                   placeholder="Type ${confirmWord} to confirm"
+                   oninput="onDeleteAccountConfirmChange(this.value)">
+        </div>
+        <div class="form-actions">
+            <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button type="button" class="btn btn-danger" id="deleteAccountConfirmBtn" disabled
+                    onclick="confirmDeleteAccount()">Delete my account</button>
+        </div>
+    `;
+    overlay.classList.remove('hidden');
+    setTimeout(() => {
+        const input = document.getElementById('deleteAccountConfirmInput');
+        if (input) input.focus();
+    }, 0);
+}
+
+function onDeleteAccountConfirmChange(value) {
+    const btn = document.getElementById('deleteAccountConfirmBtn');
+    if (!btn) return;
+    btn.disabled = (value || '').trim().toUpperCase() !== 'DELETE';
+}
+
+async function confirmDeleteAccount() {
+    const btn = document.getElementById('deleteAccountConfirmBtn');
+    if (!btn || btn.disabled) return;
+    if (!currentUser) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Deleting…';
+
+    try {
+        const { data, error } = await db.rpc('delete_my_account');
+        if (error) throw error;
+        if (data?.error) throw new Error(data.error);
+
+        showToast('Your account has been deleted.', 'success');
+        closeModal();
+
+        // Tear down realtime / location pipelines and return to the
+        // auth screen exactly the way logout() does. The auth user is
+        // already gone server-side, so signOut won't actually reach
+        // the network — that's fine, we just want to clear local state.
+        await logout();
+    } catch (e) {
+        console.error('Delete account failed:', e);
+        showToast('Could not delete account: ' + (e.message || 'unknown error'), 'error');
+        btn.disabled = false;
+        btn.textContent = 'Delete my account';
     }
 }
