@@ -22,6 +22,7 @@ function openContactDetailsScreen(contactId) {
     if (!root) return;
 
     if (!contactId) {
+        if (typeof clearContactDetailResumeState === 'function') clearContactDetailResumeState();
         root.innerHTML = '<div class="cd-empty">Contact not found.</div>';
         return;
     }
@@ -43,10 +44,14 @@ function openContactDetailsScreen(contactId) {
                     renderContactDetailsScreen(root, r2);
                     hydrateContactDetailsScreen(contactId);
                 } else {
+                    if (typeof clearContactDetailResumeState === 'function') clearContactDetailResumeState();
                     root.innerHTML = '<div class="cd-empty">Contact not found.</div>';
                 }
             })
-            .catch(() => { root.innerHTML = '<div class="cd-empty">Could not load contact.</div>'; });
+            .catch(() => {
+                if (typeof clearContactDetailResumeState === 'function') clearContactDetailResumeState();
+                root.innerHTML = '<div class="cd-empty">Could not load contact.</div>';
+            });
     }
 }
 

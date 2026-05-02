@@ -104,6 +104,9 @@ async function logout() {
     // Reset client state
     selectedGroup = null;
     myGroups = [];
+    if (typeof clearContactDetailResumeState === 'function') clearContactDetailResumeState();
+    pendingPostHandshakeSelfieContactId = null;
+    pendingPostHandshakeSelfieContactName = null;
     currentUser = null;
     currentProfile = null;
     profileCache = {};
@@ -161,7 +164,15 @@ async function showApp(navigateToGroupId) {
     }
 
     if (!navigateToGroupId) {
-        navigateTo('contacts');
+        let resumeContactId = null;
+        if (!pendingOpenContactId && !pendingOpenNewestContact && typeof readContactDetailResumeContactId === 'function') {
+            resumeContactId = readContactDetailResumeContactId();
+        }
+        if (resumeContactId) {
+            navigateTo('contactDetails', resumeContactId);
+        } else {
+            navigateTo('contacts');
+        }
     }
 
     await loadMyGroups(navigateToGroupId || null);
@@ -180,6 +191,9 @@ async function showApp(navigateToGroupId) {
         maybeShowInstallHintFloater();
         if (currentProfile?.push_notifications !== false) subscribeToPush();
         await openPendingContactDetailsIfAny();
+        if (typeof openPostHandshakeSelfieIfPending === 'function') {
+            await openPostHandshakeSelfieIfPending();
+        }
         await checkPendingGroupInvitations();
         await checkPendingSuggestedPictures();
         checkAndStartNearbyTracking();

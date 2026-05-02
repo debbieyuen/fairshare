@@ -5,8 +5,60 @@
 // detail screen would inherit whatever scrollY the list happened to have.
 let _contactsScrollY = 0;
 
+function getContactDetailResumeKeys() {
+    if (!currentUser) return null;
+    const uid = currentUser.id;
+    return {
+        wasDetailKey: `fairshare_was_detail_${uid}`,
+        homeContactKey: `fairshare_home_contact_${uid}`
+    };
+}
+
+// Persist one contact as the user's "home" screen: reopen to contact details
+// on next launch if they left the app while viewing that screen. Cleared when
+// they return to the contact list or switch to another main tab (profile,
+// groups, globe).
+function updateContactDetailResumeState(view, arg) {
+    const keys = getContactDetailResumeKeys();
+    if (!keys) return;
+    try {
+        if (view === 'contactDetails' && arg) {
+            localStorage.setItem(keys.wasDetailKey, '1');
+            localStorage.setItem(keys.homeContactKey, arg);
+        } else if (view === 'contacts') {
+            localStorage.setItem(keys.wasDetailKey, '0');
+            localStorage.removeItem(keys.homeContactKey);
+        } else {
+            localStorage.setItem(keys.wasDetailKey, '0');
+            localStorage.removeItem(keys.homeContactKey);
+        }
+    } catch (_) { /* storage full or unavailable */ }
+}
+
+function clearContactDetailResumeState() {
+    const keys = getContactDetailResumeKeys();
+    if (!keys) return;
+    try {
+        localStorage.removeItem(keys.wasDetailKey);
+        localStorage.removeItem(keys.homeContactKey);
+    } catch (_) {}
+}
+
+function readContactDetailResumeContactId() {
+    const keys = getContactDetailResumeKeys();
+    if (!keys) return null;
+    try {
+        if (localStorage.getItem(keys.wasDetailKey) !== '1') return null;
+        return localStorage.getItem(keys.homeContactKey) || null;
+    } catch (_) {
+        return null;
+    }
+}
+
 function navigateTo(view, arg) {
     if (!currentUser) return;
+
+    const previousMainView = activeMainView;
 
     if (activeMainView === 'contacts' && view === 'contactDetails') {
         _contactsScrollY = window.scrollY || window.pageYOffset || 0;
@@ -71,6 +123,13 @@ function navigateTo(view, arg) {
     }
 
     updateBottomBarActive(view);
+
+    // Skip redundant contacts → contacts (e.g. showApp right after cold start when
+    // activeMainView is already 'contacts') so we do not wipe resume keys from
+    // the previous session before readContactDetailResumeContactId runs.
+    if (!(view === 'contacts' && previousMainView === 'contacts')) {
+        updateContactDetailResumeState(view, arg);
+    }
 }
 
 function updateBottomBarActive(view) {

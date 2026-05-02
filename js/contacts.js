@@ -556,6 +556,17 @@ async function openPendingContactDetailsIfAny() {
     }
 }
 
+// After claiming a meet handshake link (new account), mirror the QR-scanner flow:
+// full-screen selfie prompt first; skip/capture then opens the sponsor's details.
+async function openPostHandshakeSelfieIfPending() {
+    if (!pendingPostHandshakeSelfieContactId || !currentUser) return;
+    const cid = pendingPostHandshakeSelfieContactId;
+    const name = pendingPostHandshakeSelfieContactName || 'your new contact';
+    pendingPostHandshakeSelfieContactId = null;
+    pendingPostHandshakeSelfieContactName = null;
+    await openNewContactSelfieOverlay(cid, name);
+}
+
 function closeContactListScreen() {
     clearContactSearchState();
 }

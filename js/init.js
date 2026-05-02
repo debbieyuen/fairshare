@@ -130,6 +130,9 @@ async function init() {
                 }, 0);
             } else if (event === 'SIGNED_OUT') {
                 try { stopLocationSharingUpdates(); } catch (_) { /* best effort */ }
+                if (typeof clearContactDetailResumeState === 'function') clearContactDetailResumeState();
+                pendingPostHandshakeSelfieContactId = null;
+                pendingPostHandshakeSelfieContactName = null;
                 currentUser = null;
                 currentProfile = null;
                 showAuth();
@@ -362,11 +365,14 @@ async function handlePendingMeet() {
             showToast('Meet: ' + error.message, 'error');
         } else {
             const contactName = data?.contact_name || 'New contact';
-            if (data?.contact_id) pendingOpenContactId = data.contact_id;
+            if (data?.contact_id) {
+                pendingPostHandshakeSelfieContactId = data.contact_id;
+                pendingPostHandshakeSelfieContactName = data.contact_name || contactName;
+            }
 
             if (data?.group_id) {
                 claimedGroupId = data.group_id;
-                pendingOpenNewestContact = true;
+                if (!data?.contact_id) pendingOpenNewestContact = true;
                 if (data.admitted) {
                     showToast(`Welcome to "${data.group_name}"! You've been admitted as a member.`, 'success');
                 } else {
