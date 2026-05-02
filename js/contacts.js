@@ -1511,26 +1511,39 @@ function renderFamilyTree(container, myChain, theirChain, contactId) {
     container.innerHTML = treeHtml;
 }
 
+// ============================================================================
+// Selfie-with-contact overlay (single fullscreen UI, two modes)
+// ----------------------------------------------------------------------------
+// Both "first selfie after handshake" and "tap Take selfie from contact
+// details / contact list" reuse the same #newContactSelfieOverlay element in
+// index.html. The mode is encoded by which id variable is set:
+//   - newContactSelfieId  — post-handshake first selfie (navigates to the
+//                           contact's details screen when the overlay closes)
+//   - contactSelfieId     — from the contact list or contact details; just
+//                           closes in place when done
+// The live stream is tracked once in newContactSelfieStream, regardless of
+// mode.
+// ============================================================================
+
 function openContactSelfie(contactId) {
     contactSelfieId = contactId;
-    showModal('contactSelfie');
-}
-
-function closeContactSelfieModal(options = {}) {
-    const { refreshContacts = true } = options;
-    stopContactSelfieStream();
-    contactSelfieId = null;
-    closeModal({ refreshContactList: refreshContacts });
+    const row = (contactsLoadedRows || []).find(r => r.contact?.contact_id === contactId);
+    const name = row?.profile?.display_name || 'your contact';
+    _openSelfieOverlay(contactId, name);
 }
 
 async function openNewContactSelfieOverlay(contactId, contactName) {
     newContactSelfieId = contactId;
     newContactSelfieContactName = contactName || 'your new contact';
+    await _openSelfieOverlay(contactId, newContactSelfieContactName);
+}
+
+async function _openSelfieOverlay(contactId, bannerName) {
     const overlay = document.getElementById('newContactSelfieOverlay');
     const banner = document.getElementById('newContactSelfieBanner');
     const video = document.getElementById('newContactSelfieVideo');
     if (!overlay || !video) return;
-    if (banner) banner.textContent = `Take a selfie with ${newContactSelfieContactName}!`;
+    if (banner) banner.textContent = `Take a selfie with ${bannerName || 'your contact'}!`;
     overlay.classList.remove('hidden');
     try {
         newContactSelfieStream = await navigator.mediaDevices.getUserMedia({
@@ -1540,14 +1553,16 @@ async function openNewContactSelfieOverlay(contactId, contactName) {
         video.srcObject = newContactSelfieStream;
         await video.play();
     } catch (e) {
-        console.error('New-contact selfie camera error:', e);
+        console.error('Selfie camera error:', e);
         showToast('Camera unavailable: ' + (e.message || 'error'), 'error');
-        closeNewContactSelfieOverlay({ navigate: true });
+        closeSelfieOverlay();
     }
 }
 
-function closeNewContactSelfieOverlay(options = {}) {
-    const { navigate = false } = options;
+// Close the overlay. In "new contact" mode (newContactSelfieId set) this
+// also navigates to the contact's details screen, matching the original
+// post-handshake flow.
+function closeSelfieOverlay() {
     const overlay = document.getElementById('newContactSelfieOverlay');
     if (overlay) overlay.classList.add('hidden');
     if (newContactSelfieStream) {
@@ -1556,118 +1571,98 @@ function closeNewContactSelfieOverlay(options = {}) {
     }
     const video = document.getElementById('newContactSelfieVideo');
     if (video) video.srcObject = null;
-    const cid = newContactSelfieId;
+    const newCid = newContactSelfieId;
     newContactSelfieId = null;
     newContactSelfieContactName = '';
-    if (navigate && cid) {
-        openContactDetailsById(cid);
-    } else if (navigate) {
-        openNewestContactDetails();
+    contactSelfieId = null;
+    if (newCid) {
+        openContactDetailsById(newCid);
     }
 }
 
-async function startContactSelfieStream() {
-    stopContactSelfieStream();
-    const video = document.getElementById('contactSelfieVideo');
-    if (!video) return;
-    try {
-        contactSelfieStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 640 } }
-        });
-        video.srcObject = contactSelfieStream;
-        await video.play();
-    } catch (e) {
-        console.error('Contact selfie camera error:', e);
-        showToast('Camera unavailable: ' + (e.message || 'error'), 'error');
-        closeContactSelfieModal();
-    }
-}
+// Back-compat wrappers so existing call sites (and index.html inline
+// handlers) keep working.
+function closeContactSelfieModal() { closeSelfieOverlay(); }
+function closeNewContactSelfieOverlay() { closeSelfieOverlay(); }
 
-function stopContactSelfieStream() {
-    if (contactSelfieStream) {
-        contactSelfieStream.getTracks().forEach(t => t.stop());
-        contactSelfieStream = null;
-    }
-    const video = document.getElementById('contactSelfieVideo');
-    if (video) video.srcObject = null;
+// Returns true if the selfie overlay is currently open for the given contact
+// (either mode). Used by the realtime listener to auto-close our open
+// "take a selfie" screen when the other side just posted a selfie.
+function isSelfieOverlayOpenFor(contactId) {
+    return !!contactId && (contactSelfieId === contactId || newContactSelfieId === contactId);
 }
 
 async function captureContactSelfie() {
     const cid = contactSelfieId || newContactSelfieId;
     if (!cid || !currentUser) return;
-    const video = document.getElementById('contactSelfieVideo') || document.getElementById('newContactSelfieVideo');
+    const video = document.getElementById('newContactSelfieVideo');
     if (!video || video.readyState < 2) {
         showToast('Camera not ready — please wait a moment and try again.', 'error');
         return;
     }
-    const btn = document.getElementById('contactSelfieCaptureBtn') || document.getElementById('newContactSelfieCaptureBtn');
+    const btn = document.getElementById('newContactSelfieCaptureBtn');
     if (btn) btn.disabled = true;
-    let selfieSaved = false;
-    let savedSelfieUrl = '';
-    try {
-        // Grab GPS in parallel with image capture (non-blocking; falls back gracefully)
-        let lat = null, lng = null, locationLabel = '';
-        const gpsResult = await getGPSLocation();
-        if (gpsResult) {
-            lat = gpsResult.lat;
-            lng = gpsResult.lng;
-            locationLabel = await reverseGeocode(lat, lng);
-        }
 
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, 0, 0);
-        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
-        if (!blob) throw new Error('Could not capture image from camera');
-        const file = new File([blob], 'selfie.jpg', { type: 'image/jpeg' });
-        const filePath = `${currentUser.id}/selfie_${cid}_${Date.now()}.jpg`;
-        const { error: upErr } = await db.storage.from('avatars').upload(filePath, file, { upsert: false });
-        if (upErr) throw upErr;
-        const { data: urlData } = db.storage.from('avatars').getPublicUrl(filePath);
-        const selfieUrl = urlData.publicUrl;
-        const capturedAt = new Date().toISOString();
-        const { error: rpcErr } = await db.rpc('add_contact_selfie', {
-            p_contact_id: cid,
-            p_selfie_url: selfieUrl,
-            p_captured_at: capturedAt,
-            p_lat: lat,
-            p_lng: lng,
-            p_location_label: locationLabel || null
-        });
-        if (rpcErr) throw rpcErr;
-        recentSelfieUploads[cid] = Date.now();
-        // Invalidate cache so the strip reloads
-        delete contactSelfiesCache[cid];
-        selfieSaved = true;
-        savedSelfieUrl = selfieUrl;
-        showToast('Selfie saved!', 'success');
-    } catch (e) {
+    // Snapshot the current video frame synchronously, then close the overlay
+    // immediately so the user isn't left staring at a frozen camera while we
+    // wait on GPS / network. Upload and geocode continue in the background.
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+
+    closeSelfieOverlay();
+    if (btn) btn.disabled = false;
+
+    _uploadContactSelfieInBackground(cid, canvas).catch(e => {
         console.error('Capture selfie error:', e);
         showToast('Could not save selfie: ' + (e.message || 'error'), 'error');
-    }
-    if (btn) btn.disabled = false;
-    if (selfieSaved) {
-        // If triggered from the new-contact fullscreen overlay, close it and navigate
-        if (newContactSelfieId) {
-            closeNewContactSelfieOverlay({ navigate: true });
-            return;
+    });
+}
+
+async function _uploadContactSelfieInBackground(cid, canvas) {
+    // Run GPS + reverse geocode in parallel with the blob encode + upload so
+    // neither serializes behind the other.
+    const locationPromise = (async () => {
+        try {
+            const gps = await getGPSLocation();
+            if (!gps) return { lat: null, lng: null, locationLabel: '' };
+            const label = await reverseGeocode(gps.lat, gps.lng);
+            return { lat: gps.lat, lng: gps.lng, locationLabel: label || '' };
+        } catch (_) {
+            return { lat: null, lng: null, locationLabel: '' };
         }
-        // Otherwise reload the selfies strip inline
-        reloadContactSelfiesStrip(cid);
-        // Also refresh the full-page Contact Details carousel/history if open.
-        if (typeof cdRefreshSelfiesIfOpen === 'function') {
-            cdRefreshSelfiesIfOpen(cid);
-        }
-        closeContactSelfieModal({ refreshContacts: false });
-        return;
+    })();
+
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+    if (!blob) throw new Error('Could not capture image from camera');
+    const file = new File([blob], 'selfie.jpg', { type: 'image/jpeg' });
+    const filePath = `${currentUser.id}/selfie_${cid}_${Date.now()}.jpg`;
+    const { error: upErr } = await db.storage.from('avatars').upload(filePath, file, { upsert: false });
+    if (upErr) throw upErr;
+    const { data: urlData } = db.storage.from('avatars').getPublicUrl(filePath);
+    const selfieUrl = urlData.publicUrl;
+
+    const { lat, lng, locationLabel } = await locationPromise;
+    const capturedAt = new Date().toISOString();
+    const { error: rpcErr } = await db.rpc('add_contact_selfie', {
+        p_contact_id: cid,
+        p_selfie_url: selfieUrl,
+        p_captured_at: capturedAt,
+        p_lat: lat,
+        p_lng: lng,
+        p_location_label: locationLabel || null
+    });
+    if (rpcErr) throw rpcErr;
+
+    recentSelfieUploads[cid] = Date.now();
+    delete contactSelfiesCache[cid];
+    showToast('Selfie saved!', 'success');
+    reloadContactSelfiesStrip(cid);
+    if (typeof cdRefreshSelfiesIfOpen === 'function') {
+        cdRefreshSelfiesIfOpen(cid);
     }
-    if (newContactSelfieId) {
-        closeNewContactSelfieOverlay({ navigate: true });
-        return;
-    }
-    closeContactSelfieModal();
 }
 
 function _getGPSLocationBrowser() {

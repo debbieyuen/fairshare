@@ -480,6 +480,15 @@ function subscribeToContactEvents() {
                 return;
             }
 
+            // The other side just posted a selfie. If we happen to have our
+            // own "Take a selfie" overlay open for the same contact, dismiss
+            // it — no point in both people capturing the same moment twice.
+            if (typeof isSelfieOverlayOpenFor === 'function'
+                && isSelfieOverlayOpenFor(contactId)
+                && typeof closeSelfieOverlay === 'function') {
+                closeSelfieOverlay();
+            }
+
             const { data: profile } = await db.from('profiles').select('display_name').eq('id', contactId).single();
             const name = profile?.display_name || 'Someone';
             showToast(name + ' took a new selfie with you.', 'info');

@@ -15,7 +15,6 @@ let shareWithInitialEmail = false;
 let vouchWithContactId = null;
 let vouchWithContactName = '';
 let contactSelfieId = null;
-let contactSelfieStream = null;
 let newContactSelfieId = null;
 let newContactSelfieContactName = '';
 let newContactSelfieStream = null;

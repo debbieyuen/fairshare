@@ -151,13 +151,34 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
             let previousTimestamp = self.lastPosition?.timestamp
             self.pendingFreshCalls.append((call, previousTimestamp))
 
-            // Make sure updates are actively flowing. startUpdatingLocation is
-            // idempotent, and with a small distanceFilter this tends to produce
-            // a new fix within a few seconds even while the user is mostly
-            // stationary (GPS drift alone usually triggers an update).
-            self.applyBackgroundUpdatesIfAuthorized()
-            self.locationManager?.startUpdatingLocation()
-            self.locationManager?.requestLocation()
+            // Request authorization on first use. One-shot callers like the
+            // selfie capture reach this code path before `start()` has ever
+            // run, so the manager is still in `.notDetermined` and any call
+            // to `requestLocation()` would fail immediately with
+            // kCLErrorDenied. Ask for When-In-Use here — the broader Always
+            // auth is requested later by `start()` when the user actually
+            // turns on background location sharing.
+            let status = self.locationManager?.authorizationStatus ?? .notDetermined
+            let shouldWaitForAuth: Bool
+            switch status {
+            case .notDetermined:
+                self.locationManager?.requestWhenInUseAuthorization()
+                shouldWaitForAuth = true
+            case .denied, .restricted:
+                shouldWaitForAuth = true
+            default:
+                shouldWaitForAuth = false
+            }
+
+            // Only ping Core Location for an immediate fix if we're already
+            // authorized; otherwise `locationManagerDidChangeAuthorization`
+            // will start updating once the user responds to the prompt, and
+            // the resulting `didUpdateLocations` will flush our pending call.
+            if !shouldWaitForAuth {
+                self.applyBackgroundUpdatesIfAuthorized()
+                self.locationManager?.startUpdatingLocation()
+                self.locationManager?.requestLocation()
+            }
 
             DispatchQueue.main.asyncAfter(deadline: .now() + self.freshFixDeadline) { [weak self] in
                 guard let self = self else { return }
@@ -219,6 +240,18 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
         if status == .authorizedAlways || status == .authorizedWhenInUse {
             applyBackgroundUpdatesIfAuthorized()
             manager.startUpdatingLocation()
+            // If a one-shot caller (e.g. selfie capture) is waiting on this
+            // prompt, kick the manager to deliver a single fresh fix asap
+            // rather than relying on the continuous-updates stream warming
+            // up GPS within their deadline.
+            if !pendingFreshCalls.isEmpty {
+                manager.requestLocation()
+            }
+        } else if status == .denied || status == .restricted {
+            // Permission was refused. No fix will ever arrive, so resolve
+            // any pending one-shot callers now with an empty payload rather
+            // than making them wait for the full deadline.
+            flushPendingCalls(force: true)
         }
         logLocationRuntimeState(context: "authorizationChanged")
     }

@@ -116,22 +116,6 @@ function showModal(type) {
             `;
             break;
 
-        case 'contactSelfie':
-            body.innerHTML = `
-                <h3>Take a selfie</h3>
-                <p style="font-size:0.9rem;color:var(--dark-gray);margin-bottom:0.75rem;">Position both of you in frame, then capture.</p>
-                <div style="background:#000;border-radius:8px;overflow:hidden;margin-bottom:1rem;aspect-ratio:1;max-height:320px;">
-                    <video id="contactSelfieVideo" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;"></video>
-                </div>
-                <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeContactSelfieModal()">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="contactSelfieCaptureBtn">Capture</button>
-                </div>
-            `;
-            document.getElementById('contactSelfieCaptureBtn').addEventListener('click', captureContactSelfie);
-            startContactSelfieStream();
-            break;
-
         case 'suggestPicture':
             body.innerHTML = `
                 <h3>Suggest new picture</h3>
@@ -185,8 +169,7 @@ function showModal(type) {
     }
 }
 
-function closeModal(options = {}) {
-    const { refreshContactList = true } = options;
+function closeModal(_options = {}) {
     if (heartDialogTimer) { clearTimeout(heartDialogTimer); heartDialogTimer = null; }
     if (shareLocationContactId) {
         updateShareLocationCheckbox(shareLocationContactId, false, null);
@@ -199,13 +182,6 @@ function closeModal(options = {}) {
     shareWithInitialEmail = false;
     vouchWithContactId = null;
     vouchWithContactName = '';
-    if (contactSelfieStream) {
-        stopContactSelfieStream();
-        contactSelfieId = null;
-        if (refreshContactList && activeMainView === 'contacts') {
-            loadAndRenderContactList();
-        }
-    }
     stopSuggestPicStream();
     document.getElementById('modalOverlay').classList.add('hidden');
     document.getElementById('modalBody').classList.remove('modal-wide');
