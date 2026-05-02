@@ -1,4 +1,5 @@
 const CACHE_NAME = 'fairshare-__BUILD_HASH__';
+const APP_NAME = 'Union';
 
 // App shell files to pre-cache on install
 const APP_SHELL = [
@@ -10,6 +11,7 @@ const APP_SHELL = [
   './icon-192.png',
   './icon-512.png',
   './js/config.js',
+  './js/constants.js',
   './js/state.js',
   './js/utils.js',
   './js/db.js',
@@ -72,7 +74,7 @@ self.addEventListener('push', event => {
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
       const hasFocused = windowClients.some(c => c.visibilityState === 'visible');
       if (hasFocused) return;
-      return self.registration.showNotification(data.title || 'Union', {
+      return self.registration.showNotification(data.title || APP_NAME, {
         body: data.body || '',
         icon: './icon-192.png',
         badge: './icon-192.png',

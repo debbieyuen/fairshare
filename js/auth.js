@@ -115,9 +115,9 @@ async function logout() {
         await Promise.race([
             db.auth.signOut({ scope: 'local' }),
             new Promise(resolve => setTimeout(() => {
-                console.warn('[auth] signOut hung for 3s — forcing logout');
+                console.warn('[auth] signOut hung for ' + (APP_TIMING.SIGN_OUT_TIMEOUT_MS / APP_TIMING.SECOND_MS) + 's — forcing logout');
                 resolve();
-            }, 3000))
+            }, APP_TIMING.SIGN_OUT_TIMEOUT_MS))
         ]);
     } catch (e) {
         console.warn('[auth] signOut error (ignored):', e);
@@ -238,17 +238,7 @@ function subscribeToContactNotifications() {
             filter: 'to_user_id=eq.' + currentUser.id
         }, async (payload) => {
             if (payload.new?.notification_type === 'profile_picture_suggested') {
-                const notification = Object.assign({}, payload.new);
-                if (!notification.data?.image_url) {
-                    try {
-                        const { data: notifData } = await db.rpc('get_contact_notification_data', {
-                            p_notification_id: notification.id
-                        });
-                        if (notifData) notification.data = notifData;
-                    } catch (e) {
-                        console.warn('get_contact_notification_data fallback failed:', e);
-                    }
-                }
+                const notification = await hydrateContactNotificationData(payload.new);
                 showSuggestedPictureDialog(notification);
             } else if (payload.new?.notification_type === 'met_date_set') {
                 const msg = payload.new?.message;
@@ -331,7 +321,7 @@ function subscribeToContactEvents() {
             updateContactSelfieInList(contactId, newSelfie);
 
             const recentUploadAt = recentSelfieUploads[contactId] || 0;
-            if (Date.now() - recentUploadAt < 15000) {
+            if (Date.now() - recentUploadAt < APP_TIMING.CONTACT_SELFIE_DEDUPE_MS) {
                 delete recentSelfieUploads[contactId];
                 return;
             }
@@ -362,21 +352,25 @@ async function fetchAndShowSuggestedPicture() {
             .order('created_at', { ascending: false })
             .limit(1);
         if (error || !data || data.length === 0) return;
-        const notification = data[0];
-        if (!notification.data?.image_url) {
-            try {
-                const { data: notifData } = await db.rpc('get_contact_notification_data', {
-                    p_notification_id: notification.id
-                });
-                if (notifData) notification.data = notifData;
-            } catch (e) {
-                console.warn('get_contact_notification_data fallback failed:', e);
-            }
-        }
+        const notification = await hydrateContactNotificationData(data[0]);
         showSuggestedPictureDialog(notification);
     } catch (e) {
         console.error('fetchAndShowSuggestedPicture error:', e);
     }
+}
+
+async function hydrateContactNotificationData(notificationRow) {
+    const notification = Object.assign({}, notificationRow);
+    if (notification.data?.image_url) return notification;
+    try {
+        const { data: notifData } = await db.rpc('get_contact_notification_data', {
+            p_notification_id: notification.id
+        });
+        if (notifData) notification.data = notifData;
+    } catch (e) {
+        console.warn('get_contact_notification_data fallback failed:', e);
+    }
+    return notification;
 }
 
 if ('serviceWorker' in navigator) {

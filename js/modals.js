@@ -105,9 +105,9 @@ function showModal(type) {
                 <h3>Share your location with ${esc(shareLocationContactName || 'contact')}</h3>
                 <p style="font-size:0.9rem;color:var(--dark-gray);margin-bottom:1rem;">How long do you want to share?</p>
                 <div class="choice-list">
-                    <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="shareLocationDurationChoice(3600000)">For an Hour</button></div>
-                    <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="shareLocationDurationChoice(86400000)">For a Day</button></div>
-                    <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="shareLocationDurationChoice(604800000)">For a Week</button></div>
+                    <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="shareLocationDurationChoice(${LOCATION_DURATIONS.HOUR_MS})">For an Hour</button></div>
+                    <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="shareLocationDurationChoice(${LOCATION_DURATIONS.DAY_MS})">For a Day</button></div>
+                    <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="shareLocationDurationChoice(${LOCATION_DURATIONS.WEEK_MS})">For a Week</button></div>
                     <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="shareLocationDurationChoice(null)">Indefinitely</button></div>
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary" onclick="cancelShareLocationDialog()">Cancel</button>

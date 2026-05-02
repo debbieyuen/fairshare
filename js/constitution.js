@@ -437,10 +437,10 @@ function renderAmendmentCard(a, votesMap, myVotesMap, activeMemberCount) {
 }
 
 function formatTimeLeft(ms) {
-    const days = Math.floor(ms / 86400000);
-    const hours = Math.floor((ms % 86400000) / 3600000);
+    const days = Math.floor(ms / APP_TIMING.DAY_MS);
+    const hours = Math.floor((ms % APP_TIMING.DAY_MS) / APP_TIMING.HOUR_MS);
     if (days > 0) return `${days}d ${hours}h left`;
-    const mins = Math.floor((ms % 3600000) / 60000);
+    const mins = Math.floor((ms % APP_TIMING.HOUR_MS) / APP_TIMING.MINUTE_MS);
     if (hours > 0) return `${hours}h ${mins}m left`;
     return `${mins}m left`;
 }

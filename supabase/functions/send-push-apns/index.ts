@@ -8,6 +8,11 @@ const APNS_KEY_ID = Deno.env.get("APNS_KEY_ID")!;
 const APNS_TEAM_ID = Deno.env.get("APNS_TEAM_ID")!;
 const APNS_TOPIC = Deno.env.get("APNS_TOPIC") || "social.fairshare.union";
 const APNS_HOST = Deno.env.get("APNS_HOST") || "https://api.push.apple.com";
+const APNS_JWT_REFRESH_SKEW_SECONDS = 60;
+const APNS_JWT_TTL_SECONDS = 3500;
+const APNS_PRIORITY_IMMEDIATE = "10";
+const APNS_EXPIRATION_IMMEDIATE = "0";
+const DEFAULT_PUSH_TITLE = "Union";
 
 async function importPrivateKey(pem: string): Promise<CryptoKey> {
   const lines = pem
@@ -27,14 +32,14 @@ let cachedToken: { jwt: string; exp: number } | null = null;
 
 async function getApnsJwt(): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
-  if (cachedToken && cachedToken.exp > now + 60) return cachedToken.jwt;
+  if (cachedToken && cachedToken.exp > now + APNS_JWT_REFRESH_SKEW_SECONDS) return cachedToken.jwt;
 
   const header = base64url(
     new TextEncoder().encode(
       JSON.stringify({ alg: "ES256", kid: APNS_KEY_ID })
     )
   );
-  const exp = now + 3500;
+  const exp = now + APNS_JWT_TTL_SECONDS;
   const claims = base64url(
     new TextEncoder().encode(
       JSON.stringify({ iss: APNS_TEAM_ID, iat: now, exp })
@@ -72,7 +77,7 @@ serve(async (req) => {
 
     const payload = JSON.stringify({
       aps: {
-        alert: { title: title || "Union", body: body || "" },
+        alert: { title: title || DEFAULT_PUSH_TITLE, body: body || "" },
         sound: "default",
         "mutable-content": 1,
       },
@@ -90,8 +95,8 @@ serve(async (req) => {
                 authorization: `bearer ${jwt}`,
                 "apns-topic": APNS_TOPIC,
                 "apns-push-type": "alert",
-                "apns-priority": "10",
-                "apns-expiration": "0",
+                "apns-priority": APNS_PRIORITY_IMMEDIATE,
+                "apns-expiration": APNS_EXPIRATION_IMMEDIATE,
               },
               body: payload,
             }

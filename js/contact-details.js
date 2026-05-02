@@ -683,7 +683,7 @@ async function cdHydrateSharingLocationPane(contactId, loc) {
     if (!headlineEl) return;
     if (headlineEl.dataset.locKey !== locKey) return;
 
-    const distanceText = miles != null ? cdFormatDistanceShort(miles) : '';
+    const distanceText = miles != null ? formatDistance(miles, { compact: true }) : '';
     const parts = [distanceText, label].filter(Boolean);
     headlineEl.textContent = parts.length ? parts.join(' \u00B7 ') : 'Location available';
 }
@@ -691,13 +691,6 @@ async function cdHydrateSharingLocationPane(contactId, loc) {
 function cdLocationKey(loc) {
     if (!loc) return '';
     return [loc.lat, loc.lng, loc.updated_at || ''].join('|');
-}
-
-function cdFormatDistanceShort(miles) {
-    if (miles < 0.1) return 'Right here';
-    if (miles < 1)   return miles.toFixed(1) + ' mi away';
-    if (miles < 10)  return miles.toFixed(1) + ' mi away';
-    return Math.round(miles) + ' mi away';
 }
 
 function cdOpenSharingLocation(contactId, name) {
@@ -753,7 +746,7 @@ function cdFireConfetti() {
     cdConfettiTimer = setTimeout(() => {
         try { layer.remove(); } catch (_) {}
         cdConfettiTimer = null;
-    }, 1700);
+    }, APP_TIMING.CONFETTI_CLEANUP_MS);
 }
 
 function cdHaptic() {

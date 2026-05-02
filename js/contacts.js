@@ -629,7 +629,7 @@ function formatLastSeen(isoStr) {
     const d = new Date(isoStr);
     const now = new Date();
     const diffMs = now - d;
-    const diffMin = Math.floor(diffMs / 60000);
+    const diffMin = Math.floor(diffMs / APP_TIMING.MINUTE_MS);
     if (diffMin < 1) return 'Just now';
     if (diffMin < 60) return diffMin + 'm ago';
     const diffHrs = Math.floor(diffMin / 60);
@@ -1665,7 +1665,11 @@ function _getGPSLocationBrowser() {
         navigator.geolocation.getCurrentPosition(
             pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
             () => resolve(null),
-            { enableHighAccuracy: true, timeout: 6000, maximumAge: 60000 }
+            {
+                enableHighAccuracy: true,
+                timeout: APP_TIMING.BROWSER_GPS_TIMEOUT_MS,
+                maximumAge: APP_TIMING.BROWSER_GPS_MAX_AGE_MS
+            }
         );
     });
 }
@@ -1674,7 +1678,7 @@ function _getGPSLocationBrowser() {
 // background pollers (location sharing, nearby) never upload stale coordinates,
 // but long enough to deduplicate ad-hoc callers (e.g. rendering a contact card)
 // firing within the same interaction.
-const NATIVE_GPS_CACHE_MAX_AGE_MS = 30000;
+const NATIVE_GPS_CACHE_MAX_AGE_MS = APP_TIMING.NATIVE_GPS_CACHE_MAX_AGE_MS;
 
 function getGPSLocation() {
     if (IS_NATIVE) {
@@ -1694,6 +1698,9 @@ function getGPSLocation() {
             if (!plugin) return Promise.resolve(null);
             return plugin.getCurrentPosition()
                 .then(pos => {
+                    if (!pos || typeof pos.lat !== 'number' || typeof pos.lng !== 'number') {
+                        return null;
+                    }
                     nativeLocationLastPosition = { lat: pos.lat, lng: pos.lng };
                     nativeLocationLastAt = Date.now();
                     return nativeLocationLastPosition;

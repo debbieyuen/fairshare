@@ -171,7 +171,7 @@ function openMapPicker() {
         overlay.remove();
     });
 
-    setTimeout(function () { map.invalidateSize(); }, 100);
+    setTimeout(function () { map.invalidateSize(); }, APP_TIMING.MAP_INVALIDATE_SHORT_MS);
 }
 
 async function sendLocationMessage(lat, lng, radius) {
@@ -217,11 +217,11 @@ function renderLocationPreview(container, lat, lng, radius) {
             boxZoom: false,
             keyboard: false,
             attributionControl: false
-        }).setView([lat, lng], 15);
+        }).setView([lat, lng], APP_MAP.LOCATION_PREVIEW_ZOOM);
 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-            maxZoom: 20,
-            subdomains: 'abcd'
+        L.tileLayer(APP_MAP.TILE_URL, {
+            maxZoom: APP_MAP.MAX_ZOOM,
+            subdomains: APP_MAP.TILE_SUBDOMAINS
         }).addTo(previewMap);
 
         L.circle([lat, lng], {
@@ -238,6 +238,6 @@ function renderLocationPreview(container, lat, lng, radius) {
         const circleBounds = L.latLng(lat, lng).toBounds(radius * 2.5);
         previewMap.fitBounds(circleBounds);
 
-        setTimeout(function () { previewMap.invalidateSize(); }, 200);
+        setTimeout(function () { previewMap.invalidateSize(); }, APP_TIMING.MAP_INVALIDATE_MEDIUM_MS);
     });
 }

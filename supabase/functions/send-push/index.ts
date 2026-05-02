@@ -4,6 +4,7 @@ import webpush from "npm:web-push@3.6.7";
 const VAPID_SUBJECT = "mailto:admin@fairshare.social";
 const VAPID_PUBLIC_KEY = Deno.env.get("VAPID_PUBLIC_KEY")!;
 const VAPID_PRIVATE_KEY = Deno.env.get("VAPID_PRIVATE_KEY")!;
+const WEB_PUSH_TTL_SECONDS = 24 * 60 * 60;
 
 webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 
@@ -24,7 +25,7 @@ serve(async (req) => {
     }
 
     const payload = JSON.stringify({ title, body, url });
-    const options = { TTL: 86400 };
+    const options = { TTL: WEB_PUSH_TTL_SECONDS };
 
     const results = await Promise.allSettled(
       subscriptions.map((sub: { endpoint: string; keys: { p256dh: string; auth: string } }) =>

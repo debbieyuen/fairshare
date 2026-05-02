@@ -10,6 +10,8 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
     private var supabaseConfig: SupabaseLocationConfig?
     private var pendingUploadLocation: CLLocation?
     private var uploadInFlight = false
+    private var tokenRefreshInFlight = false
+    private var locationUploadEnabled = false
     private var uploadRetryWorkItem: DispatchWorkItem?
 
     // Queue of pending one-shot getCurrentPosition calls waiting on a fresh fix.
@@ -49,6 +51,7 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
         let supabaseUrl: String
         let anonKey: String
         let accessToken: String
+        let refreshToken: String?
         let userId: String
         let instanceId: String?
         let sourcePlatform: String?
@@ -68,7 +71,12 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.ensureLocationManager()
-            self.updateSupabaseConfig(from: call)
+            guard self.updateSupabaseConfig(from: call) else {
+                self.locationUploadEnabled = false
+                call.reject("Missing Supabase location upload config")
+                return
+            }
+            self.locationUploadEnabled = true
 
             let status = self.locationManager?.authorizationStatus ?? .notDetermined
             NSLog("[BackgroundLocation] start() called, authorizationStatus=\(self.describe(status))")
@@ -87,14 +95,33 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
             self.applyBackgroundUpdatesIfAuthorized()
             self.locationManager?.startUpdatingLocation()
             NSLog("[BackgroundLocation] startUpdatingLocation called")
+            self.logLocationRuntimeState(context: "start")
             call.resolve()
         }
     }
 
     @objc func stop(_ call: CAPPluginCall) {
         DispatchQueue.main.async { [weak self] in
-            self?.locationManager?.stopUpdatingLocation()
+            guard let self = self else { return }
+            self.locationUploadEnabled = false
+            self.pendingUploadLocation = nil
+            self.uploadRetryWorkItem?.cancel()
+            self.uploadRetryWorkItem = nil
+            self.locationManager?.stopUpdatingLocation()
+            self.logLocationRuntimeState(context: "stop")
             call.resolve()
+        }
+    }
+
+    @objc func getStatus(_ call: CAPPluginCall) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else {
+                call.reject("Plugin not ready")
+                return
+            }
+            self.ensureLocationManager()
+            self.applyBackgroundUpdatesIfAuthorized()
+            call.resolve(self.buildStatusPayload())
         }
     }
 
@@ -158,7 +185,7 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
             NSLog("[BackgroundLocation] discarding fix with invalid accuracy=\(location.horizontalAccuracy) age=\(String(format: "%.1f", age))s")
             return
         }
-        if isSimulatedLocation(location) {
+        if shouldDiscardSimulatedLocation(location) {
             NSLog("[BackgroundLocation] discarding simulated location lat=\(location.coordinate.latitude) lng=\(location.coordinate.longitude)")
             return
         }
@@ -172,6 +199,7 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
         }
 
         NSLog("[BackgroundLocation] didUpdateLocations lat=\(location.coordinate.latitude) lng=\(location.coordinate.longitude) horizAcc=\(location.horizontalAccuracy)m age=\(String(format: "%.1f", age))s")
+        logLocationRuntimeState(context: "didUpdateLocations")
         lastPosition = location
         postLocationToSupabase(location)
         notifyListeners("locationUpdate", data: [
@@ -192,6 +220,7 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
             applyBackgroundUpdatesIfAuthorized()
             manager.startUpdatingLocation()
         }
+        logLocationRuntimeState(context: "authorizationChanged")
     }
 
     // MARK: - Helpers
@@ -213,21 +242,23 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
         }
     }
 
-    private func updateSupabaseConfig(from call: CAPPluginCall) {
+    private func updateSupabaseConfig(from call: CAPPluginCall) -> Bool {
         guard
             let supabaseUrl = call.getString("supabaseUrl"), !supabaseUrl.isEmpty,
             let anonKey = call.getString("anonKey"), !anonKey.isEmpty,
             let accessToken = call.getString("accessToken"), !accessToken.isEmpty,
+            let refreshToken = call.getString("refreshToken"), !refreshToken.isEmpty,
             let userId = call.getString("userId"), !userId.isEmpty
         else {
             loadSupabaseConfig()
-            return
+            return false
         }
 
         let config = SupabaseLocationConfig(
             supabaseUrl: supabaseUrl,
             anonKey: anonKey,
             accessToken: accessToken,
+            refreshToken: refreshToken,
             userId: userId,
             instanceId: call.getString("instanceId"),
             sourcePlatform: call.getString("sourcePlatform"),
@@ -237,7 +268,9 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
         if let encoded = try? JSONEncoder().encode(config) {
             UserDefaults.standard.set(encoded, forKey: configDefaultsKey)
         }
+        NSLog("[BackgroundLocation] updated Supabase config user=\(redact(config.userId)) instance=\(redact(config.instanceId))")
         startNextLocationUploadIfNeeded()
+        return true
     }
 
     private func loadSupabaseConfig() {
@@ -251,6 +284,10 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
     private func postLocationToSupabase(_ location: CLLocation) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
+            guard self.locationUploadEnabled else {
+                NSLog("[BackgroundLocation] location upload skipped: upload disabled")
+                return
+            }
             self.pendingUploadLocation = location
             self.uploadRetryWorkItem?.cancel()
             self.uploadRetryWorkItem = nil
@@ -260,6 +297,8 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
 
     private func startNextLocationUploadIfNeeded() {
         guard !uploadInFlight else { return }
+        guard !tokenRefreshInFlight else { return }
+        guard locationUploadEnabled else { return }
         guard let location = pendingUploadLocation else { return }
         guard let config = supabaseConfig else {
             NSLog("[BackgroundLocation] no Supabase config; keeping latest location pending")
@@ -299,6 +338,7 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
         if let instanceId = config.instanceId { body["source_instance_id"] = instanceId }
         if let sourcePlatform = config.sourcePlatform { body["source_platform"] = sourcePlatform }
         if let sourceUserAgent = config.sourceUserAgent { body["source_user_agent"] = sourceUserAgent }
+        NSLog("[BackgroundLocation] uploading location user=\(redact(config.userId)) instance=\(redact(config.instanceId))")
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
         } catch {
@@ -317,7 +357,7 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
         }
 
         let session = makeLocationUploadSession()
-        session.dataTask(with: request) { [weak self] _, response, error in
+        session.dataTask(with: request) { [weak self] data, response, error in
             defer {
                 if backgroundTask != .invalid {
                     UIApplication.shared.endBackgroundTask(backgroundTask)
@@ -332,9 +372,15 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
             }
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             if statusCode < 200 || statusCode >= 300 {
-                NSLog("[BackgroundLocation] Supabase location upload returned HTTP \(statusCode)")
+                let responseBody = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                let trimmedBody = String(responseBody.prefix(1000))
+                NSLog("[BackgroundLocation] Supabase location upload returned HTTP \(statusCode) body=\(trimmedBody)")
                 DispatchQueue.main.async {
-                    self?.handleLocationUploadFinished(location: location, succeeded: false)
+                    if statusCode == 401 {
+                        self?.handleUnauthorizedLocationUpload(location)
+                    } else {
+                        self?.handleLocationUploadFinished(location: location, succeeded: false)
+                    }
                 }
                 return
             }
@@ -343,6 +389,124 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
                 self?.handleLocationUploadFinished(location: location, succeeded: true)
             }
         }.resume()
+    }
+
+    private func handleUnauthorizedLocationUpload(_ location: CLLocation) {
+        uploadInFlight = false
+        pendingUploadLocation = location
+        refreshSupabaseAccessTokenIfPossible()
+    }
+
+    private func refreshSupabaseAccessTokenIfPossible() {
+        guard !tokenRefreshInFlight else { return }
+        guard let config = supabaseConfig else {
+            scheduleLocationUploadRetry()
+            return
+        }
+        guard let refreshToken = config.refreshToken, !refreshToken.isEmpty else {
+            NSLog("[BackgroundLocation] cannot refresh Supabase token: no refresh token")
+            scheduleLocationUploadRetry()
+            return
+        }
+        guard var components = URLComponents(string: config.supabaseUrl + "/auth/v1/token") else {
+            NSLog("[BackgroundLocation] cannot refresh Supabase token: invalid Supabase URL")
+            scheduleLocationUploadRetry()
+            return
+        }
+        components.queryItems = [URLQueryItem(name: "grant_type", value: "refresh_token")]
+        guard let url = components.url else {
+            NSLog("[BackgroundLocation] cannot refresh Supabase token: could not build token URL")
+            scheduleLocationUploadRetry()
+            return
+        }
+
+        tokenRefreshInFlight = true
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 20
+        request.setValue(config.anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "refresh_token": refreshToken
+            ], options: [])
+        } catch {
+            NSLog("[BackgroundLocation] failed to encode token refresh body: \(error.localizedDescription)")
+            tokenRefreshInFlight = false
+            scheduleLocationUploadRetry()
+            return
+        }
+
+        var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "RefreshLocationToken") {
+            if backgroundTask != .invalid {
+                UIApplication.shared.endBackgroundTask(backgroundTask)
+                backgroundTask = .invalid
+            }
+        }
+
+        makeLocationUploadSession().dataTask(with: request) { [weak self] data, response, error in
+            defer {
+                if backgroundTask != .invalid {
+                    UIApplication.shared.endBackgroundTask(backgroundTask)
+                }
+            }
+            if let error = error {
+                NSLog("[BackgroundLocation] Supabase token refresh failed: \(error.localizedDescription)")
+                DispatchQueue.main.async {
+                    self?.handleTokenRefreshFinished(config: config, data: nil, succeeded: false)
+                }
+                return
+            }
+
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard statusCode >= 200 && statusCode < 300, let data = data else {
+                let responseBody = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                let trimmedBody = String(responseBody.prefix(1000))
+                NSLog("[BackgroundLocation] Supabase token refresh returned HTTP \(statusCode) body=\(trimmedBody)")
+                DispatchQueue.main.async {
+                    self?.handleTokenRefreshFinished(config: config, data: nil, succeeded: false)
+                }
+                return
+            }
+
+            DispatchQueue.main.async {
+                self?.handleTokenRefreshFinished(config: config, data: data, succeeded: true)
+            }
+        }.resume()
+    }
+
+    private func handleTokenRefreshFinished(config: SupabaseLocationConfig, data: Data?, succeeded: Bool) {
+        tokenRefreshInFlight = false
+        guard succeeded,
+              let data = data,
+              let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
+              let accessToken = json["access_token"] as? String,
+              !accessToken.isEmpty
+        else {
+            scheduleLocationUploadRetry()
+            return
+        }
+
+        let newRefreshToken = (json["refresh_token"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            ?? config.refreshToken
+        let refreshedConfig = SupabaseLocationConfig(
+            supabaseUrl: config.supabaseUrl,
+            anonKey: config.anonKey,
+            accessToken: accessToken,
+            refreshToken: newRefreshToken,
+            userId: config.userId,
+            instanceId: config.instanceId,
+            sourcePlatform: config.sourcePlatform,
+            sourceUserAgent: config.sourceUserAgent
+        )
+        supabaseConfig = refreshedConfig
+        if let encoded = try? JSONEncoder().encode(refreshedConfig) {
+            UserDefaults.standard.set(encoded, forKey: configDefaultsKey)
+        }
+        NSLog("[BackgroundLocation] Supabase token refresh succeeded; retrying location upload")
+        startNextLocationUploadIfNeeded()
     }
 
     private func makeLocationUploadSession() -> URLSession {
@@ -395,13 +559,53 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
         }
     }
 
+    private func buildStatusPayload() -> [String: Any] {
+        guard let manager = locationManager else {
+            return [
+                "authorizationStatus": "notInitialized",
+                "allowsBackgroundLocationUpdates": false,
+                "pausesLocationUpdatesAutomatically": false,
+                "hasSupabaseConfig": supabaseConfig != nil,
+                "configUser": redact(supabaseConfig?.userId),
+                "configInstance": redact(supabaseConfig?.instanceId),
+                "locationUploadEnabled": locationUploadEnabled,
+                "hasPendingUpload": pendingUploadLocation != nil,
+                "uploadInFlight": uploadInFlight,
+                "appState": describe(UIApplication.shared.applicationState)
+            ]
+        }
+        return [
+            "authorizationStatus": describe(manager.authorizationStatus),
+            "allowsBackgroundLocationUpdates": manager.allowsBackgroundLocationUpdates,
+            "pausesLocationUpdatesAutomatically": manager.pausesLocationUpdatesAutomatically,
+            "hasSupabaseConfig": supabaseConfig != nil,
+            "configUser": redact(supabaseConfig?.userId),
+            "configInstance": redact(supabaseConfig?.instanceId),
+            "locationUploadEnabled": locationUploadEnabled,
+            "hasPendingUpload": pendingUploadLocation != nil,
+            "uploadInFlight": uploadInFlight,
+            "appState": describe(UIApplication.shared.applicationState)
+        ]
+    }
+
+    private func logLocationRuntimeState(context: String) {
+        let status = buildStatusPayload()
+        NSLog("[BackgroundLocation] state[\(context)] authorizationStatus=\(status["authorizationStatus"] ?? "") allowsBackgroundLocationUpdates=\(status["allowsBackgroundLocationUpdates"] ?? false) pausesLocationUpdatesAutomatically=\(status["pausesLocationUpdatesAutomatically"] ?? false) hasSupabaseConfig=\(status["hasSupabaseConfig"] ?? false) configUser=\(status["configUser"] ?? "") configInstance=\(status["configInstance"] ?? "") locationUploadEnabled=\(status["locationUploadEnabled"] ?? false) hasPendingUpload=\(status["hasPendingUpload"] ?? false) uploadInFlight=\(status["uploadInFlight"] ?? false) appState=\(status["appState"] ?? "")")
+    }
+
     private func mostRecent(of locations: [CLLocation]) -> CLLocation? {
         return locations.max(by: { $0.timestamp < $1.timestamp })
     }
 
-    private func isSimulatedLocation(_ location: CLLocation) -> Bool {
+    private func shouldDiscardSimulatedLocation(_ location: CLLocation) -> Bool {
         if #available(iOS 15.0, *) {
-            return location.sourceInformation?.isSimulatedBySoftware == true
+            guard location.sourceInformation?.isSimulatedBySoftware == true else { return false }
+            #if DEBUG
+            NSLog("[BackgroundLocation] accepting simulated location in DEBUG build for testing")
+            return false
+            #else
+            return true
+            #endif
         }
         return false
     }
@@ -417,14 +621,29 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
         }
     }
 
+    private func describe(_ state: UIApplication.State) -> String {
+        switch state {
+        case .active: return "active"
+        case .inactive: return "inactive"
+        case .background: return "background"
+        @unknown default: return "unknown(\(state.rawValue))"
+        }
+    }
+
+    private func redact(_ value: String?) -> String {
+        guard let value = value, !value.isEmpty else { return "nil" }
+        if value.count <= 12 { return value }
+        return "\(value.prefix(6))...\(value.suffix(6))"
+    }
+
     /// Resolve any pending getCurrentPosition calls. When `force` is false,
     /// we only resolve calls whose `previousTimestamp` differs from the
     /// current `lastPosition.timestamp` (i.e. a new fix has genuinely
     /// arrived). When `force` is true the caller's deadline is up; in that
     /// case we still only resolve with `lastPosition` if it's *both* newer
-    /// than what the caller had AND fresh enough to be worth writing. We'd
-    /// rather have JS treat this poll as "no fix" and skip the upsert than
-    /// send stale coordinates to Supabase with a fresh `updated_at`.
+    /// than what the caller had AND fresh enough to be worth writing. If not,
+    /// resolve with an empty object so JS treats the poll as "no fix" without
+    /// Capacitor logging noisy promise rejections.
     private func flushPendingCalls(force: Bool) {
         guard !pendingFreshCalls.isEmpty else { return }
         let current = lastPosition
@@ -444,7 +663,7 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
                 ])
             } else if force {
                 NSLog("[BackgroundLocation] getCurrentPosition timed out without a fresh fix (had cached fix: \(current != nil))")
-                entry.call.reject("Could not get fresh location")
+                entry.call.resolve([:])
             } else {
                 remaining.append(entry)
             }

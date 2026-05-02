@@ -31,13 +31,13 @@ async function ensureSession() {
 //    force a reload.
 
 let _lastActiveAt = Date.now();
-const SESSION_STALE_MS = 30 * 60 * 1000; // 30 minutes
+const SESSION_STALE_MS = 30 * APP_TIMING.MINUTE_MS;
 
 // --- Timeout-guarded getSession ---
 // Supabase's internal navigator.locks can deadlock after a tab is
 // backgrounded.  If getSession doesn't resolve within a few seconds,
 // the client is stuck and we must hard-reload to recover.
-const GET_SESSION_TIMEOUT_MS = 5000; // 5 seconds
+const GET_SESSION_TIMEOUT_MS = 5 * APP_TIMING.SECOND_MS;
 
 function getSessionWithTimeout() {
     return new Promise((resolve) => {
@@ -79,7 +79,7 @@ document.addEventListener('visibilitychange', async () => {
         // Web only: been away too long — hard reload lets init() do a clean token refresh.
         // On native iOS the app is suspended by the OS; reloading restarts the
         // entire WebView which is far more disruptive than a soft recovery.
-        console.log(`[visibility] Idle ${Math.round(elapsed / 60000)} min — reloading`);
+        console.log(`[visibility] Idle ${Math.round(elapsed / APP_TIMING.MINUTE_MS)} min — reloading`);
         window.location.reload();
         return;
     }
@@ -108,7 +108,8 @@ document.addEventListener('visibilitychange', async () => {
 // --- Mechanism 2: periodic heartbeat ---
 // Every 5 minutes, make a tiny authenticated request. If the session is dead
 // the request will fail and we reload to get a clean start.
-const HEARTBEAT_MS = 5 * 60 * 1000; // 5 minutes
+const HEARTBEAT_MS = 5 * APP_TIMING.MINUTE_MS;
+const HEARTBEAT_TIMEOUT_MS = APP_TIMING.HEARTBEAT_TIMEOUT_MS;
 setInterval(async () => {
     if (!currentUser) return;
     console.log('[heartbeat] checking session…');
@@ -116,8 +117,8 @@ setInterval(async () => {
         const { error } = await Promise.race([
             db.from('profiles').select('id').eq('id', currentUser.id).single(),
             new Promise((_, reject) => setTimeout(() =>
-                reject(new Error('Heartbeat timed out (10s) — client may be stuck')),
-                10000))
+                reject(new Error('Heartbeat timed out (' + (HEARTBEAT_TIMEOUT_MS / APP_TIMING.SECOND_MS) + 's) — client may be stuck')),
+                HEARTBEAT_TIMEOUT_MS))
         ]);
         if (error) {
             console.warn('[heartbeat] failed — session likely expired', error);

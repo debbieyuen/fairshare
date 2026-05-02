@@ -1,4 +1,4 @@
-const NEARBY_POLL_INTERVAL_MS = 60000; // 1 minute
+const NEARBY_POLL_INTERVAL_MS = APP_TIMING.FOREGROUND_LOCATION_POLL_MS;
 
 // Reverse-geocode cache: only re-hit Nominatim when we've moved more than
 // ~500m (≈0.005°) from the last geocoded fix. Polling every minute would
@@ -68,13 +68,16 @@ async function sendLocationUpdate() {
         const pos = await getGPSLocation();
         if (!pos) return;
         const label = await nearbyResolveLocationLabel(pos.lat, pos.lng);
+        const sourceMetadata = typeof getLocationSharingSourceMetadata === 'function'
+            ? getLocationSharingSourceMetadata()
+            : {};
         await db.rpc('update_location_and_check_nearby', {
             p_lat: pos.lat,
             p_lng: pos.lng,
             p_location_label: label || null,
-            p_source_instance_id: typeof getLocationSharingInstanceId === 'function' ? getLocationSharingInstanceId() : null,
-            p_source_platform: typeof getLocationSharingPlatform === 'function' ? getLocationSharingPlatform() : null,
-            p_source_user_agent: typeof getLocationSharingUserAgent === 'function' ? getLocationSharingUserAgent() : null
+            p_source_instance_id: sourceMetadata.source_instance_id || null,
+            p_source_platform: sourceMetadata.source_platform || null,
+            p_source_user_agent: sourceMetadata.source_user_agent || null
         });
     } catch (e) {
         console.warn('Nearby location update failed:', e);

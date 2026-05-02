@@ -1,11 +1,15 @@
-const LOCATION_SHARING_POLL_MS = 60000;
 const LOCATION_SHARING_INSTANCE_KEY = 'union_location_sharing_instance_id';
+const LOCATION_SHARING_POLL_MS = APP_TIMING.FOREGROUND_LOCATION_POLL_MS;
+const NATIVE_LOCATION_STATUS_WARNING_MS = 10 * APP_TIMING.MINUTE_MS;
 // How often the viewer polls inbound-sharer positions as a safety net. Realtime
 // (when enabled on user_locations) does the heavy lifting; this catches any
 // missed events and covers the case where the publication migration hasn't
 // been applied yet.
-const INBOUND_LOCATION_POLL_MS = 60000;
+const INBOUND_LOCATION_POLL_MS = APP_TIMING.INBOUND_LOCATION_POLL_MS;
+const EARTH_RADIUS_MI = 3958.8;
+const FEET_PER_MILE = 5280;
 let contactLocationsCache = {}; // contact_id -> { lat, lng }
+let nativeLocationStatusWarningLastAt = 0;
 
 function getLocationSharingInstanceId() {
     try {
@@ -33,6 +37,14 @@ function getLocationSharingUserAgent() {
     }
 }
 
+function getLocationSharingSourceMetadata() {
+    return {
+        source_instance_id: getLocationSharingInstanceId(),
+        source_platform: getLocationSharingPlatform(),
+        source_user_agent: getLocationSharingUserAgent()
+    };
+}
+
 function toggleShareLocation(contactId, enabled) {
     if (!currentUser) return;
     if (!enabled) {
@@ -56,9 +68,7 @@ async function shareLocationWithContact(contactId, duration) {
                 to_user_id: contactId,
                 started_at: new Date().toISOString(),
                 expires_at: expiresAt,
-                source_instance_id: getLocationSharingInstanceId(),
-                source_platform: getLocationSharingPlatform(),
-                source_user_agent: getLocationSharingUserAgent()
+                ...getLocationSharingSourceMetadata()
             }, { onConflict: 'from_user_id,to_user_id' });
         if (error) throw error;
 
@@ -79,7 +89,7 @@ async function shareLocationWithContact(contactId, duration) {
         db.rpc('send_push_to_users', {
             p_user_ids: [contactId],
             p_actor_id: currentUser.id,
-            p_title: 'Union',
+            p_title: APP_NAME,
             p_body: msg
         }).then(({ error: pErr }) => {
             if (pErr) console.warn('location share push error:', pErr);
@@ -173,15 +183,18 @@ async function getNativeLocationSharingConfig() {
         return null;
     }
     const accessToken = data?.session?.access_token;
-    if (!accessToken) return null;
+    const refreshToken = data?.session?.refresh_token;
+    if (!accessToken || !refreshToken) return null;
+    const sourceMetadata = getLocationSharingSourceMetadata();
     return {
         supabaseUrl: SUPABASE_URL,
         anonKey: SUPABASE_ANON_KEY,
         accessToken,
+        refreshToken,
         userId: currentUser.id,
-        instanceId: getLocationSharingInstanceId(),
-        sourcePlatform: getLocationSharingPlatform(),
-        sourceUserAgent: getLocationSharingUserAgent()
+        instanceId: sourceMetadata.source_instance_id,
+        sourcePlatform: sourceMetadata.source_platform,
+        sourceUserAgent: sourceMetadata.source_user_agent
     };
 }
 
@@ -205,8 +218,14 @@ async function startNativeLocationSharing() {
             startNativeLocationSharing._listenerAttached = true;
         }
         const config = await getNativeLocationSharingConfig();
-        await plugin.start(config || {});
+        if (!config) {
+            console.warn('[location-sharing] native start skipped: missing auth config');
+            maybeWarnNativeLocationSharingStatus({ hasSupabaseConfig: false });
+            return;
+        }
+        await plugin.start(config);
         console.log('[location-sharing] native plugin.start resolved');
+        await logNativeLocationSharingStatus(plugin);
     } catch (e) {
         console.warn('Native BackgroundLocation start failed:', e);
     }
@@ -217,18 +236,49 @@ function refreshNativeLocationSharingAuth() {
     startNativeLocationSharing();
 }
 
+async function logNativeLocationSharingStatus(plugin) {
+    if (!plugin || typeof plugin.getStatus !== 'function') return;
+    try {
+        const status = await plugin.getStatus();
+        console.log('[location-sharing] native status', status);
+        maybeWarnNativeLocationSharingStatus(status);
+    } catch (e) {
+        console.warn('[location-sharing] native getStatus failed:', e);
+    }
+}
+
+function maybeWarnNativeLocationSharingStatus(status) {
+    if (!status) return;
+    const now = Date.now();
+    if ((now - nativeLocationStatusWarningLastAt) < NATIVE_LOCATION_STATUS_WARNING_MS) return;
+
+    let message = '';
+    if (status.authorizationStatus && status.authorizationStatus !== 'authorizedAlways') {
+        message = 'Background sharing needs Location set to Always in iOS Settings.';
+    } else if (status.allowsBackgroundLocationUpdates === false) {
+        message = 'Background location is not active yet. Keep Union open briefly, then try again.';
+    } else if (status.hasSupabaseConfig === false) {
+        message = 'Background sharing could not read your session. Reopen Union and try sharing again.';
+    }
+
+    if (!message) return;
+    nativeLocationStatusWarningLastAt = now;
+    console.warn('[location-sharing] native background sharing warning:', message, status);
+    if (typeof showToast === 'function') {
+        showToast(message, 'error');
+    }
+}
+
 function stopLocationSharingUpdates() {
-    const wasRunning = !!locationSharingInterval;
     if (locationSharingInterval) {
         clearInterval(locationSharingInterval);
         locationSharingInterval = null;
     }
     stopShareRemainingTimer();
 
-    // Only touch the native plugin if we'd previously started it. Calling
-    // plugin.stop() when start() was never invoked just produces a confusing
-    // "stop failed" log.
-    if (IS_NATIVE && wasRunning) {
+    // Always tell native when there is no active sharing. One-shot GPS lookups
+    // should never keep the direct Supabase background uploader armed.
+    if (IS_NATIVE) {
         try {
             const plugin = Capacitor.Plugins.BackgroundLocation;
             if (plugin && !hasAnyNearbyContacts()) {
@@ -266,6 +316,8 @@ async function sendSharingLocationPoll() {
 async function sendSharingLocationUpdate(lat, lng) {
     if (!currentUser) return;
     if (!hasAnyActiveLocationShares()) return;
+    // This is one of three intentional user_locations writers: foreground
+    // sharing, nearby notifications, and the native background plugin.
     try {
         const { error } = await db
             .from('user_locations')
@@ -274,9 +326,7 @@ async function sendSharingLocationUpdate(lat, lng) {
                 lat: lat,
                 lng: lng,
                 updated_at: new Date().toISOString(),
-                source_instance_id: getLocationSharingInstanceId(),
-                source_platform: getLocationSharingPlatform(),
-                source_user_agent: getLocationSharingUserAgent()
+                ...getLocationSharingSourceMetadata()
             }, { onConflict: 'user_id' });
         if (error) {
             console.warn('[location-sharing] upsert error:', error);
@@ -292,17 +342,17 @@ function formatLocationShareRemaining(expiresAt) {
     if (!expiresAt) return '';
     const remaining = new Date(expiresAt).getTime() - Date.now();
     if (remaining <= 0) return '';
-    const minutes = Math.ceil(remaining / 60000);
+    const minutes = Math.ceil(remaining / APP_TIMING.MINUTE_MS);
     if (minutes < 60) return 'For next ' + minutes + ' minute' + (minutes === 1 ? '' : 's');
-    const hours = Math.ceil(remaining / 3600000);
+    const hours = Math.ceil(remaining / APP_TIMING.HOUR_MS);
     if (hours < 24) return 'For next ' + hours + ' hour' + (hours === 1 ? '' : 's');
-    const days = Math.ceil(remaining / 86400000);
+    const days = Math.ceil(remaining / APP_TIMING.DAY_MS);
     return 'For next ' + days + ' day' + (days === 1 ? '' : 's');
 }
 
 function startShareRemainingTimer() {
     if (shareRemainingTimer) return;
-    shareRemainingTimer = setInterval(refreshShareRemainingTimers, 60000);
+    shareRemainingTimer = setInterval(refreshShareRemainingTimers, APP_TIMING.SHARE_REMAINING_REFRESH_MS);
 }
 
 function stopShareRemainingTimer() {
@@ -370,11 +420,7 @@ async function claimUnownedLocationSharesForThisDevice() {
     try {
         const { error } = await db
             .from('location_shares')
-            .update({
-                source_instance_id: getLocationSharingInstanceId(),
-                source_platform: getLocationSharingPlatform(),
-                source_user_agent: getLocationSharingUserAgent()
-            })
+            .update(getLocationSharingSourceMetadata())
             .eq('from_user_id', currentUser.id)
             .is('source_instance_id', null)
             .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString());
@@ -397,6 +443,14 @@ function subscribeToLocationShares() {
             schema: 'public',
             table: 'location_shares',
             filter: 'to_user_id=eq.' + currentUser.id
+        }, () => {
+            handleLocationSharesChanged();
+        })
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'location_shares',
+            filter: 'from_user_id=eq.' + currentUser.id
         }, () => {
             handleLocationSharesChanged();
         })
@@ -523,21 +577,34 @@ function cancelShareLocationDialog() {
 
 function haversineDistance(lat1, lng1, lat2, lng2) {
     const toRad = v => v * Math.PI / 180;
-    const R = 3958.8; // Earth radius in miles
     const dLat = toRad(lat2 - lat1);
     const dLng = toRad(lng2 - lng1);
     const a = Math.sin(dLat / 2) ** 2 +
         Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return EARTH_RADIUS_MI * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function formatDistance(miles) {
+function formatDistance(miles, options = {}) {
+    const { compact = false } = options;
+    if (compact && miles < 0.1) return 'Right here';
     if (miles < 1) {
-        const feet = Math.round(miles * 5280);
+        if (compact) return miles.toFixed(1) + ' mi away';
+        const feet = Math.round(miles * FEET_PER_MILE);
         return feet + ' feet away';
     }
-    if (miles < 10) return miles.toFixed(1) + ' miles away';
-    return Math.round(miles) + ' miles away';
+    if (miles < 10) return miles.toFixed(1) + (compact ? ' mi away' : ' miles away');
+    return Math.round(miles) + (compact ? ' mi away' : ' miles away');
+}
+
+function addContactLocationTileLayer(map) {
+    return L.tileLayer(APP_MAP.TILE_URL, {
+        maxZoom: APP_MAP.MAX_ZOOM,
+        subdomains: APP_MAP.TILE_SUBDOMAINS
+    }).addTo(map);
+}
+
+function invalidateLeafletMapSize(map, delays) {
+    delays.forEach(delay => setTimeout(() => map.invalidateSize(), delay));
 }
 
 async function loadContactLocations() {
@@ -583,7 +650,7 @@ function renderContactLocationMap(contactId) {
     // animate the marker while the card stays open.
     if (el._leafletMap && el._leafletMarker) {
         try {
-            el._leafletMap.setView([loc.lat, loc.lng], el._leafletMap.getZoom() || 14);
+            el._leafletMap.setView([loc.lat, loc.lng], el._leafletMap.getZoom() || APP_MAP.CONTACT_LOCATION_MINI_ZOOM);
             el._leafletMarker.setLatLng([loc.lat, loc.lng]);
         } catch (_) { /* best effort */ }
         return;
@@ -603,18 +670,17 @@ function renderContactLocationMap(contactId) {
             boxZoom: false,
             keyboard: false,
             attributionControl: false
-        }).setView([loc.lat, loc.lng], 14);
+        }).setView([loc.lat, loc.lng], APP_MAP.CONTACT_LOCATION_MINI_ZOOM);
 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-            maxZoom: 20,
-            subdomains: 'abcd'
-        }).addTo(miniMap);
+        addContactLocationTileLayer(miniMap);
 
         const marker = L.marker([loc.lat, loc.lng]).addTo(miniMap);
         target._leafletMap = miniMap;
         target._leafletMarker = marker;
-        setTimeout(() => miniMap.invalidateSize(), 100);
-        setTimeout(() => miniMap.invalidateSize(), 400);
+        invalidateLeafletMapSize(miniMap, [
+            APP_TIMING.MAP_INVALIDATE_SHORT_MS,
+            APP_TIMING.MAP_INVALIDATE_LONG_MS
+        ]);
     });
 }
 
@@ -643,6 +709,17 @@ window.addEventListener('union:contactLocationsLoaded', () => {
         const el = document.getElementById('contact-loc-map-' + cid);
         if (el) renderContactLocationMap(cid);
     });
+
+    const overlay = document.getElementById('contact-location-fullscreen');
+    if (!overlay || !overlay.classList.contains('active')) return;
+    const cid = overlay._contactId;
+    if (!cid) return;
+    const loc = contactLocationsCache[cid];
+    if (!loc || !overlay._leafletMap || !overlay._leafletMarker) return;
+    try {
+        overlay._leafletMarker.setLatLng([loc.lat, loc.lng]);
+        overlay._leafletMap.panTo([loc.lat, loc.lng]);
+    } catch (_) { /* best effort */ }
 });
 
 function openContactLocationFullscreen(contactId, contactName) {
@@ -678,12 +755,9 @@ function openContactLocationFullscreen(contactId, contactName) {
         const fullMap = L.map(mapEl, {
             zoomControl: true,
             attributionControl: false
-        }).setView([loc.lat, loc.lng], 15);
+        }).setView([loc.lat, loc.lng], APP_MAP.CONTACT_LOCATION_FULLSCREEN_ZOOM);
 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-            maxZoom: 20,
-            subdomains: 'abcd'
-        }).addTo(fullMap);
+        addContactLocationTileLayer(fullMap);
 
         const fullMarker = L.marker([loc.lat, loc.lng])
             .addTo(fullMap)
@@ -693,23 +767,9 @@ function openContactLocationFullscreen(contactId, contactName) {
         overlay._leafletMap = fullMap;
         overlay._leafletMarker = fullMarker;
         overlay._contactId = contactId;
-        setTimeout(() => fullMap.invalidateSize(), 200);
+        invalidateLeafletMapSize(fullMap, [APP_TIMING.MAP_INVALIDATE_MEDIUM_MS]);
     });
 }
-
-// Keep an open fullscreen map in sync with realtime updates.
-window.addEventListener('union:contactLocationsLoaded', () => {
-    const overlay = document.getElementById('contact-location-fullscreen');
-    if (!overlay || !overlay.classList.contains('active')) return;
-    const cid = overlay._contactId;
-    if (!cid) return;
-    const loc = contactLocationsCache[cid];
-    if (!loc || !overlay._leafletMap || !overlay._leafletMarker) return;
-    try {
-        overlay._leafletMarker.setLatLng([loc.lat, loc.lng]);
-        overlay._leafletMap.panTo([loc.lat, loc.lng]);
-    } catch (_) { /* best effort */ }
-});
 
 function closeContactLocationFullscreen() {
     const overlay = document.getElementById('contact-location-fullscreen');

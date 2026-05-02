@@ -280,6 +280,7 @@
 const SUPABASE_URL = 'https://vdpqgmrfvlaieqpvpdcr.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkcHFnbXJmdmxhaWVxcHZwZGNyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2MjUzNjcsImV4cCI6MjA4NzIwMTM2N30.ORvkYqcrDjnhdpCvXaIBzjRLyzi3WSIqMmIxWecpgl8';
 const ADMIN_USER_ID = 'a8253eea-e76a-46d1-a92d-6fe36911f038';
+const ADMIN_TOAST_MS = 4000;
 
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -303,7 +304,7 @@ function showToast(message, type) {
     t.className = 'toast ' + (type || 'info');
     t.textContent = message;
     document.body.appendChild(t);
-    setTimeout(() => t.remove(), 4000);
+    setTimeout(() => t.remove(), ADMIN_TOAST_MS);
 }
 
 function showScreen(id) {

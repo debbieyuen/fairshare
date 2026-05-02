@@ -17,7 +17,7 @@ function showToast(message, type = 'info') {
     toast.className = `toast ${type}`;
     toast.textContent = message;
     document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 4000);
+    setTimeout(() => toast.remove(), APP_TIMING.TOAST_MS);
 }
 
 const INSTALL_HINT_SESSION_KEY = 'union_install_hint_dismissed';

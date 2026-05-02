@@ -17,7 +17,7 @@ async function loadStatsContent() {
     const totalSupply = (members || []).reduce((sum, m) => sum + Number(m.balance), 0);
 
     // 30-day fee sum (fees from person-to-person transactions)
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+    const thirtyDaysAgo = new Date(Date.now() - 30 * APP_TIMING.DAY_MS).toISOString();
     const { data: recentTx } = await db
         .from('transactions')
         .select('fee, amount, from_user')
