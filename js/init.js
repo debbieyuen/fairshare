@@ -56,6 +56,18 @@ async function init() {
         }));
         window.history.replaceState({}, document.title, window.location.pathname);
         await showMeetBanner(meetToken);
+    } else {
+        // No URL token, but the user may have rescanned and reloaded the
+        // page mid-signup. Re-validate any fresh stored token so the sponsor
+        // banner reappears and the signup gate unlocks itself, without ever
+        // bypassing the gate based on raw localStorage presence alone.
+        const storedInvite = readStoredTokenIfFresh('fairshare_invite', 7 * 24 * 60 * 60 * 1000);
+        const storedMeet = readStoredTokenIfFresh('fairshare_meet', 24 * 60 * 60 * 1000);
+        if (storedInvite) {
+            await showInviteBanner(storedInvite);
+        } else if (storedMeet) {
+            await showMeetBanner(storedMeet);
+        }
     }
 
     const notifGroupId = urlParams.get('group');
@@ -84,6 +96,7 @@ async function init() {
     try {
         const { data: { session } } = await db.auth.getSession();
         if (session) {
+            try { localStorage.setItem('fairshare_has_account', '1'); } catch (_) {}
             currentUser = session.user;
             await loadProfile();
             const claimedGroup = await handlePendingInvite();
@@ -108,6 +121,7 @@ async function init() {
         db.auth.onAuthStateChange((event, session) => {
             console.log('[auth] onAuthStateChange:', event);
             if (event === 'SIGNED_IN' && session) {
+                try { localStorage.setItem('fairshare_has_account', '1'); } catch (_) {}
                 currentUser = session.user;
                 // Defer async Supabase work outside the callback
                 setTimeout(async () => {
@@ -135,6 +149,7 @@ async function init() {
                 pendingPostHandshakeSelfieContactName = null;
                 currentUser = null;
                 currentProfile = null;
+                if (typeof clearSponsorTokenValidated === 'function') clearSponsorTokenValidated();
                 showAuth();
             } else if (event === 'TOKEN_REFRESHED' && session) {
                 // Session refreshed successfully — update user reference
@@ -152,6 +167,24 @@ async function init() {
     }
 }
 
+// Read a stored invite/meet token if it was saved recently enough.
+// Stale entries are dropped so they never bypass the signup gate later.
+function readStoredTokenIfFresh(key, maxAgeMs) {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    try {
+        const parsed = JSON.parse(raw);
+        if (parsed?.token && typeof parsed.savedAt === 'number'
+            && (Date.now() - parsed.savedAt) < maxAgeMs) {
+            return parsed.token;
+        }
+    } catch {
+        // Legacy plain-string entry, no savedAt — treat as stale.
+    }
+    localStorage.removeItem(key);
+    return null;
+}
+
 // Show invite banner on the auth screen
 async function showInviteBanner(token) {
     try {
@@ -162,8 +195,11 @@ async function showInviteBanner(token) {
                 `<strong>Invitation issue:</strong> ${esc(msg)}`;
             document.getElementById('inviteBanner').classList.remove('hidden');
             localStorage.removeItem('fairshare_invite');
+            if (typeof clearSponsorTokenValidated === 'function') clearSponsorTokenValidated();
             return;
         }
+
+        if (typeof markSponsorTokenValidated === 'function') markSponsorTokenValidated();
 
         const sponsorName = data?.sponsor_name || 'A Union member';
         const sponsorInitial = sponsorName.charAt(0).toUpperCase() || 'U';
@@ -250,8 +286,11 @@ async function showMeetBanner(token) {
                 `<strong>Meet link issue:</strong> ${esc(msg)}`;
             document.getElementById('inviteBanner').classList.remove('hidden');
             localStorage.removeItem('fairshare_meet');
+            if (typeof clearSponsorTokenValidated === 'function') clearSponsorTokenValidated();
             return;
         }
+
+        if (typeof markSponsorTokenValidated === 'function') markSponsorTokenValidated();
 
         const authHeading = document.querySelector('#authScreen h2');
         if (authHeading) authHeading.style.display = 'none';
@@ -270,22 +309,33 @@ async function showMeetBanner(token) {
         html += `<div class="meet-landing-name">${esc(name)}</div>`;
         if (phone) html += `<div class="meet-landing-detail">\u260E\uFE0F ${esc(phone)}</div>`;
         if (email) html += `<div class="meet-landing-detail">\u2709\uFE0F ${esc(email)}</div>`;
+        // The "add as contact" link only renders on the web. Inside the
+        // Capacitor native shell, blob:/data: vCard URLs never reach the
+        // iOS Contacts app — see prepareMeetVcfLink — so we skip the link
+        // entirely there to avoid offering a broken affordance.
+        const showAddContactLink = !IS_NATIVE;
+        const vcfLinkHtml = showAddContactLink
+            ? ', or <a href="#" id="meetAddContact">add as contact</a>'
+            : '';
+
         if (groupName) {
             html += `<div class="meet-landing-group">wants to sponsor you as a member of <strong>${esc(groupName)}</strong></div>`;
             if (message) html += `<div class="invite-sponsor-note"><em>"${esc(message)}"</em></div>`;
-            html += `<div class="meet-landing-subtext">Sign up to join the group, or <a href="#" id="meetAddContact">add as contact</a>.</div>`;
+            html += `<div class="meet-landing-subtext">Sign up to join the group${vcfLinkHtml}.</div>`;
         } else {
-            html += `<div class="meet-landing-subtext">Sign up to connect on ${esc(APP_NAME)}, or <a href="#" id="meetAddContact">add as contact</a>.</div>`;
+            html += `<div class="meet-landing-subtext">Sign up to connect on ${esc(APP_NAME)}${vcfLinkHtml}.</div>`;
         }
         html += '</div>';
 
         document.getElementById('inviteBannerText').innerHTML = html;
         document.getElementById('inviteBanner').classList.remove('hidden');
 
-        const meetUrl = publicAppUrl(`?meet=${encodeURIComponent(token)}`);
-        const addContactLink = document.getElementById('meetAddContact');
-        if (addContactLink) {
-            prepareMeetVcfLink(addContactLink, name, phone, email, meetUrl, photoUrl);
+        if (showAddContactLink) {
+            const meetUrl = publicAppUrl(`?meet=${encodeURIComponent(token)}`);
+            const addContactLink = document.getElementById('meetAddContact');
+            if (addContactLink) {
+                prepareMeetVcfLink(addContactLink, name, phone, email, meetUrl, photoUrl);
+            }
         }
 
         switchAuthTab('signup');

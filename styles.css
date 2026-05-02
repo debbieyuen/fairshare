@@ -2302,6 +2302,80 @@ body.drag-sort-active * { user-select: none; -webkit-user-select: none; }
     box-shadow: 0 2px 12px rgba(0,0,0,0.4);
 }
 .new-contact-selfie-capture:active { transform: translateX(-50%) scale(0.93); }
+
+/* ---- Auth (pre-login) QR scan overlay ---- */
+.auth-scan-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9900;
+    background: #000;
+    display: flex;
+    align-items: stretch;
+}
+.auth-scan-overlay.hidden { display: none; }
+.auth-scan-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.auth-scan-banner {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 1rem 1.5rem;
+    padding-top: calc(env(safe-area-inset-top, 0px) + 1rem);
+    background: linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, transparent 100%);
+    color: #fff;
+    font-size: 1.05rem;
+    font-weight: 600;
+    text-align: center;
+    pointer-events: none;
+}
+.auth-scan-close {
+    position: absolute;
+    top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+    right: 1rem;
+    background: rgba(0,0,0,0.45);
+    color: #fff;
+    border: none;
+    border-radius: 50%;
+    width: 2.2rem;
+    height: 2.2rem;
+    font-size: 1.1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+}
+
+/* ---- Sign-up "needs sponsor" gate ---- */
+.auth-signup-gate {
+    text-align: center;
+    padding: 1.5rem 0;
+    color: var(--dark-gray);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
+.auth-signup-gate-text {
+    font-size: 0.95rem;
+    line-height: 1.5;
+    margin: 0;
+}
+.auth-signup-gate-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.auth-scan-btn-icon {
+    font-size: 1.1rem;
+    line-height: 1;
+}
+
 /* Hide small avatar in header when row is expanded */
 .contact-row.expanded .contact-row-avatar,
 .contact-row.expanded .contact-row-avatar-placeholder { display: none; }

@@ -1,8 +1,34 @@
+let authScanStream = null;
+let authScanTimer = null;
+let authScanHandled = false;
+
+// True only when an invite/meet token has been *successfully* validated for
+// the current session (i.e. showInviteBanner/showMeetBanner returned a real
+// sponsor card, not an error). The signup form refuses to reveal its fields
+// unless this flag is set, enforcing the "no signup without sponsor" rule
+// even if a stale token is sitting in localStorage from an earlier session.
+let hasValidatedSponsorToken = false;
+
+function markSponsorTokenValidated() {
+    hasValidatedSponsorToken = true;
+    // If the signup tab is already on screen, flip the gate immediately so
+    // the user sees the sponsor info card + signup fields without having to
+    // re-tap the tab.
+    const signupForm = document.getElementById('signupForm');
+    if (signupForm && !signupForm.classList.contains('hidden')) {
+        document.getElementById('signupGate')?.classList.add('hidden');
+        document.getElementById('signupFields')?.classList.remove('hidden');
+    }
+}
+
+function clearSponsorTokenValidated() {
+    hasValidatedSponsorToken = false;
+}
+
 function hasInviteOrMeetToken() {
     const params = new URLSearchParams(window.location.search);
     if (params.get('invite') || params.get('meet')) return true;
-    if (localStorage.getItem('fairshare_invite') || localStorage.getItem('fairshare_meet')) return true;
-    return false;
+    return hasValidatedSponsorToken;
 }
 
 function switchAuthTab(tab) {
@@ -76,6 +102,109 @@ async function handleSignup(e) {
     }
 }
 
+async function openAuthScanOverlay() {
+    authScanHandled = false;
+
+    // Request camera in the same call stack as the user gesture for iOS Safari.
+    // Use the rear camera: the user is holding the phone and pointing it at
+    // the sponsor's screen to scan their QR code.
+    try {
+        authScanStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } }
+        });
+    } catch (camErr) {
+        console.warn('[auth-scan] Camera access denied or unavailable:', camErr);
+        showToast('Could not access camera. Please allow camera permissions.', 'error');
+        return;
+    }
+
+    const overlay = document.getElementById('authScanOverlay');
+    if (overlay) overlay.classList.remove('hidden');
+
+    const video = document.getElementById('authScanVideo');
+    if (video) {
+        video.srcObject = authScanStream;
+        try { await video.play(); } catch (_) { /* iOS sometimes ignores this */ }
+    }
+
+    authScanLoop();
+}
+
+function authScanLoop() {
+    if (authScanHandled) return;
+
+    const video = document.getElementById('authScanVideo');
+    const canvas = document.getElementById('authScanCanvas');
+    if (!video || !canvas) return;
+
+    if (video.readyState < video.HAVE_ENOUGH_DATA) {
+        authScanTimer = requestAnimationFrame(authScanLoop);
+        return;
+    }
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = (typeof jsQR === 'function')
+        ? jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' })
+        : null;
+
+    if (code && code.data) {
+        let scannedToken = null;
+        try {
+            const scannedUrl = new URL(code.data);
+            scannedToken = scannedUrl.searchParams.get('meet');
+        } catch {}
+        if (!scannedToken && code.data.startsWith('fairshare-meet:')) {
+            scannedToken = code.data.replace('fairshare-meet:', '');
+        }
+        if (scannedToken && !authScanHandled) {
+            authScanHandled = true;
+            handleAuthQrScan(scannedToken);
+            return;
+        }
+    }
+
+    authScanTimer = requestAnimationFrame(authScanLoop);
+}
+
+async function handleAuthQrScan(token) {
+    closeAuthScanOverlay();
+
+    try {
+        localStorage.setItem('fairshare_meet', JSON.stringify({
+            token: token,
+            savedAt: Date.now()
+        }));
+    } catch (e) {
+        console.warn('[auth-scan] Could not persist meet token:', e);
+    }
+
+    if (typeof showMeetBanner === 'function') {
+        await showMeetBanner(token);
+    }
+}
+
+function closeAuthScanOverlay() {
+    if (authScanStream) {
+        authScanStream.getTracks().forEach(t => t.stop());
+        authScanStream = null;
+    }
+    const video = document.getElementById('authScanVideo');
+    if (video) video.srcObject = null;
+
+    if (authScanTimer) {
+        cancelAnimationFrame(authScanTimer);
+        authScanTimer = null;
+    }
+
+    const overlay = document.getElementById('authScanOverlay');
+    if (overlay) overlay.classList.add('hidden');
+}
+
 async function logout() {
     console.log('[auth] logout() called');
     // Clean up realtime subscriptions
@@ -138,6 +267,17 @@ function showAuth() {
     if (installHintFloater) installHintFloater.classList.add('hidden');
     document.getElementById('userDisplay').textContent = '';
     setHeaderAvatar(null);
+
+    // First-run default: a user who has never signed in here lands on the
+    // Sign Up tab so they can scan a sponsor's QR right away. Returning
+    // users who have logged in before (and then logged out) keep the Log In
+    // tab default. We never override an active sponsor banner — those flows
+    // already call switchAuthTab('signup') before showAuth runs.
+    let hasAccount = false;
+    try { hasAccount = !!localStorage.getItem('fairshare_has_account'); } catch (_) {}
+    if (!hasAccount && !hasInviteOrMeetToken()) {
+        switchAuthTab('signup');
+    }
 }
 
 async function showApp(navigateToGroupId) {

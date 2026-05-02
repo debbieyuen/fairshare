@@ -98,9 +98,14 @@
     </form>
 
     <form id="signupForm" class="hidden" onsubmit="handleSignup(event)">
-        <div id="signupGate" class="hidden" style="text-align:center;padding:1.5rem 0;color:var(--dark-gray);">
-            <p style="font-size:0.95rem;margin-bottom:0.5rem;">You need an invitation link to create an account.</p>
-            <p style="font-size:0.85rem;">Ask an existing member to sponsor you.</p>
+        <div id="signupGate" class="hidden auth-signup-gate">
+            <p class="auth-signup-gate-text">
+                You need to be sponsored by another Union member to sign up.
+                Scan the QR code on their app.
+            </p>
+            <button type="button" class="btn btn-primary auth-signup-gate-btn" onclick="openAuthScanOverlay()">
+                <span class="auth-scan-btn-icon" aria-hidden="true">📷</span> Scan QR
+            </button>
         </div>
         <div id="signupFields">
             <div class="form-group">
@@ -302,6 +307,14 @@
     <div class="meet-scan-hint" id="meetScanHint">(Show your phones to each other)</div>
 </div>
 
+
+<!-- ===== AUTH QR SCAN OVERLAY (used before login from Sign Up tab) ===== -->
+<div id="authScanOverlay" class="auth-scan-overlay hidden">
+    <video id="authScanVideo" autoplay playsinline muted class="auth-scan-video"></video>
+    <div class="auth-scan-banner">Point your camera at your sponsor's QR code</div>
+    <button class="auth-scan-close" onclick="closeAuthScanOverlay()" aria-label="Close">✕</button>
+    <canvas id="authScanCanvas" style="display:none;"></canvas>
+</div>
 
 <!-- ===== MODAL CONTAINER ===== -->
 <div id="modalOverlay" class="modal-overlay hidden" onclick="if(event.target===this)closeModal()">
