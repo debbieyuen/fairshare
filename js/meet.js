@@ -58,16 +58,28 @@ async function openMeetScreen(options) {
     }
     document.getElementById('meetProfileName').textContent = currentProfile?.display_name || '';
 
-    // Set up share icon availability
+    // Set up share icon availability — default to sharing both when available,
+    // so the connection includes contact info unless the user opts out.
     const phoneBtn = document.getElementById('meetSharePhone');
     const emailBtn = document.getElementById('meetShareEmail');
-    phoneBtn.classList.remove('active');
-    emailBtn.classList.remove('active');
-    if (!currentProfile?.phone) phoneBtn.classList.add('disabled');
-    else phoneBtn.classList.remove('disabled');
-    if (!currentProfile?.email) emailBtn.classList.add('disabled');
-    else emailBtn.classList.remove('disabled');
-    document.getElementById('meetSharedInfo').style.display = 'none';
+    const hasPhone = !!currentProfile?.phone;
+    const hasEmail = !!currentProfile?.email;
+    phoneBtn.classList.toggle('active', hasPhone);
+    emailBtn.classList.toggle('active', hasEmail);
+    phoneBtn.classList.toggle('disabled', !hasPhone);
+    emailBtn.classList.toggle('disabled', !hasEmail);
+
+    const sharedInfoDiv = document.getElementById('meetSharedInfo');
+    let sharedInfoHtml = '';
+    if (hasPhone) sharedInfoHtml += `<div>\u260E\uFE0F ${esc(currentProfile.phone)}</div>`;
+    if (hasEmail) sharedInfoHtml += `<div>\u2709\uFE0F ${esc(currentProfile.email)}</div>`;
+    if (sharedInfoHtml) {
+        sharedInfoDiv.innerHTML = sharedInfoHtml;
+        sharedInfoDiv.style.display = '';
+    } else {
+        sharedInfoDiv.innerHTML = '';
+        sharedInfoDiv.style.display = 'none';
+    }
 
     // 3. Attach camera to video element if available
     if (cameraOk) {
@@ -76,8 +88,17 @@ async function openMeetScreen(options) {
         try { await video.play(); } catch (_) { /* iOS sometimes ignores this */ }
     }
 
-    // 4. Create a meet request in the database (network call after camera)
-    const insertPayload = { user_id: currentUser.id };
+    // 4. Create a meet request in the database (network call after camera).
+    //    Pre-set share_phone / share_email to match the current (default-on)
+    //    button state so a scan that completes before any toggle still shares
+    //    contact info.
+    const initialSharePhone = phoneBtn.classList.contains('active');
+    const initialShareEmail = emailBtn.classList.contains('active');
+    const insertPayload = {
+        user_id: currentUser.id,
+        share_phone: initialSharePhone,
+        share_email: initialShareEmail
+    };
     if (currentMeetGroup) {
         insertPayload.group_id = currentMeetGroup.groupId;
         insertPayload.message = currentMeetGroup.message || null;
@@ -96,6 +117,20 @@ async function openMeetScreen(options) {
 
     const token = data.token;
     currentMeetToken = token;
+
+    // If the user toggled a share button while the insert was in flight (when
+    // currentMeetToken was still null and toggleMeetShare couldn't write), sync
+    // the row now so the DB matches the visible UI state.
+    const currentSharePhone = phoneBtn.classList.contains('active');
+    const currentShareEmail = emailBtn.classList.contains('active');
+    if (currentSharePhone !== initialSharePhone || currentShareEmail !== initialShareEmail) {
+        db.from('meet_requests')
+            .update({ share_phone: currentSharePhone, share_email: currentShareEmail })
+            .eq('token', token)
+            .then(({ error: syncErr }) => {
+                if (syncErr) console.warn('[meet] Failed to sync share prefs after insert:', syncErr.message);
+            });
+    }
 
     // 5. Generate QR code encoding a navigable URL so non-members
     //    scanning with their phone camera land on the signup page.
