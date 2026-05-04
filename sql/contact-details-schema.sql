@@ -176,11 +176,19 @@ $$;
 -- ordered most-recent-first. Event kinds:
 --   nearby  -- contact_notifications row of type 'nearby_alert' between the two
 --   selfie  -- contact_selfies row taken with the contact
---   vouch   -- attestation rows in either direction (between the two)
+--   vouch   -- attestation rows the caller gave TO p_contact_id (one direction
+--              only -- vouches received from the contact are intentionally
+--              never returned, see Privacy note below)
 --   group   -- groups they both joined (event time = the LATER of the two joins)
 --
 -- Each row: { id text, kind text, text text, occurred_at timestamptz }.
 -- Client formats `occurred_at` for display (formatLastSeen in utils).
+--
+-- Privacy: the integrity of the web of trust depends on a vouch recipient
+-- never learning that a particular person vouched for them. We therefore
+-- never expose individual rows where to_user_id = caller through any RPC --
+-- only aggregate counts (see get_my_attestation_counts). This RPC enforces
+-- that by filtering the vouch UNION arm to caller-as-attester only.
 
 CREATE OR REPLACE FUNCTION public.get_contact_history(
   p_contact_id uuid,
@@ -249,20 +257,20 @@ BEGIN
 
     UNION ALL
 
-    -- Vouches in either direction.
+    -- Vouches the caller GAVE to this contact. We deliberately do NOT
+    -- include the reverse direction (vouches received from the contact):
+    -- exposing those would let a vouch recipient learn who vouched for
+    -- them, which breaks the privacy guarantee of the web of trust. Only
+    -- aggregate counts of received vouches are ever returned to clients,
+    -- via get_my_attestation_counts.
     SELECT
       ('v:' || a.id::text)         AS id,
       'vouch'::text                AS kind,
-      CASE
-        WHEN a.from_user_id = v_caller_id
-          THEN 'You vouched (' || a.attestation_type || ')'
-        ELSE 'They vouched for you (' || a.attestation_type || ')'
-      END                          AS text,
+      ('You vouched (' || a.attestation_type || ')') AS text,
       a.created_at                 AS occurred_at
     FROM public.attestations a
-    WHERE
-      (a.from_user_id = v_caller_id  AND a.to_user_id = p_contact_id) OR
-      (a.from_user_id = p_contact_id AND a.to_user_id = v_caller_id)
+    WHERE a.from_user_id = v_caller_id
+      AND a.to_user_id   = p_contact_id
 
     UNION ALL
 

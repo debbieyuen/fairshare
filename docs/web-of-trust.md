@@ -14,25 +14,28 @@ A red **heart icon** in the top bar lets you see your own aggregate attestation 
 
 The attestation system is designed so that trust cannot be bought, sold, or coerced. Several properties enforce this:
 
-### 1. Attestors cannot see their own history
+### 1. Recipients never learn who vouched for them
 
-There is no UI or API to retrieve attestations you have sent. You cannot prove to anyone that you attested them, because you have no record of doing so. This prevents scenarios like:
+A vouch's value comes from the recipient not knowing it was given. If they did, vouches could be traded for favours, sold, or coerced ("vouch for me or else"). To preserve this:
 
-- "I'll trust you if you trust me back" (you can't verify the other person did it)
-- "I trusted you, now you owe me" (you can't show evidence)
-- Selling trust for money (the buyer can't confirm delivery)
+- No UI or API ever returns the identity of someone who attested for the caller. The "History together" timeline on a contact's details page only shows vouches the **caller** gave to that contact -- vouches in the reverse direction are deliberately excluded by `get_contact_history`.
+- Aggregate counts of received attestations are exposed (see #3 below) but only via rounded-down values that hide the most recent activity.
 
-### 2. Only aggregate counts are visible
+### 2. Attestors can see vouches they gave to a specific contact
+
+When viewing a contact's details, the caller can see entries like "You vouched (trust)" alongside the other shared history (selfies, nearby pings, shared groups). This helps people remember whether they have already vouched for someone and avoids accidentally re-prompting them. It does not break recipient-privacy because the contact never sees this list -- only the caller does, on their own device.
+
+### 3. Only aggregate counts of received attestations are visible
 
 The heart dialog shows messages like "You are loved by more than 20 people" rather than exact numbers or identities. The raw count is rounded down to the nearest 10 before display. This prevents someone from watching the number tick up by 1 immediately after meeting a new person, which would reveal that person's attestation.
 
-### 3. Small counts are fully hidden
+### 4. Small counts are fully hidden
 
 When fewer than 10 distinct people have attested, the message simply says "by others" with no number at all. This provides maximum privacy in the early stages when a single new attestation would be easy to detect.
 
-### 4. No database reads on attestation rows
+### 5. No database reads on attestation rows
 
-The `attestations` table has no SELECT policy. Individual rows are never readable through the REST API by anyone -- not even the person who created them. Only a server-side function (`get_my_attestation_counts`) can read the table, and it returns only aggregate `COUNT(DISTINCT ...)` values.
+The `attestations` table has no SELECT policy. Individual rows are never readable through the REST API by anyone -- not even the person who created them. Only `SECURITY DEFINER` functions can read the table, and the only function that returns individual rows (`get_contact_history`) restricts its vouch arm to `from_user_id = caller`, so a row where the caller is the recipient is never returned to a client. Everything else (`get_my_attestation_counts`, `get_contact_trust_summary`, `get_shared_attesters_count`, `get_profile_picture_attesters_count`) returns only aggregate `COUNT(DISTINCT ...)` values.
 
 ## Display Rules
 
