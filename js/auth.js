@@ -100,13 +100,46 @@ async function handleSignup(e) {
         return;
     }
 
+    // Embed the handshake token in auth user_metadata so the
+    // handle_new_user trigger can set sponsor_id atomically with the
+    // auth.users insert. This makes sponsor assignment independent of
+    // which browser/device/origin the user later confirms email or logs
+    // in from (localStorage is per-origin, so a click on the web that
+    // turns into a login in the iOS native app would otherwise lose the
+    // token entirely — see init.js comment about cross-tab redirects).
+    const data = { display_name: name };
+    try {
+        const meetRaw = localStorage.getItem('fairshare_meet');
+        const inviteRaw = localStorage.getItem('fairshare_invite');
+        const meet = meetRaw ? JSON.parse(meetRaw) : null;
+        const invite = inviteRaw ? JSON.parse(inviteRaw) : null;
+        if (meet?.token && typeof meet.savedAt === 'number'
+            && (Date.now() - meet.savedAt) < 24 * 60 * 60 * 1000) {
+            data.meet_token = meet.token;
+        } else if (invite?.token && typeof invite.savedAt === 'number'
+            && (Date.now() - invite.savedAt) < 7 * 24 * 60 * 60 * 1000) {
+            data.invite_token = invite.token;
+        }
+    } catch (_) {
+        // Legacy plain-string entry without savedAt — the signup gate
+        // already required a freshly-validated token, so we just skip.
+    }
+
     const { error } = await db.auth.signUp({
         email,
         password,
-        options: { data: { display_name: name } }
+        options: { data }
     });
     if (error) {
-        showToast(error.message, 'error');
+        // Map server-side trigger errors to friendlier wording.
+        const msg = (error.message || '').toLowerCase();
+        if (msg.includes('already been used to create an account')) {
+            showToast('This handshake has already been used to create an account. Ask your sponsor for a new link.', 'error');
+        } else if (msg.includes('invalid, expired, or already used')) {
+            showToast('Your sponsor link is invalid, expired, or already used. Ask for a new one.', 'error');
+        } else {
+            showToast(error.message, 'error');
+        }
     } else {
         showToast('Account created! Check your email to confirm, then log in.', 'success');
         switchAuthTab('login');

@@ -32,14 +32,56 @@ create policy "Users can update own profile"
   on public.profiles for update
   using (auth.uid() = id);
 
--- Auto-create a profile when a new user signs up
+-- Auto-create a profile when a new user signs up.
+--
+-- The signup form embeds the active sponsor handshake token in the Supabase
+-- auth user_metadata (raw_user_meta_data->>'meet_token' or 'invite_token').
+-- We resolve the sponsor here, atomically with the auth.users insert, and
+-- record the consumed token in profiles.signup_token (UNIQUE) so a given
+-- handshake can be used to create at most one account. See
+-- sql/sponsor-id-at-signup.sql for the migration that introduced this.
 create or replace function public.handle_new_user()
 returns trigger as $$
+declare
+  v_meet_token   text := new.raw_user_meta_data->>'meet_token';
+  v_invite_token text := new.raw_user_meta_data->>'invite_token';
+  v_token        text;
+  v_sponsor_id   uuid;
 begin
-  insert into public.profiles (id, display_name)
+  if v_meet_token is not null then
+    select user_id into v_sponsor_id
+    from public.meet_requests
+    where token = v_meet_token
+      and expires_at > now()
+      and used_by is null;
+    if v_sponsor_id is null then
+      raise exception 'Handshake link is invalid, expired, or already used';
+    end if;
+    if exists (select 1 from public.profiles where signup_token = v_meet_token) then
+      raise exception 'This handshake has already been used to create an account';
+    end if;
+    v_token := v_meet_token;
+  elsif v_invite_token is not null then
+    select sponsor_id into v_sponsor_id
+    from public.sponsorships
+    where token = v_invite_token
+      and status = 'pending'
+      and expires_at > now();
+    if v_sponsor_id is null then
+      raise exception 'Invitation is invalid, expired, or already used';
+    end if;
+    if exists (select 1 from public.profiles where signup_token = v_invite_token) then
+      raise exception 'This invitation has already been used to create an account';
+    end if;
+    v_token := v_invite_token;
+  end if;
+
+  insert into public.profiles (id, display_name, sponsor_id, signup_token)
   values (
     new.id,
-    coalesce(new.raw_user_meta_data->>'display_name', split_part(new.email, '@', 1))
+    coalesce(new.raw_user_meta_data->>'display_name', split_part(new.email, '@', 1)),
+    v_sponsor_id,
+    v_token
   );
   return new;
 end;

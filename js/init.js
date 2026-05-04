@@ -220,39 +220,75 @@ async function showInviteBanner(token) {
     }
 }
 
+// In-memory mutex so the getSession() and onAuthStateChange(SIGNED_IN) paths
+// in init() don't both fire claim RPCs concurrently. They run in the same JS
+// runtime, so a simple boolean is enough — the server also takes a
+// transactional FOR UPDATE lock, but routing duplicate calls through a
+// no-op here avoids the spurious "already used" error toasts on the second.
+let _claimingInvite = false;
+let _claimingMeet = false;
+
 // Claim a pending invite after the user has signed in
 // Returns the group_id if successfully claimed, so the caller can navigate there
 async function handlePendingInvite() {
-    const stored = localStorage.getItem('fairshare_invite');
-    if (!stored) return null;
+    if (_claimingInvite) return null;
 
+    // Resolve the token from localStorage first (works when signup and
+    // login happen in the same browser/origin), and fall back to the copy
+    // we embedded in auth user_metadata at signup. The fallback is what
+    // recovers users whose login origin differs from the click origin —
+    // e.g. clicked the invite link in mobile Safari but logged in via the
+    // iOS native app (capacitor://localhost has its own localStorage).
     let token = null;
-    try {
-        const parsed = JSON.parse(stored);
-        // Discard tokens older than 7 days (matches server-side expiry)
-        const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-        if (parsed.token && (Date.now() - parsed.savedAt) < SEVEN_DAYS_MS) {
-            token = parsed.token;
+    let staleLocal = false;
+    const stored = localStorage.getItem('fairshare_invite');
+    if (stored) {
+        try {
+            const parsed = JSON.parse(stored);
+            const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+            if (parsed.token && (Date.now() - parsed.savedAt) < SEVEN_DAYS_MS) {
+                token = parsed.token;
+            } else {
+                staleLocal = true;
+            }
+        } catch {
+            // Legacy format (plain string) — treat as a valid token
+            token = stored;
         }
-    } catch {
-        // Legacy format (plain string) — treat as valid token
-        token = stored;
     }
-
+    if (!token && currentUser?.user_metadata?.invite_token) {
+        token = currentUser.user_metadata.invite_token;
+    }
     if (!token) {
-        localStorage.removeItem('fairshare_invite');
+        if (staleLocal) localStorage.removeItem('fairshare_invite');
         return null;
     }
 
-    // Remove immediately so a concurrent call cannot claim the same token.
-    localStorage.removeItem('fairshare_invite');
-
+    _claimingInvite = true;
     let claimedGroupId = null;
+    let consumed = false;
     try {
         const { data, error } = await db.rpc('claim_sponsorship', { p_token: token });
         if (error) {
-            showToast('Invite: ' + error.message, 'error');
+            const msg = (error.message || '').toLowerCase();
+            if (msg.includes('already been used') || msg.includes('already used')) {
+                // The signup-time trigger already set sponsor_id from the
+                // same token, or a prior successful login already ran the
+                // claim. Either way, sponsorship is settled — no toast.
+                consumed = true;
+            } else if (msg.includes('expired')
+                    || msg.includes('not found')
+                    || msg.includes('already a member')) {
+                // Permanent / terminal failures — token is spent.
+                consumed = true;
+                showToast('Invite: ' + error.message, 'error');
+            } else {
+                // Transient failure (network, server). Leave the token in
+                // localStorage and user_metadata so the next login retries.
+                showToast('Invite: ' + error.message, 'error');
+            }
         } else if (data?.success) {
+            consumed = true;
             claimedGroupId = data.group_id;
             pendingOpenNewestContact = true;
             if (data.admitted) {
@@ -263,6 +299,20 @@ async function handlePendingInvite() {
         }
     } catch (e) {
         console.error('Failed to claim sponsorship:', e);
+        // Network / exception — leave the token alone for retry on next login.
+    } finally {
+        _claimingInvite = false;
+    }
+
+    if (consumed) {
+        try { localStorage.removeItem('fairshare_invite'); } catch (_) {}
+        if (currentUser?.user_metadata?.invite_token) {
+            try {
+                await db.auth.updateUser({ data: { invite_token: null } });
+            } catch (e) {
+                console.warn('Could not clear invite_token from user_metadata:', e);
+            }
+        }
     }
 
     // Clean the URL
@@ -323,7 +373,8 @@ async function showMeetBanner(token) {
             if (message) html += `<div class="invite-sponsor-note"><em>"${esc(message)}"</em></div>`;
             html += `<div class="meet-landing-subtext">Sign up to join the group${vcfLinkHtml}.</div>`;
         } else {
-            html += `<div class="meet-landing-subtext">Sign up to connect on ${esc(APP_NAME)}${vcfLinkHtml}.</div>`;
+            html += `<div class="meet-landing-group">wants to connect with you on ${esc(APP_NAME)}</div>`;
+            html += `<div class="meet-landing-subtext">Sign up below${vcfLinkHtml}.</div>`;
         }
         html += '</div>';
 
@@ -385,35 +436,59 @@ async function prepareMeetVcfLink(linkEl, name, phone, email, meetUrl, photoUrl)
 // Claim a pending meet token after the user has signed in
 // Returns group_id if the meet carried group context (sponsorship)
 async function handlePendingMeet() {
-    const stored = localStorage.getItem('fairshare_meet');
-    if (!stored) return null;
+    if (_claimingMeet) return null;
 
+    // localStorage first, then fall back to user_metadata (set at signup
+    // time). See handlePendingInvite for the cross-origin rationale.
     let token = null;
-    try {
-        const parsed = JSON.parse(stored);
-        const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-        if (parsed.token && (Date.now() - parsed.savedAt) < ONE_DAY_MS) {
-            token = parsed.token;
+    let staleLocal = false;
+    const stored = localStorage.getItem('fairshare_meet');
+    if (stored) {
+        try {
+            const parsed = JSON.parse(stored);
+            const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+            if (parsed.token && (Date.now() - parsed.savedAt) < ONE_DAY_MS) {
+                token = parsed.token;
+            } else {
+                staleLocal = true;
+            }
+        } catch {
+            token = stored;
         }
-    } catch {
-        token = stored;
     }
-
+    if (!token && currentUser?.user_metadata?.meet_token) {
+        token = currentUser.user_metadata.meet_token;
+    }
     if (!token) {
-        localStorage.removeItem('fairshare_meet');
+        if (staleLocal) localStorage.removeItem('fairshare_meet');
         return null;
     }
 
-    // Remove immediately so a concurrent call (e.g. from onAuthStateChange
-    // racing with getSession) cannot claim the same token a second time.
-    localStorage.removeItem('fairshare_meet');
-
+    _claimingMeet = true;
     let claimedGroupId = null;
+    let consumed = false;
     try {
         const { data, error } = await db.rpc('complete_meet', { p_token: token });
         if (error) {
-            showToast('Meet: ' + error.message, 'error');
+            const msg = (error.message || '').toLowerCase();
+            if (msg.includes('already been used') || msg.includes('already used')) {
+                // Either we ran complete_meet successfully on a prior login
+                // (and just didn't manage to clear user_metadata) or the
+                // token was used elsewhere. sponsor_id is already set from
+                // the signup-time trigger; nothing more for us to do.
+                consumed = true;
+            } else if (msg.includes('expired')
+                    || msg.includes('not found')
+                    || msg.includes('already a member')
+                    || msg.includes('cannot create a contact with yourself')) {
+                consumed = true;
+                showToast('Meet: ' + error.message, 'error');
+            } else {
+                // Transient failure — keep the token for retry next login.
+                showToast('Meet: ' + error.message, 'error');
+            }
         } else {
+            consumed = true;
             const contactName = data?.contact_name || 'New contact';
             if (data?.contact_id) {
                 pendingPostHandshakeSelfieContactId = data.contact_id;
@@ -434,6 +509,19 @@ async function handlePendingMeet() {
         }
     } catch (e) {
         console.error('Failed to complete meet:', e);
+    } finally {
+        _claimingMeet = false;
+    }
+
+    if (consumed) {
+        try { localStorage.removeItem('fairshare_meet'); } catch (_) {}
+        if (currentUser?.user_metadata?.meet_token) {
+            try {
+                await db.auth.updateUser({ data: { meet_token: null } });
+            } catch (e) {
+                console.warn('Could not clear meet_token from user_metadata:', e);
+            }
+        }
     }
 
     if (window.location.search.includes('meet=')) {
