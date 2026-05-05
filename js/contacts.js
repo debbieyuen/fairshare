@@ -1694,11 +1694,21 @@ function _getGPSLocationBrowser() {
 // firing within the same interaction.
 const NATIVE_GPS_CACHE_MAX_AGE_MS = APP_TIMING.NATIVE_GPS_CACHE_MAX_AGE_MS;
 
-function getGPSLocation() {
+// Pass `{ maxAgeMs }` to widen the cache acceptance window. Strict callers
+// (foreground location uploader, selfie capture, anything that writes to the
+// server) should leave it unset so we keep the default 30s freshness bar.
+// Non-critical UX (e.g. distance display on the contact details Sharing
+// Location card) can pass APP_TIMING.RELAXED_GPS_MAX_AGE_MS so we serve any
+// reasonably recent cached fix instead of stalling for up to 12s on the
+// native plugin's freshFixDeadline.
+function getGPSLocation(options) {
+    const maxAgeMs = (options && Number.isFinite(options.maxAgeMs))
+        ? options.maxAgeMs
+        : NATIVE_GPS_CACHE_MAX_AGE_MS;
     if (IS_NATIVE) {
         if (
             nativeLocationLastPosition &&
-            (Date.now() - nativeLocationLastAt) < NATIVE_GPS_CACHE_MAX_AGE_MS
+            (Date.now() - nativeLocationLastAt) < maxAgeMs
         ) {
             return Promise.resolve(nativeLocationLastPosition);
         }

@@ -17,6 +17,11 @@ const APP_TIMING = Object.freeze({
     BROWSER_GPS_TIMEOUT_MS: 6000,
     BROWSER_GPS_MAX_AGE_MS: 60 * 1000,
     NATIVE_GPS_CACHE_MAX_AGE_MS: 30 * 1000,
+    // For non-critical UX (e.g. computing "X miles away" on the contact
+    // details Sharing-Location card) where ~0.1mi error from a slightly stale
+    // fix is invisible. Avoids stalling the UI for up to 12s on the native
+    // freshFixDeadline whenever the strict 30s cache has lapsed.
+    RELAXED_GPS_MAX_AGE_MS: 5 * 60 * 1000,
 
     MAP_INVALIDATE_SHORT_MS: 100,
     MAP_INVALIDATE_MEDIUM_MS: 200,

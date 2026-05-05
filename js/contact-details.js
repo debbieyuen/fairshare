@@ -672,7 +672,24 @@ function cdRenderSharingLocationPane(contactId) {
 
     const locKey = loc ? cdLocationKey(loc) : '';
     const updatedText = loc?.updated_at ? 'Updated ' + formatLastSeen(loc.updated_at) : 'Waiting for location\u2026';
-    const headlinePlaceholder = loc ? 'Locating\u2026' : 'No location yet';
+
+    // The 60s inbound location poll re-fires `union:contactLocationsLoaded`
+    // even when nothing about this contact's position has changed. Without
+    // this short-circuit we'd blow away the headline text on every tick and
+    // re-run the GPS + reverse-geocode round trip, which presents to the
+    // user as a "Locating…" flash every minute.
+    const existingHeadline = document.getElementById('cd-sharing-loc-headline');
+    if (locKey && existingHeadline && existingHeadline.dataset.locKey === locKey) {
+        const updatedEl = document.getElementById('cd-sharing-loc-updated');
+        if (updatedEl) updatedEl.textContent = updatedText;
+        return;
+    }
+
+    // We already have the contact's coordinates by the time we render this
+    // card (otherwise we'd take the "No location yet" branch). The placeholder
+    // covers the brief moment while we reverse-geocode their position into a
+    // city label and compute "X miles away" from our own GPS fix.
+    const headlinePlaceholder = loc ? 'Calculating distance\u2026' : 'No location yet';
 
     slot.innerHTML = `
         <button type="button" class="cd-card cd-sharing-loc-card"
@@ -701,29 +718,58 @@ function cdRenderSharingLocationPane(contactId) {
 
 async function cdHydrateSharingLocationPane(contactId, loc) {
     const locKey = cdLocationKey(loc);
-    // Distance from me — best effort.
+
     let miles = null;
-    try {
-        const myPos = await getGPSLocation();
-        if (myPos && cdCurrentContactId === contactId) {
-            miles = haversineDistance(myPos.lat, myPos.lng, loc.lat, loc.lng);
-        }
-    } catch (_) { /* non-critical */ }
-
-    // Reverse-geocode the contact's location into a place label.
     let label = '';
-    try {
-        label = await reverseGeocode(loc.lat, loc.lng);
-    } catch (_) { /* non-critical */ }
 
+    // Write whatever parts we already have. Called twice — once when the
+    // (typically fast) reverse-geocode resolves, once when the GPS fix lands.
+    // This way the user sees "Denver, CO" within a beat instead of a 10s
+    // "Locating…" while we wait for a fresh fix to compute the distance.
+    const writeHeadline = () => {
+        if (cdCurrentContactId !== contactId) return;
+        const headlineEl = document.getElementById('cd-sharing-loc-headline');
+        if (!headlineEl) return;
+        if (headlineEl.dataset.locKey !== locKey) return;
+        const distanceText = miles != null ? formatDistance(miles, { compact: true }) : '';
+        const parts = [distanceText, label].filter(Boolean);
+        if (!parts.length) return;
+        headlineEl.textContent = parts.join(' \u00B7 ');
+    };
+
+    // Reverse-geocode the contact's location into a place label. Their lat/lng
+    // is already known from the cache, so this can render without waiting on
+    // our own GPS fix.
+    const labelPromise = reverseGeocode(loc.lat, loc.lng)
+        .then(result => {
+            label = result || '';
+            writeHeadline();
+        })
+        .catch(() => { /* non-critical */ });
+
+    // Distance from me — best effort, with a relaxed cache window so we don't
+    // block the UI for up to 12s on the native freshFixDeadline. A fix that's
+    // a few minutes old is fine for "X miles away".
+    const milesPromise = getGPSLocation({ maxAgeMs: APP_TIMING.RELAXED_GPS_MAX_AGE_MS })
+        .then(myPos => {
+            if (!myPos || cdCurrentContactId !== contactId) return;
+            miles = haversineDistance(myPos.lat, myPos.lng, loc.lat, loc.lng);
+            writeHeadline();
+        })
+        .catch(() => { /* non-critical */ });
+
+    await Promise.allSettled([labelPromise, milesPromise]);
+
+    // Final fallback: if neither side produced anything (no network for
+    // Nominatim and no cached GPS fix), surface a generic but non-misleading
+    // string so the headline doesn't get stuck on the placeholder.
     if (cdCurrentContactId !== contactId) return;
     const headlineEl = document.getElementById('cd-sharing-loc-headline');
     if (!headlineEl) return;
     if (headlineEl.dataset.locKey !== locKey) return;
-
-    const distanceText = miles != null ? formatDistance(miles, { compact: true }) : '';
-    const parts = [distanceText, label].filter(Boolean);
-    headlineEl.textContent = parts.length ? parts.join(' \u00B7 ') : 'Location available';
+    if (miles == null && !label) {
+        headlineEl.textContent = 'Location available';
+    }
 }
 
 function cdLocationKey(loc) {
