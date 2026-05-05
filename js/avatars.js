@@ -25,13 +25,16 @@ function setGroupAvatar(url, cacheBust) {
 }
 
 function setHeaderAvatar(url) {
-    const el = document.getElementById('headerAvatar');
-    if (!el) return;
+    const img = document.getElementById('headerAvatar');
+    const fallback = document.getElementById('headerAvatarFallback');
+    if (!img) return;
     if (url) {
-        el.src = url;
-        el.classList.remove('hidden');
+        img.src = url;
+        img.classList.remove('hidden');
+        if (fallback) fallback.classList.add('hidden');
     } else {
-        el.src = '';
-        el.classList.add('hidden');
+        img.src = '';
+        img.classList.add('hidden');
+        if (fallback) fallback.classList.remove('hidden');
     }
 }

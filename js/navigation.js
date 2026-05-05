@@ -140,3 +140,49 @@ function updateBottomBarActive(view) {
         btn.classList.toggle('active', btn.dataset.view === target);
     });
 }
+
+// ---- Header avatar dropdown menu --------------------------------------------
+
+function toggleHeaderMenu(e) {
+    if (e) e.stopPropagation();
+    const menu = document.getElementById('headerMenu');
+    const btn = document.getElementById('headerAvatarBtn');
+    if (!menu) return;
+    if (menu.classList.contains('hidden')) {
+        menu.classList.remove('hidden');
+        if (btn) btn.setAttribute('aria-expanded', 'true');
+        // Defer attaching the outside-click listener so this same click
+        // doesn't immediately close the menu we just opened.
+        setTimeout(() => {
+            document.addEventListener('click', closeHeaderMenuOnOutsideClick);
+        }, 0);
+    } else {
+        closeHeaderMenu();
+    }
+}
+
+function closeHeaderMenu() {
+    const menu = document.getElementById('headerMenu');
+    const btn = document.getElementById('headerAvatarBtn');
+    if (menu) menu.classList.add('hidden');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('click', closeHeaderMenuOnOutsideClick);
+}
+
+function closeHeaderMenuOnOutsideClick(e) {
+    const menu = document.getElementById('headerMenu');
+    const btn = document.getElementById('headerAvatarBtn');
+    if (!menu) return;
+    if (menu.contains(e.target)) return;
+    if (btn && btn.contains(e.target)) return;
+    closeHeaderMenu();
+}
+
+function onHeaderMenuClick(action) {
+    closeHeaderMenu();
+    if (action === 'profile' || action === 'preferences') {
+        navigateTo('profile');
+    } else if (action === 'logout') {
+        if (typeof logout === 'function') logout();
+    }
+}

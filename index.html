@@ -36,10 +36,20 @@
 
 <!-- ===== HEADER ===== -->
 <div class="header">
-    <img id="headerAvatar" class="header-avatar hidden" src="" alt="Your profile photo" onclick="navigateTo('profile')" title="My Profile">
+    <button type="button" class="header-icon-btn header-heart-btn" onclick="navigateTo('globe')" title="Globe" aria-label="Globe">❤️</button>
     <span class="user-name" id="userDisplay" onclick="navigateTo('profile')" title="My Profile"></span>
     <div class="header-right">
-        <button type="button" class="header-icon-btn header-heart-btn" onclick="navigateTo('globe')" title="Globe" aria-label="Globe">❤️</button>
+        <div class="header-menu-wrap">
+            <button type="button" id="headerAvatarBtn" class="header-avatar-btn" onclick="toggleHeaderMenu(event)" aria-label="Account menu" aria-haspopup="menu" aria-expanded="false" title="Account">
+                <img id="headerAvatar" class="header-avatar-img hidden" src="" alt="">
+                <span id="headerAvatarFallback" class="header-avatar-fallback" aria-hidden="true">👤</span>
+            </button>
+            <div id="headerMenu" class="header-menu hidden" role="menu" aria-labelledby="headerAvatarBtn">
+                <button type="button" class="header-menu-item" role="menuitem" onclick="onHeaderMenuClick('profile')">My Profile</button>
+                <button type="button" class="header-menu-item" role="menuitem" onclick="onHeaderMenuClick('preferences')">Preferences</button>
+                <button type="button" class="header-menu-item header-menu-item-danger" role="menuitem" onclick="onHeaderMenuClick('logout')">Logout</button>
+            </div>
+        </div>
     </div>
 </div>
 

@@ -1,4 +1,4 @@
-i]mport Foundation
+import Foundation
 import Capacitor
 import CoreLocation
 import UIKit

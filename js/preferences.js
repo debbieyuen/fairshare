@@ -28,7 +28,6 @@ function renderProfileScreen() {
         <div class="card">
             <div class="profile-screen-header">
                 <h2>Public Profile</h2>
-                <button type="button" class="btn btn-outline btn-small pref-logout-btn" onclick="logout();">Log Out</button>
             </div>
             <form id="preferencesForm">
                 <div class="pref-profile-row">
