@@ -1,0 +1,25 @@
+---
+description: Keep docs/push-notifications.md in sync when push-notification code changes
+globs: sql/**/*.sql, js/push.js, js/location-sharing.js, js/auth.js, supabase/functions/send-push*/**/*.ts, docs/push-notifications.md
+alwaysApply: false
+---
+
+# Keep push-notifications doc in sync
+
+[docs/push-notifications.md](../../docs/push-notifications.md) is the canonical
+list of every remote push the app sends. If you add, remove, or change a push
+notification — including its trigger, recipient set, title, body, or tap-target
+URL — you MUST update that file in the same change.
+
+Look for these patterns when deciding whether the doc needs an update:
+
+- Calls to `send_push_to_group(...)` or `send_push_to_users(...)` in SQL
+- New triggers on tables that fan out via `trigger_push_on_*` functions
+- New `group_events` summaries (covered by the catch-all entry, but worth
+  listing distinctively if user-facing wording differs)
+- Client-side `db.rpc('send_push_to_users', ...)` calls in `js/`
+- Changes to the APNs / Web Push edge functions that affect payload shape
+
+For each push, the doc records: trigger, recipient, title, body, tap-target URL,
+and the defining file + line range. Match the existing table format when adding
+a new entry.

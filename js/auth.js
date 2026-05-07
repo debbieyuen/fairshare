@@ -478,6 +478,11 @@ function subscribeToContactNotifications() {
             } else if (payload.new?.notification_type === 'new_selfie') {
                 // In-app display is handled by the contacts.selfie_url UPDATE Realtime event,
                 // which also refreshes the selfie strip. This notification exists for push delivery only.
+            } else if (payload.new?.notification_type === 'new_contact') {
+                // In-app display is handled by subscribeToContactEvents, which
+                // opens the new contact's details on the contacts INSERT. This
+                // notification exists for APNs / Web Push delivery so the
+                // issuer gets a banner when backgrounded or terminated.
             } else if (payload.new?.notification_type === 'profile_picture_updated'
                     || payload.new?.notification_type === 'profile_updated') {
                 const fromId = payload.new?.from_user_id;

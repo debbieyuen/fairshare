@@ -1,0 +1,231 @@
+# Push notifications
+
+Canonical list of every remote push notification the FairShare app sends. Keep
+this file in sync whenever push-related code changes — the
+[push-notifications-doc Cursor rule](../.cursor/rules/push-notifications-doc.mdc)
+will remind the agent.
+
+For each push we record: **trigger**, **recipient**, **title**, **body**,
+**tap-target URL**, and the **defining file + line range**.
+
+---
+
+## Delivery infrastructure
+
+All pushes flow through the same plumbing.
+
+- **Routing layer (SQL):** `send_push_to_group(group_id, actor_id, title, body, url)`
+  and `send_push_to_users(user_ids[], actor_id, title, body, url)` in
+  [sql/fairshare-schema.sql](../sql/fairshare-schema.sql) (1654–1857). The
+  `actor_id` is excluded from the recipient set so the actor doesn't push
+  themselves.
+- **Web Push channel:** [supabase/functions/send-push/index.ts](../supabase/functions/send-push/index.ts)
+  — fans out to `push_subscriptions` rows via the `web-push` library.
+- **APNs channel:** [supabase/functions/send-push-apns/index.ts](../supabase/functions/send-push-apns/index.ts)
+  — fans out to `device_push_tokens` via APNs HTTP/2. Only active if
+  [sql/apns-push-schema.sql](../sql/apns-push-schema.sql) has been applied (it
+  overrides `send_push_to_group` / `send_push_to_users` to also POST to the
+  APNs Edge Function).
+- **Opt-in:** All pushes are gated by `profiles.push_notifications` for the
+  recipient (NULL is treated as enabled).
+- **Tap routing:** Deep links are handled by `handleNotificationNavigation` in
+  [js/push.js](../js/push.js) (178–220). Service-worker fallback for Web Push
+  is in [sw.js](../sw.js) (71–103).
+
+---
+
+## 1. Group activity (catch-all)
+
+Every row inserted into `group_events` fans out a push to every active group
+member except the actor. This single firehose covers most group-related
+notifications (payments added/edited/deleted, members joining or being added,
+membership amendments, rate changes, etc.).
+
+| Field | Value |
+|-------|-------|
+| Trigger | `INSERT` on `public.group_events` (`on_group_event_push` trigger) |
+| Recipient | Active group members with push enabled, excluding the actor |
+| Title | `{group name}` (or `"FairShare"` if the group has no name) |
+| Body | `NEW.summary` from the event row |
+| URL | `/?group={groupUuid}` |
+| Source | [sql/fairshare-schema.sql](../sql/fairshare-schema.sql) 1720–1739 |
+
+---
+
+## 2. Group chat messages
+
+Separate trigger on `chat_messages` so the title/body are chat-shaped.
+
+| Field | Value |
+|-------|-------|
+| Trigger | `INSERT` on `public.chat_messages` (`on_chat_message_push` trigger) |
+| Recipient | Group members with push enabled, excluding the message author |
+| Title | `"{group name} Chat"` |
+| Body | `"{sender display name}: {first 80 chars of message}…"` |
+| URL | `/?group={groupUuid}&tab=chat` |
+| Source | [sql/fairshare-schema.sql](../sql/fairshare-schema.sql) 1743–1768 |
+
+---
+
+## 3. Group membership offer (invitation)
+
+When someone sponsors you into a group via the `offer_group_membership` RPC.
+
+| Field | Value |
+|-------|-------|
+| Trigger | RPC `offer_group_membership(p_group_id, p_candidate_id)` after insert into `group_invitations` |
+| Recipient | The candidate (`p_candidate_id`) |
+| Title | `"Group Membership Offer"` |
+| Body | `"{sponsor name} has offered to sponsor your membership in {group name}"` |
+| URL | `/` |
+| Source | [sql/group-invitations-schema.sql](../sql/group-invitations-schema.sql) 81–92 |
+
+---
+
+## 4. Handshake completed — new contact
+
+Sent to the QR/meet issuer when another user completes the handshake. Only
+active if [sql/handshake-push-schema.sql](../sql/handshake-push-schema.sql) has
+been applied; that file replaces the earlier `complete_meet` definition with one
+that pushes.
+
+| Field | Value |
+|-------|-------|
+| Trigger | RPC `complete_meet(p_token)` after pairing |
+| Recipient | The meet issuer (`v_meet_request.user_id`) |
+| Title | `"FairShare"` |
+| Body | `"{name} just joined FairShare via your handshake."` if the newcomer signed up via that token, otherwise `"{name} is now your contact."` |
+| URL | `/?action=view_contact&contact={newContactUuid}` |
+| Source | [sql/handshake-push-schema.sql](../sql/handshake-push-schema.sql) 47–145 |
+
+Also writes a `contact_notifications` row of type `new_contact` for in-app
+display.
+
+---
+
+## 5. New contact selfie
+
+When a contact saves a selfie of the two of you via `add_contact_selfie`.
+
+| Field | Value |
+|-------|-------|
+| Trigger | RPC `add_contact_selfie(...)` after mirrored selfie rows are inserted |
+| Recipient | The other party (`p_contact_id`) |
+| Title | `"FairShare"` |
+| Body | `"{name} took a new selfie with you."` |
+| URL | `/?action=view_contact&contact={callerUuid}` |
+| Source | [sql/contact-list-schema.sql](../sql/contact-list-schema.sql) 147–155 |
+
+---
+
+## 6. Contact updated their profile picture
+
+Fanned out to every user who has the actor in their `contacts` list.
+
+| Field | Value |
+|-------|-------|
+| Trigger | RPC `notify_contacts_of_profile_picture_change(p_actor_id)`; called from [js/modals.js](../js/modals.js) after a successful upload |
+| Recipient | All users whose `contacts` includes `p_actor_id`, excluding the actor |
+| Title | `"FairShare"` |
+| Body | `"{name} updated their profile picture"` |
+| URL | `/?action=view_contact&contact={actorUuid}` |
+| Source | [sql/fairshare-schema.sql](../sql/fairshare-schema.sql) 1864–1903 |
+
+In-app: writes `contact_notifications` rows of type `profile_picture_updated`.
+
+---
+
+## 7. Contact suggested a profile picture for you
+
+When a contact uses "Suggest profile picture" via `suggest_profile_picture`.
+
+| Field | Value |
+|-------|-------|
+| Trigger | RPC `suggest_profile_picture(p_actor_id, p_contact_id, p_image_url)` |
+| Recipient | The suggested contact (`p_contact_id`) |
+| Title | `"Union"` |
+| Body | `"{name} suggests this new profile picture"` |
+| URL | `/?action=suggested_picture` |
+| Source | [sql/fairshare-schema.sql](../sql/fairshare-schema.sql) 1999–2028 |
+
+---
+
+## 8. "Met on" date set
+
+When a contact records the date you two met via `set_first_met_date`.
+
+| Field | Value |
+|-------|-------|
+| Trigger | RPC `set_first_met_date(p_contact_id, p_met_date)` when `p_met_date` is non-null |
+| Recipient | The contact (`p_contact_id`) |
+| Title | `"FairShare"` |
+| Body | `"{name} says you met on {formatted date}"` |
+| URL | `/` (no deep link wired — could route to the contact view) |
+| Source | [sql/fairshare-schema.sql](../sql/fairshare-schema.sql) 1912–1961 |
+
+In-app: writes `contact_notifications` rows of type `met_date_set` with
+`data.met_date`.
+
+---
+
+## 9. Contact is nearby
+
+When you and a mutual `notify_nearby` contact are within ~1 mile, **both**
+parties get a push. Cooldown ≥ 1 hour per pair; the contact's location must be
+fresh (≤ 10 minutes old).
+
+| Field | Value |
+|-------|-------|
+| Trigger | RPC `update_location_and_check_nearby(...)` discovers a mutual nearby pair |
+| Recipient | Both users — two pushes are sent, each with the other party as actor |
+| Title | `"Union"` |
+| Body | `"{other name} is nearby!"` |
+| URL | `/` (no deep link wired) |
+| Source | [sql/nearby-schema.sql](../sql/nearby-schema.sql) 124–197; client poller in [js/nearby.js](../js/nearby.js) |
+
+Note: [js/nearby.js](../js/nearby.js) only calls the RPC while
+`document.visibilityState === 'visible'`, so detection runs when the user has
+the app foregrounded; recipients can still be backgrounded.
+
+---
+
+## 10. Location share started
+
+Sent from the client when a user enables "Share my location" with a specific
+contact.
+
+| Field | Value |
+|-------|-------|
+| Trigger | `shareLocationWithContact` in [js/location-sharing.js](../js/location-sharing.js) calls `db.rpc('send_push_to_users', ...)` |
+| Recipient | The chosen contact |
+| Title | `APP_NAME` (`"Union"`) |
+| Body | `"{your display name} started sharing location with you"` |
+| URL | `/` |
+| Source | [js/location-sharing.js](../js/location-sharing.js) `shareLocationWithContact` |
+
+In-app: also inserts a `contact_notifications` row of type
+`location_share_started`.
+
+---
+
+## Reserved / not currently wired
+
+These appear in the codebase but do **not** currently send pushes:
+
+- **`profile_updated`** — present in the `contact_notifications` enum and
+  handled by the realtime client in [js/auth.js](../js/auth.js) (486–487), but
+  no SQL path inserts a `profile_updated` row or calls `send_push_to_users` for
+  it. A generic "contact updated their profile" push is not emitted.
+- **Android push tokens** — the `device_push_tokens` table accepts `'android'`,
+  but [js/push.js](../js/push.js) line 41 only registers tokens with
+  `platform: 'ios'`. Android browser users get Web Push only.
+
+---
+
+## Maintenance
+
+When you add, remove, or change a push notification, update this file in the
+same change. The Cursor rule
+[.cursor/rules/push-notifications-doc.mdc](../.cursor/rules/push-notifications-doc.mdc)
+flags the most common entry points (`send_push_to_*` calls in SQL, the push
+edge functions, and the relevant `js/` modules).
