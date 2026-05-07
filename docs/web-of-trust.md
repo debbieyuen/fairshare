@@ -35,7 +35,9 @@ When fewer than 10 distinct people have attested, the message simply says "by ot
 
 ### 5. No database reads on attestation rows
 
-The `attestations` table has no SELECT policy. Individual rows are never readable through the REST API by anyone -- not even the person who created them. Only `SECURITY DEFINER` functions can read the table, and the only function that returns individual rows (`get_contact_history`) restricts its vouch arm to `from_user_id = caller`, so a row where the caller is the recipient is never returned to a client. Everything else (`get_my_attestation_counts`, `get_contact_trust_summary`, `get_shared_attesters_count`, `get_profile_picture_attesters_count`) returns only aggregate `COUNT(DISTINCT ...)` values.
+The `attestations` table has no SELECT policy. Individual rows are never readable through the REST API by anyone -- not even the person who created them. Only `SECURITY DEFINER` functions can read the table, and the only function that returns individual rows (`get_contact_history`) restricts its vouch arm to `from_user_id = caller`, so a row where the caller is the recipient is never returned to a client. Everything else (`get_my_attestation_counts`, `get_contact_trust_summary`, `get_shared_attesters_count`, `get_profile_picture_attesters_count`) returns only aggregate counts.
+
+`get_contact_trust_summary` powers the Trust card on the Contact Details screen and exposes four integer signals: `shared_contacts`, `shared_groups`, `mutual_vouches`, and `trusted_vouches`. `mutual_vouches` is the total number of vouches (count of attestation rows) sent by mutual contacts to either the caller or the target; `trusted_vouches` narrows that to vouches sent to the target by mutual contacts whom the caller has personally given a `trust` vouch. Both are row counts rather than distinct-attester counts, so a mutual who has vouched several times contributes more than once. None of these values reveal *who* vouched.
 
 ## Display Rules
 

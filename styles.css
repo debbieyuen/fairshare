@@ -3148,12 +3148,40 @@ a.contact-shared-group-link:active {
     color: rgba(255,255,255,0.75);
 }
 #contactDetailsScreen .cd-trust-meta { flex: 1; min-width: 0; }
+#contactDetailsScreen .cd-trust-overline-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
 #contactDetailsScreen .cd-trust-overline {
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: rgba(255,255,255,0.7);
 }
+#contactDetailsScreen .cd-trust-info-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.85);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s ease;
+}
+#contactDetailsScreen .cd-trust-info-btn:hover,
+#contactDetailsScreen .cd-trust-info-btn:focus-visible {
+    background: rgba(255,255,255,0.22);
+    color: #fff;
+    outline: none;
+}
+#contactDetailsScreen .cd-trust-info-btn:active { opacity: 0.7; }
 #contactDetailsScreen .cd-trust-headline {
     margin-top: 2px;
     font-size: 16px;
@@ -3217,6 +3245,44 @@ a.contact-shared-group-link:active {
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+/* ----- Trust score info dialog ----- */
+.cd-trust-info {
+    margin: -0.25rem 0 0.5rem;
+    max-height: 65vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    color: #1A2433;
+}
+.cd-trust-info-lead {
+    margin: 0 0 0.85rem;
+    font-size: 0.92rem;
+    line-height: 1.45;
+    color: var(--dark-gray);
+}
+.cd-trust-info-item {
+    padding: 0.7rem 0.8rem;
+    background: #F2F4F7;
+    border-radius: 10px;
+}
+.cd-trust-info-item + .cd-trust-info-item { margin-top: 0.5rem; }
+.cd-trust-info-name {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #1A2433;
+    margin-bottom: 0.15rem;
+}
+.cd-trust-info-desc {
+    font-size: 0.86rem;
+    line-height: 1.45;
+    color: var(--dark-gray);
+}
+.cd-trust-info-foot {
+    margin: 0.85rem 0 0;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: var(--dark-gray);
 }
 
 /* ----- Mutuals dialog ----- */

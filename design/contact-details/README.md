@@ -19,7 +19,7 @@ The prototype uses React + inline styles to make the design portable and readabl
   1. Union header (blue, 56px top padding for status bar + 14px bottom padding) — user avatar left, contact name centered, heart button right
   2. Back row with "Contacts" link (left, Union blue) + "Last seen 28d ago" text (right, gray)
   3. **Hero card**: white card, 16px radius, 16px margin, avatar (68px) + name (22px/700) + "Known 18 years, 10 months" sparkle row + "Met on June 2, 2007". Row of 4 action buttons: Vouch / Share / Call / Message
-  4. **Trust card** (the headline element): gradient `#2D5F7D → #3B7CA0`, 16px radius, white text. Contains a 100×100 circular trust ring (gold, 92/100 score), stats grid (Shared contacts, Shared groups, Attestations, Vouches), and a vouched-by avatar stack ("Vouched by Michael, Lou and 3 others")
+  4. **Trust card** (the headline element): gradient `#2D5F7D → #3B7CA0`, 16px radius, white text. Contains a 100×100 circular trust ring (gold, 92/100 score), stats grid (Mutual contacts, Shared groups, Mutual Vouches, Trusted Vouches), an `(i)` info button that opens an explainer of how the score is computed, and a vouched-by avatar stack ("Vouched by Michael, Lou and 3 others")
   5. **Selfies strip**: horizontal scroll, 120×164px cards with image + date + location. Ends with a dashed "Take selfie" button
   6. **Toggles card**: two rows — "Notify if nearby" and "Share My Location", each with icon tile + label/sub + toggle
   7. **History card**: vertical timeline with colored dots (nearby=blue, selfie=gold, vouch=green, group=purple), event text + type + when. "View all activity" link

@@ -184,13 +184,18 @@ function renderContactDetailsScreen(root, row) {
                     </div>
                 </div>
                 <div class="cd-trust-meta">
-                    <div class="cd-trust-overline">Network</div>
+                    <div class="cd-trust-overline-row">
+                        <div class="cd-trust-overline">Network</div>
+                        <button type="button" class="cd-trust-info-btn"
+                                aria-label="How is this score calculated?"
+                                onclick="cdOpenTrustInfoDialog()">${cdInfoIcon()}</button>
+                    </div>
                     <div class="cd-trust-headline" id="cd-trust-headline">Loading\u2026</div>
                     <div class="cd-trust-stats">
-                        <div class="cd-trust-stat"><div class="cd-trust-stat-n" id="cd-stat-shared-contacts">\u2014</div><div class="cd-trust-stat-l">Shared contacts</div></div>
+                        <div class="cd-trust-stat"><div class="cd-trust-stat-n" id="cd-stat-shared-contacts">\u2014</div><div class="cd-trust-stat-l">Mutual contacts</div></div>
                         <div class="cd-trust-stat"><div class="cd-trust-stat-n" id="cd-stat-shared-groups">\u2014</div><div class="cd-trust-stat-l">Shared groups</div></div>
-                        <div class="cd-trust-stat"><div class="cd-trust-stat-n" id="cd-stat-attestations">\u2014</div><div class="cd-trust-stat-l">Attestations</div></div>
-                        <div class="cd-trust-stat"><div class="cd-trust-stat-n" id="cd-stat-vouches">\u2014</div><div class="cd-trust-stat-l">Vouches</div></div>
+                        <div class="cd-trust-stat"><div class="cd-trust-stat-n" id="cd-stat-mutual-vouches">\u2014</div><div class="cd-trust-stat-l">Mutual Vouches</div></div>
+                        <div class="cd-trust-stat"><div class="cd-trust-stat-n" id="cd-stat-trusted-vouches">\u2014</div><div class="cd-trust-stat-l">Trusted Vouches</div></div>
                     </div>
                 </div>
             </div>
@@ -372,10 +377,10 @@ function cdRenderTrust(t) {
     const headline = cdTrustHeadline(score);
     setText('cd-ring-score', String(score));
     setText('cd-trust-headline', headline);
-    setText('cd-stat-shared-contacts', String(Number(t.shared_contacts) || 0));
-    setText('cd-stat-shared-groups',   String(Number(t.shared_groups)   || 0));
-    setText('cd-stat-attestations',    String(Number(t.attestations)    || 0));
-    setText('cd-stat-vouches',         String(Number(t.vouchers_total)  || 0));
+    setText('cd-stat-shared-contacts', String(Number(t.shared_contacts)  || 0));
+    setText('cd-stat-shared-groups',   String(Number(t.shared_groups)    || 0));
+    setText('cd-stat-mutual-vouches',  String(Number(t.mutual_vouches)   || 0));
+    setText('cd-stat-trusted-vouches', String(Number(t.trusted_vouches)  || 0));
 
     const ringFg = document.getElementById('cd-ring-fg');
     if (ringFg) {
@@ -559,6 +564,75 @@ function cdOpenMutualsDialog(contactId, name) {
         <h3>You and ${esc(name || 'this contact')}</h3>
         <div class="cd-mutuals-dialog">
             ${sections.join('') || '<div class="cd-mutuals-empty">No mutuals yet.</div>'}
+        </div>
+        <div class="form-actions">
+            <button type="button" class="btn btn-secondary" onclick="closeModal()">Close</button>
+        </div>
+    `;
+    overlay.classList.remove('hidden');
+}
+
+// Explain how the four numbers on the trust card -- and the overall Trust
+// score -- are computed. Opened by the small (i) button on the card itself.
+// Pure copy + light styling; no data dependencies, so it can render even
+// before the trust summary RPC has resolved.
+function cdOpenTrustInfoDialog() {
+    const overlay = document.getElementById('modalOverlay');
+    const body    = document.getElementById('modalBody');
+    if (!overlay || !body) return;
+
+    body.innerHTML = `
+        <h3>How the trust score works</h3>
+        <div class="cd-trust-info">
+            <p class="cd-trust-info-lead">
+                The Trust score is a 0&ndash;100 estimate of how well-connected
+                you are to this person through people you both know. It is
+                computed on the server from the four signals below, plus a
+                small bonus when others have confirmed their profile picture.
+            </p>
+
+            <div class="cd-trust-info-item">
+                <div class="cd-trust-info-name">Mutual contacts</div>
+                <div class="cd-trust-info-desc">
+                    People who appear in both your contacts and theirs. More
+                    overlap means more shared social context.
+                </div>
+            </div>
+
+            <div class="cd-trust-info-item">
+                <div class="cd-trust-info-name">Shared groups</div>
+                <div class="cd-trust-info-desc">
+                    Groups where both of you are active members.
+                </div>
+            </div>
+
+            <div class="cd-trust-info-item">
+                <div class="cd-trust-info-name">Mutual Vouches</div>
+                <div class="cd-trust-info-desc">
+                    The total number of vouches sent by your mutual contacts
+                    to either you or this person. Each vouch counts &mdash;
+                    so a mutual who has vouched several times to both of
+                    you contributes more than one.
+                </div>
+            </div>
+
+            <div class="cd-trust-info-item">
+                <div class="cd-trust-info-name">Trusted Vouches</div>
+                <div class="cd-trust-info-desc">
+                    Vouches sent to this person by mutual contacts whom
+                    <em>you</em> have personally given an &ldquo;I trust
+                    you&rdquo; vouch. This is a tighter, trust-weighted
+                    signal: it only counts vouches from people you have
+                    explicitly marked as trusted.
+                </div>
+            </div>
+
+            <p class="cd-trust-info-foot">
+                Each signal is capped so no single one can dominate the
+                score. Vouches you receive are kept private from the people
+                you vouch for &mdash; only aggregate counts ever leave the
+                server.
+            </p>
         </div>
         <div class="form-actions">
             <button type="button" class="btn btn-secondary" onclick="closeModal()">Close</button>
@@ -954,6 +1028,13 @@ function cdNearIcon() {
         + '<circle cx="12" cy="12" r="2" fill="currentColor"/>'
         + '<circle cx="12" cy="12" r="6" stroke="currentColor" stroke-width="2" opacity="0.5"/>'
         + '<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.25"/>'
+        + '</svg>';
+}
+function cdInfoIcon() {
+    return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">'
+        + '<circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>'
+        + '<path d="M12 11v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+        + '<circle cx="12" cy="8" r="1.1" fill="currentColor"/>'
         + '</svg>';
 }
 function cdLocationIcon() {

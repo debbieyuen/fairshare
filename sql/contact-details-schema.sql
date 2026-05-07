@@ -12,11 +12,14 @@
 -- =============================================================================
 -- Aggregates trust-card data into a single round trip:
 --   * shared contacts / shared groups counts
---   * mutual attestations count (people who attested to BOTH caller and contact)
+--   * mutual_vouches = total vouches sent by mutual contacts (people who are
+--     contacts of both caller and target) to EITHER caller or target. Counts
+--     attestation rows, not distinct attesters, so a mutual who has vouched
+--     to both endpoints with multiple types contributes more.
+--   * trusted_vouches = total vouches received by the target from mutual
+--     contacts to whom the caller has personally sent at least one
+--     "I trust you" (attestation_type = 'trust') vouch.
 --   * profile-picture confirmation count for the contact
---   * vouchers_total = caller's contacts who have attested to this contact
---     (count only; vouchers are kept private from the contact themselves, so we
---     deliberately do NOT return names or avatars)
 --   * have_i_vouched = caller has any attestation -> this contact (any type)
 --   * score = deterministic 0..100 derived from the above; see formula below.
 
@@ -29,9 +32,9 @@ DECLARE
   v_caller_id uuid := auth.uid();
   v_shared_contacts int := 0;
   v_shared_groups int := 0;
-  v_attestations int := 0;
+  v_mutual_vouches int := 0;
+  v_trusted_vouches int := 0;
   v_profile_pic_matches int := 0;
-  v_vouchers_total int := 0;
   v_have_i_vouched boolean := false;
   v_score int := 0;
   v_shared_contacts_list json;
@@ -111,14 +114,48 @@ BEGIN
     )
   ) t;
 
-  -- Mutual attestations (third parties who attested to BOTH).
-  SELECT COUNT(DISTINCT a1.from_user_id)
-  INTO v_attestations
-  FROM public.attestations a1
-  JOIN public.attestations a2 ON a1.from_user_id = a2.from_user_id
-  WHERE a1.to_user_id = v_caller_id
-    AND a2.to_user_id = p_contact_id
-    AND a1.from_user_id NOT IN (v_caller_id, p_contact_id);
+  -- Mutual Vouches: TOTAL number of attestation rows authored by mutual
+  -- contacts (people who are contacts of both caller and target, excluding
+  -- the two parties themselves) where the recipient is either the caller
+  -- or the target. Counts rows -- a mutual who vouched several times to
+  -- both endpoints contributes once per vouch.
+  SELECT COUNT(*)
+  INTO v_mutual_vouches
+  FROM public.attestations a
+  WHERE a.to_user_id IN (v_caller_id, p_contact_id)
+    AND a.from_user_id NOT IN (v_caller_id, p_contact_id)
+    AND a.from_user_id IN (
+      SELECT c1.contact_id
+      FROM public.contacts c1
+      JOIN public.contacts c2 ON c1.contact_id = c2.contact_id
+      WHERE c1.user_id = v_caller_id
+        AND c2.user_id = p_contact_id
+    );
+
+  -- Trusted Vouches: TOTAL number of attestation rows sent to the target
+  -- by mutual contacts to whom the caller has personally sent at least
+  -- one "I trust you" (attestation_type = 'trust') vouch. This narrows
+  -- mutual_vouches to vouches authored by people the caller has
+  -- explicitly marked as trusted -- a "trust-weighted" signal.
+  SELECT COUNT(*)
+  INTO v_trusted_vouches
+  FROM public.attestations a
+  WHERE a.to_user_id = p_contact_id
+    AND a.from_user_id NOT IN (v_caller_id, p_contact_id)
+    AND a.from_user_id IN (
+      -- Mutual contacts that the caller has sent a 'trust' vouch to.
+      SELECT c1.contact_id
+      FROM public.contacts c1
+      JOIN public.contacts c2 ON c1.contact_id = c2.contact_id
+      WHERE c1.user_id = v_caller_id
+        AND c2.user_id = p_contact_id
+        AND EXISTS (
+          SELECT 1 FROM public.attestations t
+          WHERE t.from_user_id = v_caller_id
+            AND t.to_user_id   = c1.contact_id
+            AND t.attestation_type = 'trust'
+        )
+    );
 
   -- Distinct people who confirmed the contact's profile picture.
   SELECT COUNT(DISTINCT from_user_id)
@@ -127,30 +164,22 @@ BEGIN
   WHERE to_user_id = p_contact_id
     AND attestation_type = 'profile_picture_accurate';
 
-  -- Vouchers: caller's contacts (other than caller/contact) who have
-  -- attested ANY type to p_contact_id. Count only -- the actual identities
-  -- of the vouchers are intentionally NOT exposed to the contact themselves.
-  SELECT COUNT(DISTINCT a.from_user_id)
-  INTO v_vouchers_total
-  FROM public.attestations a
-  JOIN public.contacts c
-    ON c.user_id = v_caller_id AND c.contact_id = a.from_user_id
-  WHERE a.to_user_id = p_contact_id
-    AND a.from_user_id NOT IN (v_caller_id, p_contact_id);
-
   -- Have I vouched (any attestation type) for this contact?
   SELECT EXISTS (
     SELECT 1 FROM public.attestations
     WHERE from_user_id = v_caller_id AND to_user_id = p_contact_id
   ) INTO v_have_i_vouched;
 
-  -- Trust score: deterministic, capped at 100. See plan §4.
+  -- Trust score: deterministic, capped at 100.
+  --   20 base + 30 (mutual contacts) + 15 (shared groups)
+  -- + 20 (mutual vouches, 1 pt each) + 10 (trusted vouches, 2 pts each)
+  -- + 5 (profile-pic confirmations, 2 pts each).
   v_score := LEAST(100,
       20
-    + LEAST(30, v_shared_contacts * 2)
-    + LEAST(15, v_shared_groups   * 5)
-    + LEAST(20, v_attestations    * 4)
-    + LEAST(10, v_vouchers_total  * 2)
+    + LEAST(30, v_shared_contacts   * 2)
+    + LEAST(15, v_shared_groups     * 5)
+    + LEAST(20, v_mutual_vouches    * 1)
+    + LEAST(10, v_trusted_vouches   * 2)
     + LEAST( 5, v_profile_pic_matches * 2)
   );
 
@@ -158,9 +187,9 @@ BEGIN
     'score', v_score,
     'shared_contacts', v_shared_contacts,
     'shared_groups', v_shared_groups,
-    'attestations', v_attestations,
+    'mutual_vouches', v_mutual_vouches,
+    'trusted_vouches', v_trusted_vouches,
     'profile_picture_matches', v_profile_pic_matches,
-    'vouchers_total', v_vouchers_total,
     'have_i_vouched', v_have_i_vouched,
     'shared_contacts_list', v_shared_contacts_list,
     'shared_groups_list', v_shared_groups_list
