@@ -375,7 +375,18 @@ function cdRenderSelfies(contactId, selfies) {
 function cdRenderTrust(t) {
     const score = Math.max(0, Math.min(100, Number(t.score) || 0));
     const headline = cdTrustHeadline(score);
-    setText('cd-ring-score', String(score));
+
+    // Capture the previous on-screen score so we can count-animate to the new
+    // value. "--" placeholder parses to NaN -> treat as 0 so first paint
+    // animates from empty to score.
+    const scoreEl = document.getElementById('cd-ring-score');
+    const prevScore = (() => {
+        if (!scoreEl) return 0;
+        const n = parseInt(scoreEl.textContent, 10);
+        return Number.isFinite(n) ? n : 0;
+    })();
+
+    cdAnimateScore(scoreEl, prevScore, score, 900);
     setText('cd-trust-headline', headline);
     setText('cd-stat-shared-contacts', String(Number(t.shared_contacts)  || 0));
     setText('cd-stat-shared-groups',   String(Number(t.shared_groups)    || 0));
@@ -388,15 +399,44 @@ function cdRenderTrust(t) {
         const offset = circumference - (score / 100) * circumference;
         // Defer one frame so the CSS transition runs (initial is full circumference).
         requestAnimationFrame(() => {
-            ringFg.style.transition = 'stroke-dashoffset 1s ease';
+            ringFg.style.transition = 'stroke-dashoffset 1.2s ease';
             ringFg.style.strokeDashoffset = offset.toFixed(2);
         });
+        // One-shot glow pulse so re-opening a contact is fun and you can
+        // see at a glance whether the score moved.
+        ringFg.classList.remove('cd-ring-fg-pulse');
+        // Force reflow so the animation restarts when the class is re-added.
+        // eslint-disable-next-line no-unused-expressions
+        void ringFg.getBoundingClientRect().width;
+        ringFg.classList.add('cd-ring-fg-pulse');
+        setTimeout(() => { ringFg.classList.remove('cd-ring-fg-pulse'); }, 800);
     }
 
     // Vouch button: flip to "Vouched" if the caller has any prior attestation.
     if (t.have_i_vouched) cdSetVouchedState(true);
 
     cdRenderMutualsRow(t);
+}
+
+// Count-animate the integer trust score from `from` to `to` over `duration` ms
+// using easeOutCubic. Tabular numerals on .cd-ring-score keep the width steady
+// so the digit transitions don't jitter.
+function cdAnimateScore(el, from, to, duration) {
+    if (!el) return;
+    if (from === to) {
+        el.textContent = String(to);
+        return;
+    }
+    const start = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const ease = (x) => 1 - Math.pow(1 - x, 3);
+    function frame(now) {
+        const t = Math.min(1, (now - start) / duration);
+        const v = Math.round(from + (to - from) * ease(t));
+        el.textContent = String(v);
+        if (t < 1) requestAnimationFrame(frame);
+        else el.textContent = String(to);
+    }
+    requestAnimationFrame(frame);
 }
 
 // ----- Mutuals (shared contacts + shared groups) -----------------------------
@@ -585,52 +625,43 @@ function cdOpenTrustInfoDialog() {
         <h3>How the trust score works</h3>
         <div class="cd-trust-info">
             <p class="cd-trust-info-lead">
-                The Trust score is a 0&ndash;100 estimate of how well-connected
-                you are to this person through people you both know. It is
-                computed on the server from the four signals below, plus a
-                small bonus when others have confirmed their profile picture.
+                The Trust score is a weighted, time-decayed combination of
+                three vouch-based signals. Every vouch counts, but vouches
+                fade with age &mdash; a vouch from <strong>two years ago is
+                worth half</strong> of one made today (a half-life of two
+                years). The score you see is normalized 0&ndash;100 against
+                your most-connected contact.
             </p>
 
             <div class="cd-trust-info-item">
-                <div class="cd-trust-info-name">Mutual contacts</div>
+                <div class="cd-trust-info-name">Direct (weight &times;2)</div>
                 <div class="cd-trust-info-desc">
-                    People who appear in both your contacts and theirs. More
-                    overlap means more shared social context.
+                    Time-decayed sum of vouches <em>you</em> have made for
+                    this contact. Your own first-hand assessment counts most.
                 </div>
             </div>
 
             <div class="cd-trust-info-item">
-                <div class="cd-trust-info-name">Shared groups</div>
+                <div class="cd-trust-info-name">Mutuals (weight &times;1)</div>
                 <div class="cd-trust-info-desc">
-                    Groups where both of you are active members.
+                    Time-decayed sum of vouches your mutual contacts (people
+                    in both your circles) have made to either of you.
                 </div>
             </div>
 
             <div class="cd-trust-info-item">
-                <div class="cd-trust-info-name">Mutual Vouches</div>
+                <div class="cd-trust-info-name">Trusted (weight &times;3)</div>
                 <div class="cd-trust-info-desc">
-                    The total number of vouches sent by your mutual contacts
-                    to either you or this person. Each vouch counts &mdash;
-                    so a mutual who has vouched several times to both of
-                    you contributes more than one.
-                </div>
-            </div>
-
-            <div class="cd-trust-info-item">
-                <div class="cd-trust-info-name">Trusted Vouches</div>
-                <div class="cd-trust-info-desc">
-                    Vouches sent to this person by mutual contacts whom
-                    <em>you</em> have personally given an &ldquo;I trust
-                    you&rdquo; vouch. This is a tighter, trust-weighted
-                    signal: it only counts vouches from people you have
-                    explicitly marked as trusted.
+                    Time-decayed sum of vouches sent to this person by
+                    mutual contacts whom <em>you</em> have personally given
+                    an &ldquo;I trust you&rdquo; vouch. This trust-weighted
+                    signal carries the most weight.
                 </div>
             </div>
 
             <p class="cd-trust-info-foot">
-                Each signal is capped so no single one can dominate the
-                score. Vouches you receive are kept private from the people
-                you vouch for &mdash; only aggregate counts ever leave the
+                Vouches you receive are kept private from the people you
+                vouch for &mdash; only aggregate counts ever leave the
                 server.
             </p>
         </div>

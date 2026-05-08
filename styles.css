@@ -3139,6 +3139,20 @@ a.contact-shared-group-link:active {
     font-size: 28px;
     font-weight: 700;
     line-height: 1;
+    /* Keep digit widths stable so the count-up animation in cdAnimateScore
+       doesn't jitter as the displayed integer changes. */
+    font-variant-numeric: tabular-nums;
+}
+/* One-shot golden glow on the ring whenever the trust score is rendered
+   (i.e. when a contact is opened or just-vouched). Class is added in
+   cdRenderTrust and removed after ~800ms. */
+@keyframes cd-ring-pulse {
+    0%   { filter: drop-shadow(0 0 0 rgba(227,173,79,0)); }
+    35%  { filter: drop-shadow(0 0 8px rgba(227,173,79,0.85)); }
+    100% { filter: drop-shadow(0 0 0 rgba(227,173,79,0)); }
+}
+#contactDetailsScreen .cd-ring-fg-pulse {
+    animation: cd-ring-pulse 700ms ease-out;
 }
 #contactDetailsScreen .cd-ring-label {
     margin-top: 2px;

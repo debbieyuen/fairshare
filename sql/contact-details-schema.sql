@@ -8,20 +8,30 @@
 -- Both are SECURITY DEFINER and gated on caller having the target as a contact.
 
 -- =============================================================================
+-- 0. Persisted per-contact trust score
+-- =============================================================================
+-- Cached so a future trigger / push can fire on changes. Always written from
+-- the caller's perspective inside get_contact_trust_summary; readers should
+-- treat get_contact_trust_summary as the source of truth.
+ALTER TABLE public.contacts
+  ADD COLUMN IF NOT EXISTS trust_score double precision NOT NULL DEFAULT 0;
+ALTER TABLE public.contacts
+  ADD COLUMN IF NOT EXISTS trust_score_updated_at timestamptz;
+
+-- =============================================================================
 -- 1. get_contact_trust_summary
 -- =============================================================================
 -- Aggregates trust-card data into a single round trip:
---   * shared contacts / shared groups counts
---   * mutual_vouches = total vouches sent by mutual contacts (people who are
---     contacts of both caller and target) to EITHER caller or target. Counts
---     attestation rows, not distinct attesters, so a mutual who has vouched
---     to both endpoints with multiple types contributes more.
---   * trusted_vouches = total vouches received by the target from mutual
---     contacts to whom the caller has personally sent at least one
---     "I trust you" (attestation_type = 'trust') vouch.
---   * profile-picture confirmation count for the contact
+--   * shared contacts / shared groups counts (informational stats)
+--   * mutual_vouches / trusted_vouches / profile_picture_matches (informational)
 --   * have_i_vouched = caller has any attestation -> this contact (any type)
---   * score = deterministic 0..100 derived from the above; see formula below.
+--   * score = WEIGHTED, TIME-DECAYED 0..100 trust score for this contact, see
+--     "WEIGHTED, TIME-DECAYED TRUST SCORE" block below for the full formula.
+--   * combined_raw / max_combined_raw + per-component sums for transparency.
+--
+-- Side effect: every call recomputes combined_raw for ALL of the caller's
+-- contacts and writes them to public.contacts.trust_score so a future trigger
+-- can fire a "score changed" notification.
 
 CREATE OR REPLACE FUNCTION public.get_contact_trust_summary(p_contact_id uuid)
 RETURNS json
@@ -30,15 +40,39 @@ SECURITY DEFINER
 AS $$
 DECLARE
   v_caller_id uuid := auth.uid();
+
+  -- ===== TIME-DECAY (HALF-LIFE = 2 YEARS) ===================================
+  -- Every vouch contributes  exp(-c_decay_a * years_since_vouch)  to the sums
+  -- below. With c_decay_a = ln(2) / c_half_life_years, a 2-year-old vouch is
+  -- worth 0.5; a 4-year-old vouch is worth 0.25; a brand-new vouch is worth 1.
+  c_half_life_years  CONSTANT double precision := 2.0;
+  c_decay_a          CONSTANT double precision := ln(2.0) / 2.0;  -- = ln(2) / c_half_life_years
+  c_seconds_per_year CONSTANT double precision := 31556952.0;     -- Julian year (365.2425d)
+
+  -- ===== COMPONENT WEIGHTS ===================================================
+  -- combined_raw = c_w_direct  * direct_sum
+  --              + c_w_mutuals * mutuals_sum
+  --              + c_w_trusted * trusted_sum
+  c_w_direct  CONSTANT double precision := 2.0;
+  c_w_mutuals CONSTANT double precision := 1.0;
+  c_w_trusted CONSTANT double precision := 3.0;
+
   v_shared_contacts int := 0;
   v_shared_groups int := 0;
   v_mutual_vouches int := 0;
   v_trusted_vouches int := 0;
   v_profile_pic_matches int := 0;
   v_have_i_vouched boolean := false;
-  v_score int := 0;
   v_shared_contacts_list json;
   v_shared_groups_list json;
+
+  -- New trust-score numbers for the response.
+  v_direct_sum       double precision := 0;
+  v_mutuals_sum      double precision := 0;
+  v_trusted_sum      double precision := 0;
+  v_combined_raw     double precision := 0;
+  v_max_combined_raw double precision := 0;
+  v_score int := 0;
 BEGIN
   IF v_caller_id IS NULL THEN
     RAISE EXCEPTION 'You must be logged in';
@@ -54,6 +88,11 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'You can only view trust for your contacts';
   END IF;
+
+  -- ===========================================================================
+  -- Informational stats (still surfaced in the trust-card readout below the
+  -- ring). These are simple counts; they no longer feed the score directly.
+  -- ===========================================================================
 
   -- Shared contacts (mutual contacts excluding the two parties).
   SELECT COUNT(DISTINCT c1.contact_id)
@@ -115,10 +154,8 @@ BEGIN
   ) t;
 
   -- Mutual Vouches: TOTAL number of attestation rows authored by mutual
-  -- contacts (people who are contacts of both caller and target, excluding
-  -- the two parties themselves) where the recipient is either the caller
-  -- or the target. Counts rows -- a mutual who vouched several times to
-  -- both endpoints contributes once per vouch.
+  -- contacts to either party. Informational only; the time-decayed
+  -- equivalent (mutuals_sum) is what feeds the score.
   SELECT COUNT(*)
   INTO v_mutual_vouches
   FROM public.attestations a
@@ -132,18 +169,15 @@ BEGIN
         AND c2.user_id = p_contact_id
     );
 
-  -- Trusted Vouches: TOTAL number of attestation rows sent to the target
-  -- by mutual contacts to whom the caller has personally sent at least
-  -- one "I trust you" (attestation_type = 'trust') vouch. This narrows
-  -- mutual_vouches to vouches authored by people the caller has
-  -- explicitly marked as trusted -- a "trust-weighted" signal.
+  -- Trusted Vouches: TOTAL number of attestation rows sent to the target by
+  -- mutual contacts the caller has personally sent a 'trust' vouch to.
+  -- Informational; the time-decayed equivalent (trusted_sum) feeds the score.
   SELECT COUNT(*)
   INTO v_trusted_vouches
   FROM public.attestations a
   WHERE a.to_user_id = p_contact_id
     AND a.from_user_id NOT IN (v_caller_id, p_contact_id)
     AND a.from_user_id IN (
-      -- Mutual contacts that the caller has sent a 'trust' vouch to.
       SELECT c1.contact_id
       FROM public.contacts c1
       JOIN public.contacts c2 ON c1.contact_id = c2.contact_id
@@ -170,29 +204,182 @@ BEGIN
     WHERE from_user_id = v_caller_id AND to_user_id = p_contact_id
   ) INTO v_have_i_vouched;
 
-  -- Trust score: deterministic, capped at 100.
-  --   20 base + 30 (mutual contacts) + 15 (shared groups)
-  -- + 20 (mutual vouches, 1 pt each) + 10 (trusted vouches, 2 pts each)
-  -- + 5 (profile-pic confirmations, 2 pts each).
-  v_score := LEAST(100,
-      20
-    + LEAST(30, v_shared_contacts   * 2)
-    + LEAST(15, v_shared_groups     * 5)
-    + LEAST(20, v_mutual_vouches    * 1)
-    + LEAST(10, v_trusted_vouches   * 2)
-    + LEAST( 5, v_profile_pic_matches * 2)
-  );
+  -- ===========================================================================
+  -- WEIGHTED, TIME-DECAYED TRUST SCORE
+  -- ---------------------------------------------------------------------------
+  -- Three components, each a sum of  exp(-c_decay_a * years_since_vouch):
+  --   DIRECT  = my vouches to this contact
+  --   MUTUALS = vouches by mutual contacts (in both my and contact's lists,
+  --             excluding both parties) sent to either of us
+  --   TRUSTED = vouches by mutual contacts I have personally given a 'trust'
+  --             attestation to, sent to this contact
+  -- combined_raw = c_w_direct*DIRECT + c_w_mutuals*MUTUALS + c_w_trusted*TRUSTED
+  --
+  -- We recompute combined_raw for EVERY one of the caller's contacts on each
+  -- call so the persisted contacts.trust_score column stays current and we
+  -- have a fresh max for normalization. The displayed score is then
+  --   round(100 * combined_raw / max_combined_raw across my contacts)
+  -- guarded against divide-by-zero.
+  -- ===========================================================================
+
+  WITH
+    my_contacts AS (
+      SELECT contact_id FROM public.contacts WHERE user_id = v_caller_id
+    ),
+    -- For every x in my contacts, the set of mutual contacts (people who
+    -- are contacts of both me and x, excluding me and x).
+    mutuals AS (
+      SELECT cx.contact_id  AS x_contact_id,
+             cm.contact_id  AS mutual_id
+      FROM public.contacts cx
+      JOIN public.contacts cm  ON cm.user_id  = v_caller_id
+      JOIN public.contacts cmx ON cmx.user_id = cx.contact_id
+                              AND cmx.contact_id = cm.contact_id
+      WHERE cx.user_id = v_caller_id
+        AND cm.contact_id NOT IN (v_caller_id, cx.contact_id)
+    ),
+    -- People I have personally given an 'I trust you' attestation to.
+    my_trust_set AS (
+      SELECT DISTINCT to_user_id AS user_id
+      FROM public.attestations
+      WHERE from_user_id     = v_caller_id
+        AND attestation_type = 'trust'
+    ),
+    direct_sums AS (
+      SELECT mc.contact_id,
+             COALESCE(SUM(EXP(-c_decay_a * (
+               EXTRACT(EPOCH FROM (now() - a.created_at)) / c_seconds_per_year
+             ))), 0)::double precision AS s
+      FROM my_contacts mc
+      LEFT JOIN public.attestations a
+        ON a.from_user_id = v_caller_id
+       AND a.to_user_id   = mc.contact_id
+      GROUP BY mc.contact_id
+    ),
+    mutuals_sums AS (
+      SELECT mc.contact_id,
+             COALESCE(SUM(EXP(-c_decay_a * (
+               EXTRACT(EPOCH FROM (now() - a.created_at)) / c_seconds_per_year
+             ))), 0)::double precision AS s
+      FROM my_contacts mc
+      LEFT JOIN mutuals m            ON m.x_contact_id = mc.contact_id
+      LEFT JOIN public.attestations a
+        ON a.from_user_id = m.mutual_id
+       AND a.to_user_id IN (v_caller_id, mc.contact_id)
+      GROUP BY mc.contact_id
+    ),
+    trusted_sums AS (
+      SELECT mc.contact_id,
+             COALESCE(SUM(EXP(-c_decay_a * (
+               EXTRACT(EPOCH FROM (now() - a.created_at)) / c_seconds_per_year
+             ))), 0)::double precision AS s
+      FROM my_contacts mc
+      LEFT JOIN (
+        SELECT m.x_contact_id, m.mutual_id
+        FROM mutuals m
+        JOIN my_trust_set t ON t.user_id = m.mutual_id
+      ) tm ON tm.x_contact_id = mc.contact_id
+      LEFT JOIN public.attestations a
+        ON a.from_user_id = tm.mutual_id
+       AND a.to_user_id   = mc.contact_id
+      GROUP BY mc.contact_id
+    ),
+    combined AS (
+      SELECT mc.contact_id,
+             ( c_w_direct  * COALESCE(ds.s, 0)
+             + c_w_mutuals * COALESCE(ms.s, 0)
+             + c_w_trusted * COALESCE(ts.s, 0)
+             )::double precision AS combined_raw
+      FROM my_contacts mc
+      LEFT JOIN direct_sums  ds ON ds.contact_id = mc.contact_id
+      LEFT JOIN mutuals_sums ms ON ms.contact_id = mc.contact_id
+      LEFT JOIN trusted_sums ts ON ts.contact_id = mc.contact_id
+    )
+  UPDATE public.contacts c
+  SET trust_score            = combined.combined_raw,
+      trust_score_updated_at = now()
+  FROM combined
+  WHERE c.user_id    = v_caller_id
+    AND c.contact_id = combined.contact_id
+    AND c.trust_score IS DISTINCT FROM combined.combined_raw;
+
+  -- Per-component sums for THIS contact (returned for transparency / debug).
+  SELECT COALESCE(SUM(EXP(-c_decay_a * (
+           EXTRACT(EPOCH FROM (now() - created_at)) / c_seconds_per_year
+         ))), 0)::double precision
+  INTO v_direct_sum
+  FROM public.attestations
+  WHERE from_user_id = v_caller_id
+    AND to_user_id   = p_contact_id;
+
+  SELECT COALESCE(SUM(EXP(-c_decay_a * (
+           EXTRACT(EPOCH FROM (now() - a.created_at)) / c_seconds_per_year
+         ))), 0)::double precision
+  INTO v_mutuals_sum
+  FROM public.attestations a
+  WHERE a.to_user_id IN (v_caller_id, p_contact_id)
+    AND a.from_user_id NOT IN (v_caller_id, p_contact_id)
+    AND a.from_user_id IN (
+      SELECT c1.contact_id
+      FROM public.contacts c1
+      JOIN public.contacts c2 ON c1.contact_id = c2.contact_id
+      WHERE c1.user_id = v_caller_id
+        AND c2.user_id = p_contact_id
+    );
+
+  SELECT COALESCE(SUM(EXP(-c_decay_a * (
+           EXTRACT(EPOCH FROM (now() - a.created_at)) / c_seconds_per_year
+         ))), 0)::double precision
+  INTO v_trusted_sum
+  FROM public.attestations a
+  WHERE a.to_user_id = p_contact_id
+    AND a.from_user_id NOT IN (v_caller_id, p_contact_id)
+    AND a.from_user_id IN (
+      SELECT c1.contact_id
+      FROM public.contacts c1
+      JOIN public.contacts c2 ON c1.contact_id = c2.contact_id
+      WHERE c1.user_id = v_caller_id
+        AND c2.user_id = p_contact_id
+        AND EXISTS (
+          SELECT 1 FROM public.attestations t
+          WHERE t.from_user_id     = v_caller_id
+            AND t.to_user_id       = c1.contact_id
+            AND t.attestation_type = 'trust'
+        )
+    );
+
+  -- Read back combined_raw + max from the just-updated cache.
+  SELECT
+    COALESCE(c.trust_score, 0),
+    COALESCE((SELECT MAX(trust_score) FROM public.contacts WHERE user_id = v_caller_id), 0)
+  INTO v_combined_raw, v_max_combined_raw
+  FROM public.contacts c
+  WHERE c.user_id = v_caller_id AND c.contact_id = p_contact_id;
+
+  -- Normalize 0..100; guard divide-by-zero (every score is 0).
+  IF v_max_combined_raw IS NULL OR v_max_combined_raw <= 0 THEN
+    v_score := 0;
+  ELSE
+    v_score := GREATEST(0, LEAST(100,
+      ROUND(100.0 * v_combined_raw / v_max_combined_raw)::int
+    ));
+  END IF;
 
   RETURN json_build_object(
-    'score', v_score,
-    'shared_contacts', v_shared_contacts,
-    'shared_groups', v_shared_groups,
-    'mutual_vouches', v_mutual_vouches,
-    'trusted_vouches', v_trusted_vouches,
+    'score',                   v_score,
+    'shared_contacts',         v_shared_contacts,
+    'shared_groups',           v_shared_groups,
+    'mutual_vouches',          v_mutual_vouches,
+    'trusted_vouches',         v_trusted_vouches,
     'profile_picture_matches', v_profile_pic_matches,
-    'have_i_vouched', v_have_i_vouched,
-    'shared_contacts_list', v_shared_contacts_list,
-    'shared_groups_list', v_shared_groups_list
+    'have_i_vouched',          v_have_i_vouched,
+    'shared_contacts_list',    v_shared_contacts_list,
+    'shared_groups_list',      v_shared_groups_list,
+    'direct_sum',              v_direct_sum,
+    'mutuals_sum',             v_mutuals_sum,
+    'trusted_sum',             v_trusted_sum,
+    'combined_raw',            v_combined_raw,
+    'max_combined_raw',        v_max_combined_raw
   );
 END;
 $$;
