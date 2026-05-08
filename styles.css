@@ -51,7 +51,7 @@ body {
     margin-left: auto;
 }
 .header .user-name {
-    font-size: 1rem;
+    font-size: 1.1rem;
     font-weight: 600;
     opacity: 0.9;
     cursor: pointer;
@@ -888,6 +888,67 @@ body {
 }
 .pref-push-hint {
     margin-top: -0.4rem;
+}
+.pref-trust-weights {
+    margin-top: 0.5rem;
+}
+.pref-trust-weights-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+.pref-trust-weights-label {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-color, #1A2433);
+}
+.pref-trust-weights-reset {
+    font-size: 0.8rem;
+    color: var(--primary-color);
+    text-decoration: none;
+}
+.pref-trust-weights-reset:hover { text-decoration: underline; }
+.pref-trust-weights-hint {
+    margin-top: 0.15rem;
+    margin-bottom: 0.5rem;
+}
+.pref-trust-weights-row {
+    display: flex;
+    gap: 0.6rem;
+}
+.pref-trust-weight {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+.pref-trust-weight label {
+    font-size: 0.78rem;
+    color: var(--dark-gray);
+    margin: 0;
+    text-align: center;
+}
+.pref-trust-weight input[type="number"] {
+    text-align: center;
+    padding: 0.45rem 0.4rem;
+}
+.pref-trust-weight select {
+    width: 100%;
+    padding: 0.45rem 0.4rem;
+    border: 1px solid var(--medium-gray);
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 16px; /* prevents iOS auto-zoom on focus */
+    text-align: center;
+    text-align-last: center;
+    background-color: #fff;
+    transition: var(--transition);
+}
+.pref-trust-weight select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(58, 124, 165, 0.15);
 }
 .pref-link-row {
     display: flex;
@@ -1879,8 +1940,25 @@ body.drag-sort-active * { user-select: none; -webkit-user-select: none; }
     font-size: 0.78rem;
 }
 .contact-row-lastseen { font-size: 0.78rem; color: var(--dark-gray); white-space: nowrap; }
-.contact-row-chevron { font-size: 0.9rem; color: var(--dark-gray); transition: transform 0.2s; }
-.contact-row.expanded .contact-row-chevron { transform: rotate(90deg); }
+.contact-row-known { font-size: 0.78rem; color: var(--dark-gray); white-space: nowrap; }
+.contact-row-trust {
+    position: relative;
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.contact-row-trust-svg { position: absolute; inset: 0; }
+.contact-row-trust-num {
+    position: relative;
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--dark-gray);
+    font-variant-numeric: tabular-nums;
+}
 .contact-detail {
     padding: 0 1rem 1rem;
     border-top: 1px solid var(--light-gray);
@@ -2910,9 +2988,23 @@ a.contact-shared-group-link:active {
     background: var(--cd-bg-canvas);
     color: var(--cd-text);
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    padding: 12px 16px 32px;
+    /* Horizontal padding intentionally 0 so panels align with the contacts
+       list margins, which are provided by `.main-content` (2rem desktop /
+       1rem mobile). Top padding is 0 so the visible gap above the
+       "< Contacts / Last met" row matches the 12px gap below it — see the
+       `.main-content:has(...)` override below which neutralizes the parent's
+       own padding-top while this screen is the active view. */
+    padding: 0 0 32px;
     position: relative;
     min-height: 100%;
+}
+
+/* When Contact Details is the active screen, drop .main-content's vertical
+   padding-top so the gap above the back-row equals the 12px gap below it.
+   `:has()` is supported in Safari 15.4+ / Chrome 105+, both well below the
+   minimum runtime for this app. */
+.main-content:has(> #contactDetailsScreen:not(.hidden)) {
+    padding-top: 12px;
 }
 
 #contactDetailsScreen.hidden { display: none; }
@@ -2921,7 +3013,7 @@ a.contact-shared-group-link:active {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 4px 4px 12px;
+    padding: 0 4px 12px;
 }
 #contactDetailsScreen .cd-back-link {
     background: transparent;
@@ -2976,8 +3068,8 @@ a.contact-shared-group-link:active {
     margin-bottom: 16px;
 }
 #contactDetailsScreen .cd-hero-avatar {
-    width: 64px;
-    height: 64px;
+    width: 85px;
+    height: 85px;
     border-radius: 9999px;
     object-fit: cover;
     background: var(--cd-bg-chip);
@@ -2992,7 +3084,7 @@ a.contact-shared-group-link:active {
     color: var(--cd-blue-dark);
     background: var(--cd-bg-chip-active);
     font-weight: 700;
-    font-size: 24px;
+    font-size: 32px;
     cursor: pointer;
 }
 #contactDetailsScreen .cd-hero-meta { flex: 1; min-width: 0; }
@@ -3005,45 +3097,98 @@ a.contact-shared-group-link:active {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-#contactDetailsScreen .cd-hero-known {
+#contactDetailsScreen .cd-hero-contact-lines {
     margin-top: 4px;
-    font-size: 13px;
+    font-size: 14px;
+    line-height: 1.35;
     color: var(--cd-text-muted);
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
+    min-width: 0;
 }
-#contactDetailsScreen .cd-sparkle {
-    color: var(--cd-gold);
-    font-size: 12px;
+#contactDetailsScreen .cd-hero-contact-comma {
+    color: var(--cd-text-hint);
 }
-#contactDetailsScreen .cd-hero-met {
+#contactDetailsScreen .cd-hero-phone {
+    color: var(--cd-blue);
+    text-decoration: none;
+    word-break: break-word;
+}
+#contactDetailsScreen .cd-hero-phone:active {
+    opacity: 0.7;
+}
+#contactDetailsScreen .cd-hero-email {
+    display: inline;
+    padding: 0;
+    margin: 0;
+    border: none;
+    background: none;
+    font: inherit;
+    font-size: 14px;
+    color: var(--cd-blue);
+    text-align: left;
+    cursor: pointer;
+    word-break: break-word;
+    border-bottom: 1px dashed var(--cd-border-dashed);
+    padding-bottom: 1px;
+}
+#contactDetailsScreen .cd-hero-email:active {
+    opacity: 0.7;
+}
+#contactDetailsScreen .cd-hero-known-row {
     margin-top: 6px;
     display: flex;
     align-items: center;
     gap: 6px;
+    flex-wrap: wrap;
     font-size: 13px;
-    color: var(--cd-text-subtle);
+    color: var(--cd-text-muted);
     position: relative;
 }
-#contactDetailsScreen .cd-met-label { color: var(--cd-text-subtle); }
-#contactDetailsScreen .cd-met-value {
-    color: var(--cd-text);
-    border-bottom: 1px dashed var(--cd-border-dashed);
-    padding-bottom: 1px;
+#contactDetailsScreen .cd-hero-known-main {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 1 auto;
+    min-width: 0;
+}
+#contactDetailsScreen .cd-sparkle {
+    color: var(--cd-gold);
+    font-size: 12px;
+    flex-shrink: 0;
+}
+#contactDetailsScreen #cd-hero-known-display {
+    min-width: 0;
+}
+#contactDetailsScreen .cd-met-edit-btn {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 8px;
+    background: var(--cd-bg-chip);
+    color: var(--cd-blue);
     cursor: pointer;
 }
-#contactDetailsScreen .cd-met-input {
+#contactDetailsScreen .cd-met-edit-btn:active {
+    opacity: 0.75;
+    transform: scale(0.96);
+}
+#contactDetailsScreen .cd-met-input-hidden {
     position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
     opacity: 0;
-    pointer-events: auto;
-    cursor: pointer;
-    border: none;
-    background: transparent;
+    pointer-events: none;
 }
 
 #contactDetailsScreen .cd-action-row {
@@ -3114,14 +3259,30 @@ a.contact-shared-group-link:active {
 #contactDetailsScreen .cd-trust-row {
     position: relative;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 16px;
+}
+#contactDetailsScreen .cd-ring-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
 }
 #contactDetailsScreen .cd-ring {
     position: relative;
     width: 100px;
     height: 100px;
     flex-shrink: 0;
+    cursor: pointer;
+    border-radius: 50%;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.15s ease;
+}
+#contactDetailsScreen .cd-ring:active { transform: scale(0.96); }
+#contactDetailsScreen .cd-ring:focus-visible {
+    outline: 2px solid rgba(255,255,255,0.55);
+    outline-offset: 2px;
 }
 #contactDetailsScreen .cd-ring-svg {
     transform: rotate(-90deg);
@@ -3162,17 +3323,6 @@ a.contact-shared-group-link:active {
     color: rgba(255,255,255,0.75);
 }
 #contactDetailsScreen .cd-trust-meta { flex: 1; min-width: 0; }
-#contactDetailsScreen .cd-trust-overline-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-#contactDetailsScreen .cd-trust-overline {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: rgba(255,255,255,0.7);
-}
 #contactDetailsScreen .cd-trust-info-btn {
     display: inline-flex;
     align-items: center;
@@ -3196,13 +3346,13 @@ a.contact-shared-group-link:active {
     outline: none;
 }
 #contactDetailsScreen .cd-trust-info-btn:active { opacity: 0.7; }
-#contactDetailsScreen .cd-trust-headline {
-    margin-top: 2px;
-    font-size: 16px;
-    font-weight: 600;
-}
 #contactDetailsScreen .cd-trust-stats {
-    margin-top: 10px;
+    /* Pull the grid up so the cap-height of the first row's number sits
+       roughly flush with the visible top of the trust ring. The 100x100
+       ring SVG renders the outer stroke at y=4 (r=42 + stroke-width/2),
+       and the 16px stat-number line box has ~2-3px of leading above
+       cap-height, so a small positive offset matches them visually. */
+    margin-top: 2px;
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 6px 14px;
@@ -3270,22 +3420,53 @@ a.contact-shared-group-link:active {
     color: #1A2433;
 }
 .cd-trust-info-lead {
-    margin: 0 0 0.85rem;
+    margin: 0.85rem 0 0;
     font-size: 0.92rem;
     line-height: 1.45;
     color: var(--dark-gray);
 }
 .cd-trust-info-item {
-    padding: 0.7rem 0.8rem;
     background: #F2F4F7;
     border-radius: 10px;
+    overflow: hidden;
 }
 .cd-trust-info-item + .cd-trust-info-item { margin-top: 0.5rem; }
+.cd-trust-info-data {
+    padding: 0.5rem 0.8rem;
+    background: linear-gradient(135deg, var(--cd-blue, #3B7CA0) 0%, var(--cd-blue-dark, #2D5F7D) 100%);
+    color: #fff;
+    font-size: 0.95rem;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+}
+.cd-trust-info-data strong {
+    font-weight: 700;
+    font-size: 1.05rem;
+}
+.cd-trust-info-body {
+    padding: 0.6rem 0.8rem 0.7rem;
+}
 .cd-trust-info-name {
     font-size: 0.95rem;
     font-weight: 600;
     color: #1A2433;
     margin-bottom: 0.15rem;
+}
+.cd-trust-info-weight {
+    display: inline-block;
+    margin-left: 0.35rem;
+    padding: 0.05rem 0.4rem;
+    border-radius: 999px;
+    background: var(--accent-color, #2266dd);
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1.4;
+    vertical-align: 1px;
+}
+.cd-trust-info-weight-off {
+    background: var(--medium-gray, #c9ced6);
+    color: var(--dark-gray, #5a6473);
 }
 .cd-trust-info-desc {
     font-size: 0.86rem;

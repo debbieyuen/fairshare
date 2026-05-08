@@ -1,6 +1,6 @@
 let contactsSearchQuery = '';
 let contactsLoadedRows = [];
-let contactsSortMode = 'recent';
+let contactsSortMode = 'trust';
 let _dragJustEnded = false;
 
 function getContactsSearchInput() {
@@ -60,7 +60,8 @@ function bindContactsSortButton() {
     if (!btn || btn.dataset.bound === '1') return;
     btn.addEventListener('click', () => {
         if (contactsSortMode === 'recent') contactsSortMode = 'age';
-        else if (contactsSortMode === 'age') contactsSortMode = 'custom';
+        else if (contactsSortMode === 'age') contactsSortMode = 'trust';
+        else if (contactsSortMode === 'trust') contactsSortMode = 'custom';
         else contactsSortMode = 'recent';
         updateSortLabel();
         scheduleSortPrefsSave();
@@ -72,8 +73,9 @@ function bindContactsSortButton() {
 function updateSortLabel() {
     const label = document.getElementById('contactsSortLabel');
     if (!label) return;
-    if (contactsSortMode === 'recent') label.textContent = 'Recent';
-    else if (contactsSortMode === 'age') label.textContent = 'Age';
+    if (contactsSortMode === 'recent') label.textContent = 'Met';
+    else if (contactsSortMode === 'age') label.textContent = 'Known';
+    else if (contactsSortMode === 'trust') label.textContent = 'Trust';
     else label.textContent = 'Custom';
 }
 
@@ -116,7 +118,7 @@ function scheduleSortPrefsSave() {
 function initContactsSortPrefs() {
     if (!currentProfile) return;
     const mode = currentProfile.contacts_sort_mode;
-    if (mode === 'recent' || mode === 'age' || mode === 'custom') {
+    if (mode === 'recent' || mode === 'age' || mode === 'trust' || mode === 'custom') {
         contactsSortMode = mode;
     }
     // Seed localStorage from DB value so the order is available instantly on next render
@@ -141,6 +143,13 @@ function sortContactRows(rows) {
             const aDate = a.contact.first_met_at || a.contact.created_at || a.contact.met_at || '';
             const bDate = b.contact.first_met_at || b.contact.created_at || b.contact.met_at || '';
             return (aDate || '9').localeCompare(bDate || '9');
+        });
+    }
+    if (contactsSortMode === 'trust') {
+        return rows.slice().sort((a, b) => {
+            const aScore = Number(a.contact.trust_score) || 0;
+            const bScore = Number(b.contact.trust_score) || 0;
+            return bScore - aScore;
         });
     }
     if (contactsSortMode === 'custom') {
@@ -492,8 +501,15 @@ function bindContactActionEvents(content) {
 function renderContactRows(rows) {
     const content = document.getElementById('contactsListContent');
     if (!content) return;
+    // Trust mode normalizes each row's raw trust_score against the max across
+    // the currently visible rows, mirroring the 0..100 normalization done
+    // server-side by get_contact_trust_summary.
+    const maxTrustScore = rows.reduce(
+        (acc, r) => Math.max(acc, Number(r.contact.trust_score) || 0),
+        0
+    );
     content.innerHTML = rows.map(({ contact, profile, shared }) => (
-        renderContactRow(contact, profile, shared)
+        renderContactRow(contact, profile, shared, maxTrustScore)
     )).join('');
     bindContactRowEvents(content);
     bindContactActionEvents(content);
@@ -750,8 +766,12 @@ function updateContactMetDate(contactId, isoDate) {
     // so a date change pushed from the other party (or from another tab) appears
     // immediately without requiring the user to back out and re-open the screen.
     if (typeof cdCurrentContactId !== 'undefined' && cdCurrentContactId === contactId) {
-        const display = document.getElementById('cd-met-display');
-        if (display) display.textContent = formatFirstMetDisplay(isoDate);
+        const knownDisp = document.getElementById('cd-hero-known-display');
+        if (knownDisp && row) {
+            const since = isoDate || row.contact.created_at || null;
+            const dur = formatKnownDuration(since);
+            knownDisp.textContent = dur ? `Known ${dur}` : 'Known';
+        }
         const input = document.getElementById('cd-met-input');
         if (input) input.value = isoDate ? new Date(isoDate).toISOString().slice(0, 10) : '';
     }
@@ -1011,7 +1031,40 @@ function bindContactDragSort(content) {
     });
 }
 
-function renderContactRow(contact, profile, shared) {
+// Right-edge content for a contact row depends on the active sort mode so the
+// data the user is sorting by is always visible. Trust mode normalizes the
+// raw stored score against the caller's max so it lands on a 0..100 scale,
+// matching how get_contact_trust_summary normalizes for the details ring.
+function renderContactRowRightEdge(contact, knownDuration, lastSeen, maxTrustScore) {
+    if (contactsSortMode === 'age') {
+        return knownDuration
+            ? `<span class="contact-row-known">${esc(knownDuration)}</span>`
+            : '';
+    }
+    if (contactsSortMode === 'trust') {
+        const raw = Number(contact.trust_score) || 0;
+        const max = Number(maxTrustScore) || 0;
+        const score = max > 0 ? Math.round((raw / max) * 100) : 0;
+        const r = 14;
+        const c = 2 * Math.PI * r;
+        const offset = c - (score / 100) * c;
+        return `
+            <span class="contact-row-trust" aria-label="Trust ${score} of 100">
+                <svg viewBox="0 0 32 32" width="32" height="32" class="contact-row-trust-svg" aria-hidden="true">
+                    <circle cx="16" cy="16" r="${r}" stroke="rgba(0,0,0,0.08)" stroke-width="3" fill="none"/>
+                    <circle cx="16" cy="16" r="${r}" stroke="#E3AD4F" stroke-width="3" fill="none"
+                        stroke-linecap="round"
+                        stroke-dasharray="${c.toFixed(2)}"
+                        stroke-dashoffset="${offset.toFixed(2)}"
+                        transform="rotate(-90 16 16)"/>
+                </svg>
+                <span class="contact-row-trust-num">${score}</span>
+            </span>`;
+    }
+    return lastSeen ? `<span class="contact-row-lastseen">${esc(lastSeen)}</span>` : '';
+}
+
+function renderContactRow(contact, profile, shared, maxTrustScore) {
     const name = profile.display_name || 'Unknown';
     const avatarUrl = profile.profile_image_url || null;
     const phone = (shared.shared_phone != null && shared.shared_phone !== '') ? shared.shared_phone : '';
@@ -1022,6 +1075,7 @@ function renderContactRow(contact, profile, shared) {
     const lastSeen = formatLastSeen(contact.met_at);
     const knownSinceDateStr = contact.first_met_at || contact.created_at || null;
     const knownDuration = formatKnownDuration(knownSinceDateStr);
+    const rightEdgeHtml = renderContactRowRightEdge(contact, knownDuration, lastSeen, maxTrustScore);
     const firstMetValue = knownSinceDateStr ? new Date(knownSinceDateStr).toISOString().slice(0, 10) : '';
     const firstMetDisplayValue = formatFirstMetDisplay(knownSinceDateStr);
     const avatarHtml = avatarUrl
@@ -1053,10 +1107,8 @@ function renderContactRow(contact, profile, shared) {
                         <span class="contact-row-name-text">${esc(name)}</span>
                         ${sharedIconHtml}
                     </span>
-                    <span class="contact-row-known-duration"${!knownDuration ? ' style="display:none"' : ''}>${knownDuration}</span>
                 </span>
-                ${lastSeen ? `<span class="contact-row-lastseen">${lastSeen}</span>` : ''}
-                <span class="contact-row-chevron">›</span>
+                ${rightEdgeHtml}
             </div>
             <div class="contact-detail">
                 <div class="contact-detail-top-row">
@@ -1673,9 +1725,20 @@ async function _uploadContactSelfieInBackground(cid, canvas) {
     }
 }
 
+// True when the page was opened directly off the filesystem (e.g. a developer
+// double-clicking index.html for a quick UI test). Browsers do not persist
+// geolocation permission for file: origins, so every call to
+// navigator.geolocation.getCurrentPosition surfaces a fresh system prompt —
+// once a minute when nearby tracking or location sharing is active. That makes
+// local testing painful for no real benefit (the GPS data goes nowhere
+// useful in that mode), so we suppress browser geolocation entirely here.
+const BROWSER_GEOLOCATION_SUPPRESSED =
+    typeof location !== 'undefined' && location.protocol === 'file:';
+
 function _getGPSLocationBrowser() {
     return new Promise(resolve => {
         if (!('geolocation' in navigator)) { resolve(null); return; }
+        if (BROWSER_GEOLOCATION_SUPPRESSED) { resolve(null); return; }
         navigator.geolocation.getCurrentPosition(
             pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
             () => resolve(null),
@@ -1790,6 +1853,8 @@ async function openShareWithContact(contactId, contactName) {
         shareWithInitialPhone = dbPhone;
         shareWithInitialEmail = dbEmail;
 
+        if (typeof cdRefreshShareButtonIfOpen === 'function') cdRefreshShareButtonIfOpen(contactId);
+
         const phoneCheck = document.getElementById('shareCheckPhone');
         const emailCheck = document.getElementById('shareCheckEmail');
         if (phoneCheck && !phoneCheck.disabled) phoneCheck.checked = dbPhone;
@@ -1841,6 +1906,8 @@ async function saveShareWithContact() {
             row.sharedByMe.shared_phone = phone;
             row.sharedByMe.shared_email = email;
         }
+
+        if (typeof cdRefreshShareButtonIfOpen === 'function') cdRefreshShareButtonIfOpen(shareWithContactId);
 
         if (newlyShared.length > 0) {
             const labels = newlyShared.map(t => t === 'phone' ? 'phone number' : 'email');

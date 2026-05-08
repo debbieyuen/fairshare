@@ -19,6 +19,21 @@ ALTER TABLE public.contacts
   ADD COLUMN IF NOT EXISTS trust_score_updated_at timestamptz;
 
 -- =============================================================================
+-- 0a. Per-user trust score component weights
+-- =============================================================================
+-- Each user can tune how much each of the three components (Direct, Mutuals,
+-- Trusted) contributes to their trust scores. Defaults match the original
+-- hard-coded weights (2 / 1 / 3). NULL is treated as default at read time so
+-- existing rows behave unchanged. UI in the preferences screen writes to these
+-- columns; get_contact_trust_summary reads them on every call.
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS trust_weight_direct  double precision DEFAULT 2;
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS trust_weight_mutuals double precision DEFAULT 1;
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS trust_weight_trusted double precision DEFAULT 3;
+
+-- =============================================================================
 -- 1. get_contact_trust_summary
 -- =============================================================================
 -- Aggregates trust-card data into a single round trip:
@@ -50,21 +65,34 @@ DECLARE
   c_seconds_per_year CONSTANT double precision := 31556952.0;     -- Julian year (365.2425d)
 
   -- ===== COMPONENT WEIGHTS ===================================================
-  -- combined_raw = c_w_direct  * direct_sum
-  --              + c_w_mutuals * mutuals_sum
-  --              + c_w_trusted * trusted_sum
-  c_w_direct  CONSTANT double precision := 2.0;
-  c_w_mutuals CONSTANT double precision := 1.0;
-  c_w_trusted CONSTANT double precision := 3.0;
+  -- combined_raw = v_w_direct  * direct_sum
+  --              + v_w_mutuals * mutuals_sum
+  --              + v_w_trusted * trusted_sum
+  -- Defaults are 2 / 1 / 3 but every caller can tune them in their profile;
+  -- we read those values below so each user's trust scores reflect their own
+  -- relative emphasis on the three signals.
+  c_default_w_direct  CONSTANT double precision := 2.0;
+  c_default_w_mutuals CONSTANT double precision := 1.0;
+  c_default_w_trusted CONSTANT double precision := 3.0;
+  v_w_direct  double precision := c_default_w_direct;
+  v_w_mutuals double precision := c_default_w_mutuals;
+  v_w_trusted double precision := c_default_w_trusted;
 
   v_shared_contacts int := 0;
   v_shared_groups int := 0;
+  v_direct_count int := 0;
   v_mutual_vouches int := 0;
   v_trusted_vouches int := 0;
   v_profile_pic_matches int := 0;
   v_have_i_vouched boolean := false;
   v_shared_contacts_list json;
   v_shared_groups_list json;
+
+  -- Oldest contributing vouch per component (used by the info dialog to
+  -- display "X vouches over Y time" for each component).
+  v_direct_oldest_at  timestamptz;
+  v_mutuals_oldest_at timestamptz;
+  v_trusted_oldest_at timestamptz;
 
   -- New trust-score numbers for the response.
   v_direct_sum       double precision := 0;
@@ -88,6 +116,17 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'You can only view trust for your contacts';
   END IF;
+
+  -- Caller's preferred weights (NULL columns or missing profile fall back to
+  -- defaults). Negative values are clamped to zero so a misbehaving client
+  -- can't flip the score's sign.
+  SELECT
+    GREATEST(COALESCE(p.trust_weight_direct,  c_default_w_direct),  0),
+    GREATEST(COALESCE(p.trust_weight_mutuals, c_default_w_mutuals), 0),
+    GREATEST(COALESCE(p.trust_weight_trusted, c_default_w_trusted), 0)
+  INTO v_w_direct, v_w_mutuals, v_w_trusted
+  FROM public.profiles p
+  WHERE p.id = v_caller_id;
 
   -- ===========================================================================
   -- Informational stats (still surfaced in the trust-card readout below the
@@ -153,11 +192,19 @@ BEGIN
     )
   ) t;
 
-  -- Mutual Vouches: TOTAL number of attestation rows authored by mutual
+  -- Direct Vouches: count + oldest. Caller's own attestations to contact.
+  -- Informational; the time-decayed equivalent (direct_sum) feeds the score.
+  SELECT COUNT(*), MIN(created_at)
+  INTO v_direct_count, v_direct_oldest_at
+  FROM public.attestations
+  WHERE from_user_id = v_caller_id
+    AND to_user_id   = p_contact_id;
+
+  -- Mutual Vouches: count + oldest. Attestation rows authored by mutual
   -- contacts to either party. Informational only; the time-decayed
   -- equivalent (mutuals_sum) is what feeds the score.
-  SELECT COUNT(*)
-  INTO v_mutual_vouches
+  SELECT COUNT(*), MIN(a.created_at)
+  INTO v_mutual_vouches, v_mutuals_oldest_at
   FROM public.attestations a
   WHERE a.to_user_id IN (v_caller_id, p_contact_id)
     AND a.from_user_id NOT IN (v_caller_id, p_contact_id)
@@ -169,11 +216,11 @@ BEGIN
         AND c2.user_id = p_contact_id
     );
 
-  -- Trusted Vouches: TOTAL number of attestation rows sent to the target by
+  -- Trusted Vouches: count + oldest. Attestation rows sent to the target by
   -- mutual contacts the caller has personally sent a 'trust' vouch to.
   -- Informational; the time-decayed equivalent (trusted_sum) feeds the score.
-  SELECT COUNT(*)
-  INTO v_trusted_vouches
+  SELECT COUNT(*), MIN(a.created_at)
+  INTO v_trusted_vouches, v_trusted_oldest_at
   FROM public.attestations a
   WHERE a.to_user_id = p_contact_id
     AND a.from_user_id NOT IN (v_caller_id, p_contact_id)
@@ -213,7 +260,7 @@ BEGIN
   --             excluding both parties) sent to either of us
   --   TRUSTED = vouches by mutual contacts I have personally given a 'trust'
   --             attestation to, sent to this contact
-  -- combined_raw = c_w_direct*DIRECT + c_w_mutuals*MUTUALS + c_w_trusted*TRUSTED
+  -- combined_raw = v_w_direct*DIRECT + v_w_mutuals*MUTUALS + v_w_trusted*TRUSTED
   --
   -- We recompute combined_raw for EVERY one of the caller's contacts on each
   -- call so the persisted contacts.trust_score column stays current and we
@@ -286,9 +333,9 @@ BEGIN
     ),
     combined AS (
       SELECT mc.contact_id,
-             ( c_w_direct  * COALESCE(ds.s, 0)
-             + c_w_mutuals * COALESCE(ms.s, 0)
-             + c_w_trusted * COALESCE(ts.s, 0)
+             ( v_w_direct  * COALESCE(ds.s, 0)
+             + v_w_mutuals * COALESCE(ms.s, 0)
+             + v_w_trusted * COALESCE(ts.s, 0)
              )::double precision AS combined_raw
       FROM my_contacts mc
       LEFT JOIN direct_sums  ds ON ds.contact_id = mc.contact_id
@@ -369,8 +416,12 @@ BEGIN
     'score',                   v_score,
     'shared_contacts',         v_shared_contacts,
     'shared_groups',           v_shared_groups,
+    'direct_count',            v_direct_count,
+    'direct_oldest_at',        v_direct_oldest_at,
     'mutual_vouches',          v_mutual_vouches,
+    'mutuals_oldest_at',       v_mutuals_oldest_at,
     'trusted_vouches',         v_trusted_vouches,
+    'trusted_oldest_at',       v_trusted_oldest_at,
     'profile_picture_matches', v_profile_pic_matches,
     'have_i_vouched',          v_have_i_vouched,
     'shared_contacts_list',    v_shared_contacts_list,
@@ -379,7 +430,10 @@ BEGIN
     'mutuals_sum',             v_mutuals_sum,
     'trusted_sum',             v_trusted_sum,
     'combined_raw',            v_combined_raw,
-    'max_combined_raw',        v_max_combined_raw
+    'max_combined_raw',        v_max_combined_raw,
+    'w_direct',                v_w_direct,
+    'w_mutuals',               v_w_mutuals,
+    'w_trusted',               v_w_trusted
   );
 END;
 $$;

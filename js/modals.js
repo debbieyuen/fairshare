@@ -36,6 +36,32 @@ function showModal(type) {
             loadSendModal();
             break;
 
+        case 'sponsorShareInfo': {
+            document.getElementById('modalBody').classList.add('share-modal');
+            const loginEmail = currentUser?.email || '';
+            const profEmail = currentProfile?.email || '';
+            const prefEmail = loginEmail || profEmail;
+            const prefPhone = currentProfile?.phone || '';
+            const spName = esc(sponsorShareInfoContactName || 'your sponsor');
+            body.innerHTML = `
+                <h3 class="share-modal-title">Share contact info?</h3>
+                <p class="share-modal-sub">Anything you enter is saved to your profile and shared with ${spName}.</p>
+                <div class="form-group">
+                    <label for="sponsorShareEmail">Email</label>
+                    <input type="email" id="sponsorShareEmail" autocomplete="email" value="${esc(prefEmail)}">
+                </div>
+                <div class="form-group">
+                    <label for="sponsorSharePhone">Phone</label>
+                    <input type="tel" id="sponsorSharePhone" autocomplete="tel" value="${esc(prefPhone)}">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="dismissSponsorShareInfoDialog()">Not now</button>
+                    <button type="button" class="btn btn-primary" id="sponsorShareSubmitBtn" onclick="submitSponsorShareInfoDialog()">Share with ${spName}</button>
+                </div>
+            `;
+            break;
+        }
+
         case 'shareChoice': {
             const hasPhone = !!currentProfile?.phone;
             const hasEmail = !!currentProfile?.email;
@@ -86,7 +112,7 @@ function showModal(type) {
         case 'vouchChoice':
             body.innerHTML = `
                 <h3>Vouch for ${esc(vouchWithContactName || 'contact')}</h3>
-                <p style="font-size:0.9rem;color:var(--dark-gray);margin-bottom:1rem;">Choose one statement.</p>
+                <p style="font-size:0.9rem;color:var(--dark-gray);margin-bottom:1rem;">Vouches are not shared with the receiver, and decay over time.</p>
                 <div class="choice-list">
                     <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="vouchWithContactChoice('profile_picture_accurate')">Profile picture is accurate</button></div>
                     <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="vouchWithContactChoice('respect')">I respect you</button></div>
@@ -180,6 +206,8 @@ function closeModal(_options = {}) {
     shareWithContactName = '';
     shareWithInitialPhone = false;
     shareWithInitialEmail = false;
+    sponsorShareInfoContactId = null;
+    sponsorShareInfoContactName = '';
     vouchWithContactId = null;
     vouchWithContactName = '';
     if (typeof _pendingReportTarget !== 'undefined') _pendingReportTarget = null;
@@ -187,6 +215,155 @@ function closeModal(_options = {}) {
     document.getElementById('modalOverlay').classList.add('hidden');
     document.getElementById('modalBody').classList.remove('modal-wide');
     document.getElementById('modalBody').classList.remove('share-modal');
+}
+
+function sponsorShareInfoPromptStorageKey(userId, sponsorContactId) {
+    return `fairshare_sponsor_share_prompt_${userId}_${sponsorContactId}`;
+}
+
+function markSponsorShareInfoPromptDone(contactId) {
+    if (!currentUser?.id || !contactId) return;
+    try {
+        localStorage.setItem(sponsorShareInfoPromptStorageKey(currentUser.id, contactId), '1');
+    } catch (_) { /* quota / private mode */ }
+}
+
+/** Save email + phone on profiles and sync pref inputs; notify contacts when values change. */
+async function persistProfileEmailPhone(emailTrim, phoneTrim) {
+    if (!currentUser) throw new Error('Not signed in');
+    const email = emailTrim || null;
+    const phone = phoneTrim || null;
+    const prevEmail = currentProfile?.email || '';
+    const prevPhone = currentProfile?.phone || '';
+    const { error } = await db.from('profiles').update({ email, phone }).eq('id', currentUser.id);
+    if (error) throw error;
+    if (currentProfile) {
+        currentProfile.email = email;
+        currentProfile.phone = phone;
+    }
+    const prefEmail = document.getElementById('prefEmail');
+    const prefPhone = document.getElementById('prefPhone');
+    if (prefEmail) prefEmail.value = email || '';
+    if (prefPhone) prefPhone.value = phone || '';
+    const emailChanged = (email || '') !== prevEmail;
+    const phoneChanged = (phone || '') !== prevPhone;
+    if (emailChanged || phoneChanged) {
+        const displayName = currentProfile?.display_name || currentUser.email || 'Someone';
+        const changes = [];
+        if (emailChanged) changes.push('email');
+        if (phoneChanged) changes.push('phone number');
+        const msg = displayName + ' updated their ' + changes.join(' and ') + '.';
+        db.rpc('notify_contacts_of_profile_update', { p_actor_id: currentUser.id, p_message: msg })
+            .then(({ error: nErr }) => { if (nErr) console.warn('notify profile update error:', nErr); });
+    }
+}
+
+function openSponsorShareInfoDialog(contactId) {
+    if (!contactId || !currentUser) return;
+    const row = (contactsLoadedRows || []).find(r => r.contact?.contact_id === contactId);
+    sponsorShareInfoContactName = row?.profile?.display_name || 'your sponsor';
+    sponsorShareInfoContactId = contactId;
+    showModal('sponsorShareInfo');
+}
+
+/**
+ * After opening the contact-details screen for the user's sponsor, offer to share email/phone once.
+ */
+function maybeOfferSponsorShareInfo(contactId) {
+    if (!contactId || !currentUser || !currentProfile?.sponsor_id) return;
+    if (currentProfile.sponsor_id !== contactId) return;
+    try {
+        if (localStorage.getItem(sponsorShareInfoPromptStorageKey(currentUser.id, contactId)) === '1') return;
+    } catch (_) { /* ignore */ }
+    requestAnimationFrame(() => {
+        if (typeof cdCurrentContactId !== 'undefined' && cdCurrentContactId !== contactId) return;
+        openSponsorShareInfoDialog(contactId);
+    });
+}
+
+function dismissSponsorShareInfoDialog() {
+    if (sponsorShareInfoContactId) markSponsorShareInfoPromptDone(sponsorShareInfoContactId);
+    closeModal();
+}
+
+async function submitSponsorShareInfoDialog() {
+    const cid = sponsorShareInfoContactId;
+    if (!cid || !currentUser) { closeModal(); return; }
+
+    const emailEl = document.getElementById('sponsorShareEmail');
+    const phoneEl = document.getElementById('sponsorSharePhone');
+    const email = (emailEl?.value || '').trim();
+    const phone = (phoneEl?.value || '').trim();
+    if (!email && !phone) {
+        showToast('Enter an email or phone number to share.', 'error');
+        return;
+    }
+    if (emailEl && !emailEl.checkValidity()) {
+        showToast('Please enter a valid email address.', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('sponsorShareSubmitBtn');
+    if (btn) btn.disabled = true;
+
+    try {
+        await persistProfileEmailPhone(email, phone);
+
+        const { data: prior, error: pErr } = await db.from('contact_shared')
+            .select('shared_phone, shared_email')
+            .eq('user_id', currentUser.id)
+            .eq('contact_id', cid)
+            .maybeSingle();
+        if (pErr) throw pErr;
+        const initPhone = !!prior?.shared_phone;
+        const initEmail = !!prior?.shared_email;
+        const wantPhone = !!phone;
+        const wantEmail = !!email;
+        const sharedPhone = wantPhone ? phone : null;
+        const sharedEmail = wantEmail ? email : null;
+        const newlyShared = [];
+        if (wantPhone && !initPhone) newlyShared.push('phone');
+        if (wantEmail && !initEmail) newlyShared.push('email');
+
+        await db.from('contact_shared').upsert({
+            user_id: currentUser.id,
+            contact_id: cid,
+            shared_phone: sharedPhone,
+            shared_email: sharedEmail
+        }, { onConflict: 'user_id,contact_id' });
+
+        for (const sharedType of newlyShared) {
+            await db.from('contact_shares').insert({
+                from_user_id: currentUser.id,
+                to_user_id: cid,
+                shared_type: sharedType
+            });
+        }
+
+        const row = (contactsLoadedRows || []).find(r => r.contact?.contact_id === cid);
+        if (row) {
+            row.sharedByMe = row.sharedByMe || {};
+            row.sharedByMe.shared_phone = sharedPhone;
+            row.sharedByMe.shared_email = sharedEmail;
+        }
+
+        if (typeof cdRefreshShareButtonIfOpen === 'function') cdRefreshShareButtonIfOpen(cid);
+
+        markSponsorShareInfoPromptDone(cid);
+        if (newlyShared.length > 0) {
+            const labels = newlyShared.map(t => (t === 'phone' ? 'phone number' : 'email'));
+            const joined = labels.length === 2 ? labels.join(' and ') : labels[0];
+            showToast('Shared your ' + joined + '.', 'success');
+        } else {
+            showToast('Saved to your profile.', 'success');
+        }
+    } catch (e) {
+        console.error('submitSponsorShareInfoDialog:', e);
+        showToast('Could not save: ' + (e.message || 'error'), 'error');
+        if (btn) btn.disabled = false;
+        return;
+    }
+    closeModal();
 }
 
 async function savePreferences(e) {
@@ -245,6 +422,26 @@ async function savePreferences(e) {
             }
         }
 
+        // Trust score component weights. The dropdowns only expose integer
+        // multipliers 1..5, but we still clamp defensively so a hand-edited
+        // DOM value can't smuggle anything weird into the database. An empty /
+        // non-numeric value falls back to the historical 2 / 1 / 3 default.
+        const weightFields = [
+            ['prefWeightDirect',  'trust_weight_direct',  2],
+            ['prefWeightMutuals', 'trust_weight_mutuals', 1],
+            ['prefWeightTrusted', 'trust_weight_trusted', 3],
+        ];
+        for (const [inputId, column, fallback] of weightFields) {
+            const el = document.getElementById(inputId);
+            if (!el) continue;
+            const raw = Number(el.value);
+            const clamped = Number.isFinite(raw)
+                ? Math.max(1, Math.min(5, Math.round(raw)))
+                : fallback;
+            payload[column] = clamped;
+            el.value = String(clamped);
+        }
+
         const { error } = await db.from('profiles').update(payload).eq('id', currentUser.id);
         if (error) {
             showToast('Could not save: ' + error.message, 'error');
@@ -256,6 +453,9 @@ async function savePreferences(e) {
             currentProfile.phone = phone || null;
             currentProfile.profile_image_url = profileImageUrl;
             if (pushCheck) currentProfile.push_notifications = pushCheck.checked;
+            if ('trust_weight_direct'  in payload) currentProfile.trust_weight_direct  = payload.trust_weight_direct;
+            if ('trust_weight_mutuals' in payload) currentProfile.trust_weight_mutuals = payload.trust_weight_mutuals;
+            if ('trust_weight_trusted' in payload) currentProfile.trust_weight_trusted = payload.trust_weight_trusted;
         }
         const userDisplay = document.getElementById('userDisplay');
         if (userDisplay) userDisplay.textContent = payload.display_name;

@@ -15,6 +15,10 @@ let cdConfettiTimer = null;
 // Cached lists from get_contact_trust_summary so the mutuals dialog can render
 // without an extra round trip. Keyed by contact id.
 const cdMutualsCache = {};
+// Most recent trust summary payload, captured in cdRenderTrust so the
+// "Trust Details" dialog can show live counts and durations for each
+// component without an extra round trip.
+let cdLastTrustSummary = null;
 
 function openContactDetailsScreen(contactId) {
     cdCurrentContactId = contactId || null;
@@ -84,6 +88,21 @@ function renderCdSkeleton(seed) {
     `;
 }
 
+function cdHasOutboundProfileShare(row) {
+    const sbm = row?.sharedByMe || {};
+    const p = sbm.shared_phone != null && String(sbm.shared_phone).trim() !== '';
+    const e = sbm.shared_email != null && String(sbm.shared_email).trim() !== '';
+    return p || e;
+}
+
+function cdRefreshShareButtonIfOpen(contactId) {
+    if (!contactId || cdCurrentContactId !== contactId) return;
+    const row = (contactsLoadedRows || []).find(r => r.contact?.contact_id === contactId);
+    const btn = document.getElementById('cd-share-btn');
+    if (!btn || !row) return;
+    btn.classList.toggle('cd-action-filled', cdHasOutboundProfileShare(row));
+}
+
 function renderContactDetailsScreen(root, row) {
     const c = row.contact || {};
     const p = row.profile || {};
@@ -92,9 +111,6 @@ function renderContactDetailsScreen(root, row) {
     const avatarUrl = p.profile_image_url || null;
     const initial = name.trim().charAt(0).toUpperCase() || '?';
 
-    const knownSince = c.first_met_at || c.created_at || null;
-    const knownDuration = formatKnownDuration(knownSince);
-    const metOnDisplay = formatFirstMetDisplay(c.first_met_at);
     const lastSeen = formatLastSeen(c.met_at);
 
     const phone = (row.shared?.shared_phone) || '';
@@ -115,6 +131,21 @@ function renderContactDetailsScreen(root, row) {
     const callHref = phone ? `tel:${esc(phone)}` : '#';
     const messageHref = phone ? `sms:${esc(phone)}` : '#';
 
+    const hasContactLinePhone = !!(phone && String(phone).trim());
+    const hasContactLineEmail = !!(email && String(email).trim());
+    let contactLinesHtml = '';
+    if (hasContactLinePhone || hasContactLineEmail) {
+        const bits = [];
+        if (hasContactLinePhone) bits.push(`<a class="cd-hero-phone" href="${callHref}">${esc(phone)}</a>`);
+        if (hasContactLineEmail) {
+            bits.push(`<button type="button" class="cd-hero-email" data-email="${encodeURIComponent(email)}" onclick="event.stopPropagation(); cdCopyContactEmailFromBtn(this)" title="Copy email">${esc(email)}</button>`);
+        }
+        contactLinesHtml = `<div class="cd-hero-contact-lines">${bits.join('<span class="cd-hero-contact-comma">, </span>')}</div>`;
+    }
+
+    const knownLineText = cdHeroKnownLineText(c.first_met_at || null, c.created_at || null);
+    const shareHighlighted = cdHasOutboundProfileShare(row);
+
     root.innerHTML = `
         <div class="cd-back-row">
             <button class="cd-back-link" type="button" onclick="closeContactDetailsScreen()">
@@ -123,7 +154,7 @@ function renderContactDetailsScreen(root, row) {
                 </svg>
                 Contacts
             </button>
-            <span class="cd-last-seen">${lastSeen ? 'Last seen ' + esc(lastSeen) : ''}</span>
+            <span class="cd-last-seen">${lastSeen ? 'Last met ' + esc(lastSeen) : ''}</span>
         </div>
 
         <div class="cd-card cd-hero-card">
@@ -131,15 +162,21 @@ function renderContactDetailsScreen(root, row) {
                 ${avatarHtml}
                 <div class="cd-hero-meta">
                     <div class="cd-hero-name">${esc(name)}</div>
-                    ${knownDuration ? `<div class="cd-hero-known"><span class="cd-sparkle" aria-hidden="true">\u2728</span>Known ${esc(knownDuration)}</div>` : ''}
-                    <div class="cd-hero-met">
-                        <span class="cd-met-label">Met on</span>
-                        <span class="cd-met-value" id="cd-met-display">${esc(metOnDisplay)}</span>
-                        <input type="date" class="cd-met-input" id="cd-met-input"
+                    ${contactLinesHtml}
+                    <div class="cd-hero-known-row">
+                        <span class="cd-hero-known-main">
+                            <span class="cd-sparkle" aria-hidden="true">\u2728</span>
+                            <span id="cd-hero-known-display">${esc(knownLineText)}</span>
+                        </span>
+                        <button type="button" class="cd-met-edit-btn" id="cd-met-edit-btn"
+                            onclick="event.stopPropagation(); cdOpenMetDatePicker();"
+                            aria-label="Edit when you first met"
+                            title="Edit when you first met">${cdPencilIcon()}</button>
+                        <input type="date" class="cd-met-input-hidden" id="cd-met-input"
                             value="${c.first_met_at ? new Date(c.first_met_at).toISOString().slice(0, 10) : ''}"
-                            onclick="try { this.showPicker(); } catch(e) {}"
                             onchange="cdSaveMetOn('${esc(id)}', this.value)"
-                            onblur="commitPendingFirstMetAt('${esc(id)}')">
+                            onblur="commitPendingFirstMetAt('${esc(id)}')"
+                            tabindex="-1" aria-hidden="true">
                     </div>
                 </div>
             </div>
@@ -149,7 +186,8 @@ function renderContactDetailsScreen(root, row) {
                     <span class="cd-action-icon">${cdShieldIcon()}</span>
                     <span class="cd-action-label">Vouch</span>
                 </button>
-                <button type="button" class="cd-action-btn" onclick="openShareWithContact('${esc(id)}', '${esc(name)}')">
+                <button type="button" class="cd-action-btn${shareHighlighted ? ' cd-action-filled' : ''}" id="cd-share-btn"
+                    onclick="openShareWithContact('${esc(id)}', '${esc(name)}')">
                     <span class="cd-action-icon">${cdShareIcon()}</span>
                     <span class="cd-action-label">Share</span>
                 </button>
@@ -169,28 +207,30 @@ function renderContactDetailsScreen(root, row) {
         <div class="cd-card cd-trust-card" id="cd-trust">
             <div class="cd-trust-dots" aria-hidden="true"></div>
             <div class="cd-trust-row">
-                <div class="cd-ring" id="cd-ring">
-                    <svg viewBox="0 0 100 100" width="100" height="100" class="cd-ring-svg">
-                        <circle cx="50" cy="50" r="42" stroke="rgba(255,255,255,0.15)" stroke-width="8" fill="none"/>
-                        <circle id="cd-ring-fg" cx="50" cy="50" r="42"
-                            stroke="var(--cd-gold)" stroke-width="8" fill="none"
-                            stroke-linecap="round"
-                            stroke-dasharray="${(2 * Math.PI * 42).toFixed(2)}"
-                            stroke-dashoffset="${(2 * Math.PI * 42).toFixed(2)}"/>
-                    </svg>
-                    <div class="cd-ring-text">
-                        <div class="cd-ring-score" id="cd-ring-score">--</div>
-                        <div class="cd-ring-label">Trust</div>
+                <div class="cd-ring-col">
+                    <div class="cd-ring" id="cd-ring"
+                         role="button" tabindex="0"
+                         aria-label="How is this score calculated?"
+                         onclick="cdOpenTrustInfoDialog()"
+                         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();cdOpenTrustInfoDialog();}">
+                        <svg viewBox="0 0 100 100" width="100" height="100" class="cd-ring-svg">
+                            <circle cx="50" cy="50" r="42" stroke="rgba(255,255,255,0.15)" stroke-width="8" fill="none"/>
+                            <circle id="cd-ring-fg" cx="50" cy="50" r="42"
+                                stroke="var(--cd-gold)" stroke-width="8" fill="none"
+                                stroke-linecap="round"
+                                stroke-dasharray="${(2 * Math.PI * 42).toFixed(2)}"
+                                stroke-dashoffset="${(2 * Math.PI * 42).toFixed(2)}"/>
+                        </svg>
+                        <div class="cd-ring-text">
+                            <div class="cd-ring-score" id="cd-ring-score">--</div>
+                            <div class="cd-ring-label">Trust</div>
+                        </div>
                     </div>
+                    <button type="button" class="cd-trust-info-btn"
+                            aria-label="How is this score calculated?"
+                            onclick="cdOpenTrustInfoDialog()">${cdInfoIcon()}</button>
                 </div>
                 <div class="cd-trust-meta">
-                    <div class="cd-trust-overline-row">
-                        <div class="cd-trust-overline">Network</div>
-                        <button type="button" class="cd-trust-info-btn"
-                                aria-label="How is this score calculated?"
-                                onclick="cdOpenTrustInfoDialog()">${cdInfoIcon()}</button>
-                    </div>
-                    <div class="cd-trust-headline" id="cd-trust-headline">Loading\u2026</div>
                     <div class="cd-trust-stats">
                         <div class="cd-trust-stat"><div class="cd-trust-stat-n" id="cd-stat-shared-contacts">\u2014</div><div class="cd-trust-stat-l">Mutual contacts</div></div>
                         <div class="cd-trust-stat"><div class="cd-trust-stat-n" id="cd-stat-shared-groups">\u2014</div><div class="cd-trust-stat-l">Shared groups</div></div>
@@ -313,6 +353,10 @@ async function hydrateContactDetailsScreen(contactId) {
             if (error) { console.error('get_contact_history error:', error); cdRenderHistory([]); return; }
             cdRenderHistory(Array.isArray(data) ? data : []);
         });
+
+    if (typeof maybeOfferSponsorShareInfo === 'function') {
+        maybeOfferSponsorShareInfo(contactId);
+    }
 }
 
 // Refresh the selfies strip (and history timeline) on the Contact Details
@@ -373,8 +417,8 @@ function cdRenderSelfies(contactId, selfies) {
 }
 
 function cdRenderTrust(t) {
+    cdLastTrustSummary = t || null;
     const score = Math.max(0, Math.min(100, Number(t.score) || 0));
-    const headline = cdTrustHeadline(score);
 
     // Capture the previous on-screen score so we can count-animate to the new
     // value. "--" placeholder parses to NaN -> treat as 0 so first paint
@@ -387,7 +431,6 @@ function cdRenderTrust(t) {
     })();
 
     cdAnimateScore(scoreEl, prevScore, score, 900);
-    setText('cd-trust-headline', headline);
     setText('cd-stat-shared-contacts', String(Number(t.shared_contacts)  || 0));
     setText('cd-stat-shared-groups',   String(Number(t.shared_groups)    || 0));
     setText('cd-stat-mutual-vouches',  String(Number(t.mutual_vouches)   || 0));
@@ -412,7 +455,7 @@ function cdRenderTrust(t) {
         setTimeout(() => { ringFg.classList.remove('cd-ring-fg-pulse'); }, 800);
     }
 
-    // Vouch button: flip to "Vouched" if the caller has any prior attestation.
+    // Vouch button: filled style if the caller has any prior attestation.
     if (t.have_i_vouched) cdSetVouchedState(true);
 
     cdRenderMutualsRow(t);
@@ -496,13 +539,6 @@ function cdNamesLine(prefix, names, total) {
     const remaining = total - showInline;
     if (remaining <= 0) return `${esc(prefix)} ${head}`;
     return `${esc(prefix)} ${head} and ${remaining} ${remaining === 1 ? 'other' : 'others'}`;
-}
-
-function cdTrustHeadline(score) {
-    if (score >= 85) return 'Strongly connected';
-    if (score >= 65) return 'Well connected';
-    if (score >= 40) return 'Getting connected';
-    return 'New connection';
 }
 
 function cdRenderHistory(events) {
@@ -612,18 +648,63 @@ function cdOpenMutualsDialog(contactId, name) {
     overlay.classList.remove('hidden');
 }
 
-// Explain how the four numbers on the trust card -- and the overall Trust
-// score -- are computed. Opened by the small (i) button on the card itself.
-// Pure copy + light styling; no data dependencies, so it can render even
-// before the trust summary RPC has resolved.
+// Explain how the three components of the trust score are computed and
+// surface live per-component data ("X vouches over Y time"). Pulls from the
+// last cached trust summary captured in cdRenderTrust.
 function cdOpenTrustInfoDialog() {
     const overlay = document.getElementById('modalOverlay');
     const body    = document.getElementById('modalBody');
     if (!overlay || !body) return;
 
+    const t = cdLastTrustSummary || {};
+    const directLine  = cdComponentLine(Number(t.direct_count)   || 0, t.direct_oldest_at);
+    const mutualsLine = cdComponentLine(Number(t.mutual_vouches) || 0, t.mutuals_oldest_at);
+    const trustedLine = cdComponentLine(Number(t.trusted_vouches)|| 0, t.trusted_oldest_at);
+
+    // Weight badges reflect the caller's current preferences, falling back to
+    // historical defaults when the RPC payload predates the weight feature.
+    const wDirect  = cdWeightBadge(t.w_direct,  2);
+    const wMutuals = cdWeightBadge(t.w_mutuals, 1);
+    const wTrusted = cdWeightBadge(t.w_trusted, 3);
+
     body.innerHTML = `
-        <h3>How the trust score works</h3>
+        <h3>Trust Details</h3>
         <div class="cd-trust-info">
+            <div class="cd-trust-info-item">
+                <div class="cd-trust-info-data">${directLine}</div>
+                <div class="cd-trust-info-body">
+                    <div class="cd-trust-info-name">Direct ${wDirect}</div>
+                    <div class="cd-trust-info-desc">
+                        Time-decayed sum of vouches <em>you</em> have made
+                        for this contact.
+                    </div>
+                </div>
+            </div>
+
+            <div class="cd-trust-info-item">
+                <div class="cd-trust-info-data">${mutualsLine}</div>
+                <div class="cd-trust-info-body">
+                    <div class="cd-trust-info-name">Mutuals ${wMutuals}</div>
+                    <div class="cd-trust-info-desc">
+                        Time-decayed sum of vouches your mutual contacts
+                        (people in both your circles) have made to either
+                        of you.
+                    </div>
+                </div>
+            </div>
+
+            <div class="cd-trust-info-item">
+                <div class="cd-trust-info-data">${trustedLine}</div>
+                <div class="cd-trust-info-body">
+                    <div class="cd-trust-info-name">Trusted ${wTrusted}</div>
+                    <div class="cd-trust-info-desc">
+                        Time-decayed sum of vouches sent to this person by
+                        mutual contacts whom <em>you</em> have personally
+                        given an &ldquo;I trust you&rdquo; vouch.
+                    </div>
+                </div>
+            </div>
+
             <p class="cd-trust-info-lead">
                 The Trust score is a weighted, time-decayed combination of
                 three vouch-based signals. Every vouch counts, but vouches
@@ -633,36 +714,11 @@ function cdOpenTrustInfoDialog() {
                 your most-connected contact.
             </p>
 
-            <div class="cd-trust-info-item">
-                <div class="cd-trust-info-name">Direct (weight &times;2)</div>
-                <div class="cd-trust-info-desc">
-                    Time-decayed sum of vouches <em>you</em> have made for
-                    this contact. Your own first-hand assessment counts most.
-                </div>
-            </div>
-
-            <div class="cd-trust-info-item">
-                <div class="cd-trust-info-name">Mutuals (weight &times;1)</div>
-                <div class="cd-trust-info-desc">
-                    Time-decayed sum of vouches your mutual contacts (people
-                    in both your circles) have made to either of you.
-                </div>
-            </div>
-
-            <div class="cd-trust-info-item">
-                <div class="cd-trust-info-name">Trusted (weight &times;3)</div>
-                <div class="cd-trust-info-desc">
-                    Time-decayed sum of vouches sent to this person by
-                    mutual contacts whom <em>you</em> have personally given
-                    an &ldquo;I trust you&rdquo; vouch. This trust-weighted
-                    signal carries the most weight.
-                </div>
-            </div>
-
             <p class="cd-trust-info-foot">
-                Vouches you receive are kept private from the people you
-                vouch for &mdash; only aggregate counts ever leave the
-                server.
+                You can tune the &times; weights for each component in your
+                preferences. Vouches you receive are kept private from the
+                people you vouch for &mdash; only aggregate counts ever
+                leave the server.
             </p>
         </div>
         <div class="form-actions">
@@ -670,6 +726,60 @@ function cdOpenTrustInfoDialog() {
         </div>
     `;
     overlay.classList.remove('hidden');
+}
+
+// "× 2" badge next to a component name in the trust-info dialog. Hidden
+// entirely when the weight is zero so users can clearly see when they have
+// dialed a component out of their score.
+function cdWeightBadge(weight, fallback) {
+    const n = Number.isFinite(Number(weight)) ? Number(weight) : fallback;
+    if (n <= 0) return '<span class="cd-trust-info-weight cd-trust-info-weight-off" title="Disabled in preferences">&times;0</span>';
+    const label = Number.isInteger(n) ? String(n) : n.toFixed(1);
+    return `<span class="cd-trust-info-weight">&times;${label}</span>`;
+}
+
+// "N vouches over Y time" / "1 vouch, just now" / "no vouches yet"
+// for a single trust-score component. `oldestIso` is the timestamp of the
+// oldest contributing vouch; we render the elapsed time since then. The
+// numeric count is wrapped in <strong> so the data band in the trust-info
+// dialog can visually emphasize the per-contact figure.
+function cdComponentLine(count, oldestIso) {
+    if (!count || count <= 0) return 'no vouches yet';
+    const noun = count === 1 ? 'vouch' : 'vouches';
+    const span = cdFormatDurationFrom(oldestIso);
+    if (!span) return `<strong>${count}</strong> ${noun}`;
+    if (count === 1) return `<strong>1</strong> vouch, ${span} ago`;
+    return `<strong>${count}</strong> ${noun} over ${span}`;
+}
+
+// Calendar-aware "2 years, 4 months" / "5 days" / "3 hours" / "just now"
+// elapsed-time formatter. Mirrors formatKnownDuration's year+month style for
+// long spans but also handles sub-month durations needed by the trust info
+// dialog.
+function cdFormatDurationFrom(isoDate) {
+    if (!isoDate) return '';
+    const start = new Date(isoDate);
+    if (isNaN(start.getTime())) return '';
+    const now = new Date();
+    const ms = now.getTime() - start.getTime();
+    if (ms < 60 * 1000) return 'just now';
+    const minutes = Math.floor(ms / 60000);
+    if (minutes < 60) return minutes === 1 ? '1 minute' : `${minutes} minutes`;
+    const hours = Math.floor(ms / 3600000);
+    if (hours < 24) return hours === 1 ? '1 hour' : `${hours} hours`;
+    const days = Math.floor(ms / 86400000);
+    if (days < 30) return days === 1 ? '1 day' : `${days} days`;
+    let years = now.getFullYear() - start.getFullYear();
+    let months = now.getMonth() - start.getMonth();
+    if (now.getDate() < start.getDate()) months--;
+    if (months < 0) { years--; months += 12; }
+    if (years === 0 && months === 0) {
+        return days === 1 ? '1 day' : `${days} days`;
+    }
+    const parts = [];
+    if (years  > 0) parts.push(years  === 1 ? '1 year'  : `${years} years`);
+    if (months > 0) parts.push(months === 1 ? '1 month' : `${months} months`);
+    return parts.join(', ');
 }
 
 function cdJumpToContact(contactId) {
@@ -696,7 +806,7 @@ function cdSetVouchedState(vouched) {
     if (!btn) return;
     btn.classList.toggle('cd-action-filled', !!vouched);
     const label = btn.querySelector('.cd-action-label');
-    if (label) label.textContent = vouched ? 'Vouched' : 'Vouch';
+    if (label) label.textContent = 'Vouch';
 }
 
 function cdOnAttested(contactId) {
@@ -904,13 +1014,31 @@ function cdMapTileSvg() {
 
 // ----- Met-on date save ------------------------------------------------------
 
+function cdHeroKnownLineText(firstMetIso, createdAtIso) {
+    const since = firstMetIso || createdAtIso || null;
+    const dur = formatKnownDuration(since);
+    return dur ? `Known ${dur}` : 'Known';
+}
+
+function cdOpenMetDatePicker() {
+    const el = document.getElementById('cd-met-input');
+    if (!el) return;
+    try {
+        if (typeof el.showPicker === 'function') el.showPicker();
+        else el.click();
+    } catch (_) {
+        try { el.click(); } catch (_) { /* noop */ }
+    }
+}
+
 function cdSaveMetOn(contactId, value) {
     saveFirstMetAt(contactId, value);
-    const display = document.getElementById('cd-met-display');
-    if (display) {
-        const iso = value ? new Date(value + 'T12:00:00').toISOString() : null;
-        display.textContent = formatFirstMetDisplay(iso);
-    }
+    const display = document.getElementById('cd-hero-known-display');
+    if (!display) return;
+    const row = (contactsLoadedRows || []).find(r => r.contact?.contact_id === contactId);
+    const iso = value ? new Date(value + 'T12:00:00').toISOString() : null;
+    const created = row?.contact?.created_at || null;
+    display.textContent = cdHeroKnownLineText(iso || null, created);
 }
 
 // ----- Confetti + haptics ----------------------------------------------------
@@ -956,6 +1084,25 @@ function closeContactDetailsScreen() {
     cdCurrentContactId = null;
     if (cdConfettiTimer) { clearTimeout(cdConfettiTimer); cdConfettiTimer = null; }
     navigateTo('contacts');
+}
+
+function cdCopyContactEmailFromBtn(btn) {
+    const encoded = btn?.getAttribute('data-email');
+    if (!encoded) return;
+    let addr = encoded;
+    try {
+        addr = decodeURIComponent(encoded);
+    } catch (_) { /* keep encoded */ }
+    if (!addr) return;
+    if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(addr).then(() => {
+            if (typeof showToast === 'function') showToast('Email copied', 'success');
+        }).catch(() => {
+            if (typeof showToast === 'function') showToast('Could not copy email', 'error');
+        });
+    } else if (typeof showToast === 'function') {
+        showToast('Could not copy email', 'error');
+    }
 }
 
 // ----- Helpers ---------------------------------------------------------------
@@ -1026,6 +1173,11 @@ function cdOpenAvatarLightbox(contactId, avatarUrl, _name) {
 }
 
 // Inline SVG icon helpers (kept local to avoid adding a global icon system).
+function cdPencilIcon() {
+    return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">'
+        + '<path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+        + '</svg>';
+}
 function cdShieldIcon() {
     return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">'
         + '<path d="M12 2l9 4v6c0 5-4 9-9 10-5-1-9-5-9-10V6l9-4z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>'

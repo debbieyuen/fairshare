@@ -3,6 +3,51 @@ function openPreferences() {
     navigateTo('profile');
 }
 
+// Default weights match the original hard-coded values in
+// get_contact_trust_summary; the SQL columns also default to these so a NULL
+// profile value still produces the historical 2 / 1 / 3 behaviour.
+const TRUST_WEIGHT_DEFAULTS = Object.freeze({
+    direct:  2,
+    mutuals: 1,
+    trusted: 3,
+});
+
+// The dropdown only exposes integer multipliers 1..5. Legacy / out-of-range
+// stored values (e.g. 0 or fractional weights from an older build) get snapped
+// onto the nearest valid choice so a <select> always has a matching option.
+const TRUST_WEIGHT_CHOICES = Object.freeze([1, 2, 3, 4, 5]);
+
+function snapTrustWeight(val, fallback) {
+    const n = Number(val);
+    if (!Number.isFinite(n)) return fallback;
+    const rounded = Math.round(n);
+    return Math.min(5, Math.max(1, rounded));
+}
+
+function trustWeightOptionsHtml(selected) {
+    return TRUST_WEIGHT_CHOICES.map(v =>
+        `<option value="${v}"${v === selected ? ' selected' : ''}>${v}x</option>`
+    ).join('');
+}
+
+function setTrustWeightInputs(direct, mutuals, trusted) {
+    const d = document.getElementById('prefWeightDirect');
+    const m = document.getElementById('prefWeightMutuals');
+    const t = document.getElementById('prefWeightTrusted');
+    if (d) d.value = String(snapTrustWeight(direct,  TRUST_WEIGHT_DEFAULTS.direct));
+    if (m) m.value = String(snapTrustWeight(mutuals, TRUST_WEIGHT_DEFAULTS.mutuals));
+    if (t) t.value = String(snapTrustWeight(trusted, TRUST_WEIGHT_DEFAULTS.trusted));
+}
+
+function resetTrustWeights() {
+    setTrustWeightInputs(
+        TRUST_WEIGHT_DEFAULTS.direct,
+        TRUST_WEIGHT_DEFAULTS.mutuals,
+        TRUST_WEIGHT_DEFAULTS.trusted
+    );
+    savePreferences();
+}
+
 function sponsoredAgoLabel(createdAt) {
     if (!createdAt) return 'Sponsor';
     const now = new Date();
@@ -64,6 +109,29 @@ function renderProfileScreen() {
                 </div>
                 <p id="prefPushHint" class="pref-help-text pref-push-hint"></p>
                 ` : ''}
+                <div class="pref-trust-weights">
+                    <div class="pref-trust-weights-head">
+                        <label class="pref-trust-weights-label">Trust Score Weights</label>
+                        <a href="#" class="pref-trust-weights-reset" onclick="resetTrustWeights(); return false;">Reset</a>
+                    </div>
+                    <p class="pref-help-text pref-trust-weights-hint">
+                        How much each component contributes to a contact's trust score.
+                    </p>
+                    <div class="pref-trust-weights-row">
+                        <div class="pref-trust-weight">
+                            <label for="prefWeightDirect">Direct</label>
+                            <select id="prefWeightDirect">${trustWeightOptionsHtml(snapTrustWeight(currentProfile?.trust_weight_direct, TRUST_WEIGHT_DEFAULTS.direct))}</select>
+                        </div>
+                        <div class="pref-trust-weight">
+                            <label for="prefWeightMutuals">Mutuals</label>
+                            <select id="prefWeightMutuals">${trustWeightOptionsHtml(snapTrustWeight(currentProfile?.trust_weight_mutuals, TRUST_WEIGHT_DEFAULTS.mutuals))}</select>
+                        </div>
+                        <div class="pref-trust-weight">
+                            <label for="prefWeightTrusted">Trusted</label>
+                            <select id="prefWeightTrusted">${trustWeightOptionsHtml(snapTrustWeight(currentProfile?.trust_weight_trusted, TRUST_WEIGHT_DEFAULTS.trusted))}</select>
+                        </div>
+                    </div>
+                </div>
             </form>
             <hr class="pref-divider">
             <h4 class="pref-section-title">Safety</h4>
@@ -87,6 +155,11 @@ function renderProfileScreen() {
     document.getElementById('prefDisplayName').value = currentProfile?.display_name || '';
     document.getElementById('prefEmail').value = currentProfile?.email || '';
     document.getElementById('prefPhone').value = currentProfile?.phone || '';
+    setTrustWeightInputs(
+        currentProfile?.trust_weight_direct,
+        currentProfile?.trust_weight_mutuals,
+        currentProfile?.trust_weight_trusted
+    );
 
     const prefPreview = document.getElementById('prefPhotoPreview');
     if (currentProfile?.profile_image_url) {
@@ -120,6 +193,11 @@ function renderProfileScreen() {
 
     const pushCheck = document.getElementById('prefPushNotifications');
     if (pushCheck) pushCheck.addEventListener('change', () => savePreferences());
+
+    ['prefWeightDirect', 'prefWeightMutuals', 'prefWeightTrusted'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', () => savePreferences());
+    });
 
     (async () => {
         const sponsorNameEl = document.getElementById('prefSponsorName');
