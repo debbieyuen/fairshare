@@ -168,15 +168,17 @@ function renderContactDetailsScreen(root, row) {
                             <span class="cd-sparkle" aria-hidden="true">\u2728</span>
                             <span id="cd-hero-known-display">${esc(knownLineText)}</span>
                         </span>
-                        <button type="button" class="cd-met-edit-btn" id="cd-met-edit-btn"
-                            onclick="event.stopPropagation(); cdOpenMetDatePicker();"
-                            aria-label="Edit when you first met"
-                            title="Edit when you first met">${cdPencilIcon()}</button>
-                        <input type="date" class="cd-met-input-hidden" id="cd-met-input"
-                            value="${c.first_met_at ? new Date(c.first_met_at).toISOString().slice(0, 10) : ''}"
-                            onchange="cdSaveMetOn('${esc(id)}', this.value)"
-                            onblur="commitPendingFirstMetAt('${esc(id)}')"
-                            tabindex="-1" aria-hidden="true">
+                        <span class="cd-met-edit-wrap">
+                            <button type="button" class="cd-met-edit-btn" id="cd-met-edit-btn"
+                                tabindex="-1" aria-hidden="true">${cdPencilIcon()}</button>
+                            <input type="date" class="cd-met-input-overlay" id="cd-met-input"
+                                value="${c.first_met_at ? new Date(c.first_met_at).toISOString().slice(0, 10) : ''}"
+                                onclick="event.stopPropagation(); try { this.showPicker(); } catch(e) {}"
+                                onchange="event.stopPropagation(); cdSaveMetOn('${esc(id)}', this.value)"
+                                onblur="commitPendingFirstMetAt('${esc(id)}')"
+                                aria-label="Edit when you first met"
+                                title="Edit when you first met">
+                        </span>
                     </div>
                 </div>
             </div>
@@ -1018,17 +1020,6 @@ function cdHeroKnownLineText(firstMetIso, createdAtIso) {
     const since = firstMetIso || createdAtIso || null;
     const dur = formatKnownDuration(since);
     return dur ? `Known ${dur}` : 'Known';
-}
-
-function cdOpenMetDatePicker() {
-    const el = document.getElementById('cd-met-input');
-    if (!el) return;
-    try {
-        if (typeof el.showPicker === 'function') el.showPicker();
-        else el.click();
-    } catch (_) {
-        try { el.click(); } catch (_) { /* noop */ }
-    }
 }
 
 function cdSaveMetOn(contactId, value) {
