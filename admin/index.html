@@ -61,7 +61,7 @@
             color: var(--white);
             border: 1px solid rgba(255,255,255,0.4);
         }
-        .container { max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+        .container { max-width: 880px; margin: 2rem auto; padding: 0 1rem; }
         .card {
             background: var(--white);
             border-radius: 10px;
@@ -183,6 +183,47 @@
             from { opacity: 0; transform: translateX(-50%) translateY(10px); }
             to   { opacity: 1; transform: translateX(-50%) translateY(0); }
         }
+
+        .admin-stats-table-wrap { overflow-x: auto; margin-top: 0.25rem; }
+        .admin-stats-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+        }
+        .admin-stats-table caption {
+            caption-side: bottom;
+            text-align: left;
+            font-size: 0.75rem;
+            color: var(--dark-gray);
+            padding-top: 0.65rem;
+            line-height: 1.45;
+        }
+        .admin-stats-table th,
+        .admin-stats-table td {
+            border: 1px solid var(--medium-gray);
+            padding: 0.45rem 0.65rem;
+            text-align: right;
+        }
+        .admin-stats-table th:first-child,
+        .admin-stats-table td:first-child {
+            text-align: left;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        .admin-stats-table thead th {
+            background: var(--light-gray);
+            font-weight: 600;
+            color: var(--accent-color);
+        }
+        .admin-stats-table tbody tr:nth-child(even) { background: #fafafa; }
+        .admin-stats-foot { font-size: 0.75rem; color: var(--dark-gray); margin-top: 0.5rem; }
+        .stats-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
     </style>
 </head>
 <body>
@@ -221,6 +262,31 @@
 
 <!-- Admin panel -->
 <div id="adminPanel" class="container hidden">
+
+    <!-- Summary stats -->
+    <div class="card">
+        <h2>Summary</h2>
+        <div class="stats-toolbar">
+            <button type="button" class="btn btn-primary btn-sm" id="adminStatsRefresh" onclick="loadAdminStats()">Refresh</button>
+        </div>
+        <div class="admin-stats-table-wrap">
+            <table class="admin-stats-table" id="adminStatsTable" aria-describedby="adminStatsFoot">
+                <thead>
+                    <tr>
+                        <th scope="col">Metric</th>
+                        <th scope="col">Total</th>
+                        <th scope="col" title="Past 7 days">Last week</th>
+                        <th scope="col" title="Past 24 hours">Last day</th>
+                    </tr>
+                </thead>
+                <tbody id="adminStatsBody">
+                    <tr><td colspan="4" style="text-align:center;color:var(--dark-gray);">Loading…</td></tr>
+                </tbody>
+                <caption>Windows are rolling in UTC: last week = past 7 days; last day = past 24 hours.</caption>
+            </table>
+        </div>
+        <p class="admin-stats-foot" id="adminStatsFoot">For “Notify if nearby”, <strong>Total</strong> is contact rows with the setting on (one direction per row). <strong>Last week</strong> and <strong>Last day</strong> count <em>nearby alerts</em> sent in that window.</p>
+    </div>
 
     <!-- Delete Profile -->
     <div class="card">
@@ -351,6 +417,49 @@ async function onAuth(session) {
     document.getElementById('headerUser').textContent = profile?.display_name || currentUser.email;
     document.getElementById('logoutBtn').classList.remove('hidden');
     showScreen('adminPanel');
+    loadAdminStats();
+}
+
+function fmtStat(n) {
+    if (n == null || Number.isNaN(n)) return '—';
+    return String(n);
+}
+
+async function loadAdminStats() {
+    const tbody = document.getElementById('adminStatsBody');
+    const btn = document.getElementById('adminStatsRefresh');
+    if (!tbody) return;
+    if (btn) btn.disabled = true;
+
+    const { data, error } = await db.rpc('admin_get_summary_stats');
+
+    if (btn) btn.disabled = false;
+
+    if (error) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:left;color:var(--red);padding:0.75rem;">${esc(error.message)}</td></tr>`;
+        showToast('Could not load summary stats (run latest admin SQL if this persists).', 'error');
+        return;
+    }
+
+    const p = data?.people || {};
+    const np = data?.newPeople || {};
+    const v = data?.vouches || {};
+    const s = data?.selfies || {};
+    const sp = data?.suggestPic || {};
+    const ls = data?.locationShares || {};
+    const nn = data?.notifyNearby || {};
+
+    const row = (label, t, w, d) =>
+        `<tr><td>${esc(label)}</td><td>${fmtStat(t)}</td><td>${fmtStat(w)}</td><td>${fmtStat(d)}</td></tr>`;
+
+    tbody.innerHTML =
+        row('People (total accounts)', p.total, p.week, p.day) +
+        row('New people (contact pairs)', np.total, np.week, np.day) +
+        row('Vouches', v.total, v.week, v.day) +
+        row('Selfies', s.total, s.week, s.day) +
+        row('Suggest profile pic', sp.total, sp.week, sp.day) +
+        row('Location shares', ls.total, ls.week, ls.day) +
+        row('Notify if nearby', nn.total, nn.week, nn.day);
 }
 
 // --- Profile lookup & delete ---

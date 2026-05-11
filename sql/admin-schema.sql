@@ -204,3 +204,73 @@ begin
   );
 end;
 $$;
+
+-- Summary metrics for the admin dashboard (rolling: last week = 7 days, last day = 24 hours, UTC).
+create or replace function public.admin_get_summary_stats()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_admin_id uuid := 'a8253eea-e76a-46d1-a92d-6fe36911f038';
+  t0 timestamptz := now();
+  t_week timestamptz := t0 - interval '7 days';
+  t_day timestamptz := t0 - interval '1 day';
+begin
+  if auth.uid() is null or auth.uid() != v_admin_id then
+    raise exception 'Unauthorized: admin access required';
+  end if;
+
+  return jsonb_build_object(
+    'people', jsonb_build_object(
+      'total', (select count(*)::int from public.profiles),
+      'week', (select count(*)::int from public.profiles p where p.created_at >= t_week),
+      'day', (select count(*)::int from public.profiles p where p.created_at >= t_day)
+    ),
+    'newPeople', jsonb_build_object(
+      'total', (select count(*)::int from public.contacts c where c.user_id < c.contact_id),
+      'week', (select count(*)::int from public.contacts c
+               where c.user_id < c.contact_id
+                 and coalesce(c.created_at, c.met_at) >= t_week),
+      'day', (select count(*)::int from public.contacts c
+              where c.user_id < c.contact_id
+                and coalesce(c.created_at, c.met_at) >= t_day)
+    ),
+    'vouches', jsonb_build_object(
+      'total', (select count(*)::int from public.attestations),
+      'week', (select count(*)::int from public.attestations a where a.created_at >= t_week),
+      'day', (select count(*)::int from public.attestations a where a.created_at >= t_day)
+    ),
+    'selfies', jsonb_build_object(
+      'total', (select count(*)::int from public.contact_selfies s where s.user_id < s.contact_id),
+      'week', (select count(*)::int from public.contact_selfies s
+               where s.user_id < s.contact_id and s.created_at >= t_week),
+      'day', (select count(*)::int from public.contact_selfies s
+              where s.user_id < s.contact_id and s.created_at >= t_day)
+    ),
+    'suggestPic', jsonb_build_object(
+      'total', (select count(*)::int from public.contact_notifications n
+                where n.notification_type = 'profile_picture_suggested'),
+      'week', (select count(*)::int from public.contact_notifications n
+               where n.notification_type = 'profile_picture_suggested' and n.created_at >= t_week),
+      'day', (select count(*)::int from public.contact_notifications n
+              where n.notification_type = 'profile_picture_suggested' and n.created_at >= t_day)
+    ),
+    'locationShares', jsonb_build_object(
+      'total', (select count(*)::int from public.location_shares),
+      'week', (select count(*)::int from public.location_shares ls where ls.started_at >= t_week),
+      'day', (select count(*)::int from public.location_shares ls where ls.started_at >= t_day)
+    ),
+    'notifyNearby', jsonb_build_object(
+      'total', (select count(*)::int from public.contacts c where c.notify_nearby = true),
+      'week', (select count(*)::int from public.contact_notifications n
+               where n.notification_type = 'nearby_alert' and n.created_at >= t_week),
+      'day', (select count(*)::int from public.contact_notifications n
+              where n.notification_type = 'nearby_alert' and n.created_at >= t_day)
+    )
+  );
+end;
+$$;
+
+grant execute on function public.admin_get_summary_stats() to authenticated;
