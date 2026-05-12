@@ -340,6 +340,16 @@ async function submitSponsorShareInfoDialog() {
             });
         }
 
+        const phoneFirst = wantPhone && newlyShared.includes('phone');
+        const emailFirst = wantEmail && newlyShared.includes('email');
+        const phoneUpdate = wantPhone && !phoneFirst && String(sharedPhone || '') !== String(prior?.shared_phone || '');
+        const emailUpdate = wantEmail && !emailFirst && String(sharedEmail || '') !== String(prior?.shared_email || '');
+        const sponsorSharePushBody = buildInboundShareEmailPhonePushBody(
+            currentProfile?.display_name || 'Someone',
+            { phoneFirst, phoneUpdate, emailFirst, emailUpdate }
+        );
+        if (sponsorSharePushBody) sendInboundShareEmailPhonePush(cid, sponsorSharePushBody);
+
         const row = (contactsLoadedRows || []).find(r => r.contact?.contact_id === cid);
         if (row) {
             row.sharedByMe = row.sharedByMe || {};
@@ -387,9 +397,12 @@ async function savePreferences(e) {
         const phone = document.getElementById('prefPhone').value.trim();
         const prefPreview = document.getElementById('prefPhotoPreview');
         const prevProfileImageUrl = currentProfile?.profile_image_url || null;
+        const prevDisplayName = currentProfile?.display_name ?? '';
         const prevEmail = currentProfile?.email || '';
         const prevPhone = currentProfile?.phone || '';
         let profileImageUrl = prevProfileImageUrl;
+        /** True when we just uploaded a new file from the prefs picker (public URL may match the old one). */
+        let uploadedNewProfilePhoto = false;
         if (prefPreview?._pendingFile) {
             try {
                 const file = prefPreview._pendingFile;
@@ -399,9 +412,11 @@ async function savePreferences(e) {
                 if (upErr) throw upErr;
                 const { data: urlData } = db.storage.from('avatars').getPublicUrl(filePath);
                 profileImageUrl = urlData.publicUrl;
+                uploadedNewProfilePhoto = true;
             } catch (err) {
                 console.error('Profile photo upload error:', err);
                 showToast('Could not upload photo: ' + (err.message || 'error'), 'error');
+                return;
             }
         }
         const payload = {
@@ -459,11 +474,17 @@ async function savePreferences(e) {
         }
         const userDisplay = document.getElementById('userDisplay');
         if (userDisplay) userDisplay.textContent = payload.display_name;
-        setHeaderAvatar(profileImageUrl || null);
+        const headerBust = uploadedNewProfilePhoto ? Date.now() : null;
+        setHeaderAvatar(profileImageUrl || null, headerBust);
         showToast('Saved.', 'success');
 
+        if (prefPreview && uploadedNewProfilePhoto) {
+            prefPreview._pendingFile = undefined;
+        }
+
         // Notify contacts of profile changes (photo, email, phone).
-        const pictureChanged = !!(profileImageUrl && profileImageUrl !== prevProfileImageUrl);
+        const pictureChanged = uploadedNewProfilePhoto
+            || !!(profileImageUrl && profileImageUrl !== prevProfileImageUrl);
         const emailChanged = (email || '') !== prevEmail;
         const phoneChanged = (phone || '') !== prevPhone;
         if (pictureChanged) {
@@ -480,6 +501,14 @@ async function savePreferences(e) {
             const msg = payload.display_name + ' updated their ' + changes.join(' and ') + '.';
             db.rpc('notify_contacts_of_profile_update', { p_actor_id: currentUser.id, p_message: msg })
                 .then(({ error }) => { if (error) console.warn('notify profile update error:', error); });
+        }
+        const displayNameChanged = (prevDisplayName || '').trim() !== (payload.display_name || '').trim();
+        if (displayNameChanged) {
+            db.rpc('notify_contacts_of_display_name_change', {
+                p_actor_id: currentUser.id,
+                p_old_display_name: prevDisplayName,
+                p_new_display_name: payload.display_name
+            }).then(({ error }) => { if (error) console.warn('notify display name change error:', error); });
         }
     } catch (err) {
         console.error('savePreferences failed:', err);

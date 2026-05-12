@@ -91,3 +91,40 @@ function maybeShowInstallHintFloater() {
     if (!shouldShowInstallHintThisSession()) return;
     showInstallHintFloater();
 }
+
+/**
+ * Build the push body when outbound email/phone shared with one contact is new or changed.
+ * @param {string} displayName
+ * @param {{ phoneFirst: boolean, phoneUpdate: boolean, emailFirst: boolean, emailUpdate: boolean }} shareState
+ * @returns {string|null}
+ */
+function buildInboundShareEmailPhonePushBody(displayName, shareState) {
+    const name = displayName || 'Someone';
+    const { phoneFirst, phoneUpdate, emailFirst, emailUpdate } = shareState;
+    const seg = [];
+    if (phoneFirst) seg.push('shared their phone number');
+    else if (phoneUpdate) seg.push('updated the phone number they share');
+    if (emailFirst) seg.push('shared their email');
+    else if (emailUpdate) seg.push('updated the email they share');
+    if (seg.length === 0) return null;
+    if (seg.length === 1) return name + ' ' + seg[0] + ' with you.';
+    return name + ' ' + seg[0] + ' and ' + seg[1] + ' with you.';
+}
+
+/**
+ * Push when someone first shares or updates email/phone with a specific contact.
+ * In-app toasts for first share still come from `contact_shares` Realtime.
+ */
+function sendInboundShareEmailPhonePush(toUserId, body) {
+    if (!currentUser?.id || !toUserId || !body) return;
+    const title = typeof APP_NAME !== 'undefined' ? APP_NAME : 'FairShare';
+    db.rpc('send_push_to_users', {
+        p_user_ids: [toUserId],
+        p_actor_id: currentUser.id,
+        p_title: title,
+        p_body: body,
+        p_url: '/?action=view_contact&contact=' + currentUser.id
+    }).then(({ error: pErr }) => {
+        if (pErr) console.warn('share email/phone push error:', pErr);
+    });
+}

@@ -1771,14 +1771,14 @@ create trigger on_chat_message_push
 -- ============================================================
 -- CONTACT NOTIFICATIONS
 -- In-app and push notifications sent between contacts when
--- a profile picture changes or a "met on" date is set/updated.
+-- a profile picture changes, display name changes, or a "met on" date is set/updated.
 -- ============================================================
 
 create table if not exists public.contact_notifications (
   id uuid primary key default gen_random_uuid(),
   to_user_id uuid not null references public.profiles(id) on delete cascade,
   from_user_id uuid not null references public.profiles(id) on delete cascade,
-  notification_type text not null check (notification_type in ('profile_picture_updated', 'profile_updated', 'met_date_set', 'profile_picture_suggested')),
+  notification_type text not null check (notification_type in ('profile_picture_updated', 'profile_updated', 'met_date_set', 'profile_picture_suggested', 'display_name_changed')),
   message text not null,
   data jsonb default null,
   created_at timestamptz default now()
@@ -1896,6 +1896,100 @@ begin
   -- Send Web Push to subscribed contacts. The URL carries the actor's id so a
   -- tap on the OS notification deep-links straight to that contact's details
   -- screen (via handleNotificationNavigation).
+  perform public.send_push_to_users(
+    v_contact_ids, p_actor_id, 'FairShare', v_msg,
+    '/?action=view_contact&contact=' || p_actor_id::text
+  );
+end;
+$$ language plpgsql security definer;
+
+
+-- Notify all contacts when a user updates profile fields (e.g. email / phone).
+-- Inserts `profile_updated` rows for in-app Realtime toasts and sends push.
+create or replace function public.notify_contacts_of_profile_update(
+  p_actor_id uuid,
+  p_message text
+)
+returns void as $$
+declare
+  v_contact_ids uuid[];
+  v_cid uuid;
+begin
+  if auth.uid() is distinct from p_actor_id then
+    raise exception 'Unauthorized';
+  end if;
+
+  if p_message is null or trim(p_message) = '' then
+    raise exception 'Message is required';
+  end if;
+
+  select array_agg(user_id) into v_contact_ids
+  from public.contacts
+  where contact_id = p_actor_id;
+
+  if v_contact_ids is null or cardinality(v_contact_ids) = 0 then
+    return;
+  end if;
+
+  foreach v_cid in array v_contact_ids loop
+    insert into public.contact_notifications (to_user_id, from_user_id, notification_type, message)
+    values (v_cid, p_actor_id, 'profile_updated', p_message);
+  end loop;
+
+  perform public.send_push_to_users(
+    v_contact_ids, p_actor_id, 'FairShare', p_message,
+    '/?action=view_contact&contact=' || p_actor_id::text
+  );
+end;
+$$ language plpgsql security definer;
+
+
+-- Notify all contacts when the user changes their display name (push + in-app).
+create or replace function public.notify_contacts_of_display_name_change(
+  p_actor_id uuid,
+  p_old_display_name text,
+  p_new_display_name text
+)
+returns void as $$
+declare
+  v_old text;
+  v_new text;
+  v_msg text;
+  v_contact_ids uuid[];
+  v_cid uuid;
+begin
+  if auth.uid() is distinct from p_actor_id then
+    raise exception 'Unauthorized';
+  end if;
+
+  v_old := coalesce(nullif(btrim(p_old_display_name), ''), 'Someone');
+  v_new := coalesce(nullif(btrim(p_new_display_name), ''), 'Someone');
+
+  if v_old = v_new then
+    return;
+  end if;
+
+  v_msg := v_old || ' changed their name to ' || v_new;
+
+  select array_agg(user_id) into v_contact_ids
+  from public.contacts
+  where contact_id = p_actor_id;
+
+  if v_contact_ids is null or cardinality(v_contact_ids) = 0 then
+    return;
+  end if;
+
+  foreach v_cid in array v_contact_ids loop
+    insert into public.contact_notifications (to_user_id, from_user_id, notification_type, message, data)
+    values (
+      v_cid,
+      p_actor_id,
+      'display_name_changed',
+      v_msg,
+      jsonb_build_object('old_display_name', v_old, 'new_display_name', v_new)
+    );
+  end loop;
+
   perform public.send_push_to_users(
     v_contact_ids, p_actor_id, 'FairShare', v_msg,
     '/?action=view_contact&contact=' || p_actor_id::text

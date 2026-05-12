@@ -129,9 +129,63 @@ Fanned out to every user who has the actor in their `contacts` list.
 | Title | `"FairShare"` |
 | Body | `"{name} updated their profile picture"` |
 | URL | `/?action=view_contact&contact={actorUuid}` |
-| Source | [sql/fairshare-schema.sql](../sql/fairshare-schema.sql) 1864–1903 |
+| Source | [sql/fairshare-schema.sql](../sql/fairshare-schema.sql) 1864–1904 |
 
 In-app: writes `contact_notifications` rows of type `profile_picture_updated`.
+
+---
+
+## 6a. Contact changed their display name
+
+When the user saves a new display name in preferences (`savePreferences` in
+[js/modals.js](../js/modals.js)).
+
+| Field | Value |
+|-------|-------|
+| Trigger | RPC `notify_contacts_of_display_name_change(p_actor_id, p_old_display_name, p_new_display_name)`; called from [js/modals.js](../js/modals.js) after a successful profile update when the trimmed name changed |
+| Recipient | All users whose `contacts` includes `p_actor_id`, excluding the actor |
+| Title | `"FairShare"` |
+| Body | `"{old} changed their name to {new}"` — empty/whitespace-only old or new side falls back to `"Someone"` |
+| URL | `/?action=view_contact&contact={actorUuid}` |
+| Source | [sql/fairshare-schema.sql](../sql/fairshare-schema.sql) 1948–1998; constraint + one-shot deploy [sql/display-name-change-push-schema.sql](../sql/display-name-change-push-schema.sql) |
+
+In-app: writes `contact_notifications` rows of type `display_name_changed` (with `data.old_display_name` / `data.new_display_name`). Realtime handling updates the contact list and open Contact Details hero in [js/auth.js](../js/auth.js) / [js/contacts.js](../js/contacts.js) / [js/contact-details.js](../js/contact-details.js).
+
+---
+
+## 6b. Contact updated their email or phone (profile)
+
+When the user saves a new email and/or phone on their profile (preferences or
+the sponsor share dialog), every user who lists them as a contact is notified.
+
+| Field | Value |
+|-------|-------|
+| Trigger | RPC `notify_contacts_of_profile_update(p_actor_id, p_message)`; called from [js/modals.js](../js/modals.js) (`persistProfileEmailPhone`, `savePreferences`) |
+| Recipient | All users whose `contacts` includes `p_actor_id`, excluding the actor |
+| Title | `"FairShare"` |
+| Body | `p_message` (e.g. `"{name} updated their email."`) |
+| URL | `/?action=view_contact&contact={actorUuid}` |
+| Source | [sql/fairshare-schema.sql](../sql/fairshare-schema.sql) 1909–1945 |
+
+In-app: writes `contact_notifications` rows of type `profile_updated`.
+
+---
+
+## 6c. Contact first shared or changed email/phone with you
+
+When someone saves outbound `contact_shared` data for one contact and the phone
+or email values newly apply or change (not merely turning sharing off), that
+contact gets a push. First-time sharing still inserts `contact_shares` for
+Realtime toasts while foregrounded.
+
+| Field | Value |
+|-------|-------|
+| Trigger | `saveShareWithContact` in [js/contacts.js](../js/contacts.js) and `submitSponsorShareInfoDialog` in [js/modals.js](../js/modals.js) call `sendInboundShareEmailPhonePush` ([js/utils.js](../js/utils.js)) |
+| Recipient | The `contact_id` / sponsor receiving the share |
+| Title | `APP_NAME` (`"Union"`) |
+| Body | Built by `buildInboundShareEmailPhonePushBody` — e.g. `"{name} shared their email with you."`, `"{name} updated the phone number they share with you."`, or combined first/update phrases |
+| URL | `/?action=view_contact&contact={sharerUuid}` |
+| Source | [js/utils.js](../js/utils.js) `buildInboundShareEmailPhonePushBody`, `sendInboundShareEmailPhonePush` |
 
 ---
 
@@ -146,7 +200,7 @@ When a contact uses "Suggest profile picture" via `suggest_profile_picture`.
 | Title | `"Union"` |
 | Body | `"{name} suggests this new profile picture"` |
 | URL | `/?action=suggested_picture` |
-| Source | [sql/fairshare-schema.sql](../sql/fairshare-schema.sql) 1999–2028 |
+| Source | [sql/fairshare-schema.sql](../sql/fairshare-schema.sql) 2039–2069 |
 
 ---
 
@@ -161,7 +215,7 @@ When a contact records the date you two met via `set_first_met_date`.
 | Title | `"FairShare"` |
 | Body | `"{name} says you met on {formatted date}"` |
 | URL | `/` (no deep link wired — could route to the contact view) |
-| Source | [sql/fairshare-schema.sql](../sql/fairshare-schema.sql) 1912–1961 |
+| Source | [sql/fairshare-schema.sql](../sql/fairshare-schema.sql) 1952–2002 |
 
 In-app: writes `contact_notifications` rows of type `met_date_set` with
 `data.met_date`.
@@ -212,10 +266,6 @@ In-app: also inserts a `contact_notifications` row of type
 
 These appear in the codebase but do **not** currently send pushes:
 
-- **`profile_updated`** — present in the `contact_notifications` enum and
-  handled by the realtime client in [js/auth.js](../js/auth.js) (486–487), but
-  no SQL path inserts a `profile_updated` row or calls `send_push_to_users` for
-  it. A generic "contact updated their profile" push is not emitted.
 - **Android push tokens** — the `device_push_tokens` table accepts `'android'`,
   but [js/push.js](../js/push.js) line 41 only registers tokens with
   `platform: 'ios'`. Android browser users get Web Push only.

@@ -1147,6 +1147,32 @@ function cdUpdateHeroAvatar(contactId, avatarUrl, cacheBust) {
     }
 }
 
+// Patch hero name (and placeholder initial) on Contact Details when their display name changes.
+function cdUpdateHeroDisplayName(contactId, displayName) {
+    if (!contactId) return;
+    if (typeof cdCurrentContactId === 'undefined' || cdCurrentContactId !== contactId) return;
+    const safeName = displayName || 'Unknown';
+    const row = (typeof contactsLoadedRows !== 'undefined' ? contactsLoadedRows : [])
+        .find(r => r.contact?.contact_id === contactId);
+    if (row) {
+        if (!row.profile) row.profile = {};
+        row.profile.display_name = safeName;
+    }
+    const nameEl = document.querySelector('#contactDetailsScreen .cd-hero-name');
+    if (nameEl) nameEl.textContent = safeName;
+    const heroPh = document.querySelector('#contactDetailsScreen .cd-hero-avatar-fallback');
+    if (heroPh) {
+        const initial = (safeName || '?').trim().charAt(0).toUpperCase() || '?';
+        heroPh.textContent = initial;
+    }
+    const heroImg = document.querySelector('#contactDetailsScreen img.cd-hero-avatar');
+    if (heroImg) {
+        const url = heroImg.getAttribute('src') || '';
+        const onclickAttr = `event.stopPropagation(); cdOpenAvatarLightbox('${esc(contactId)}', '${esc(url)}', '${esc(safeName)}')`;
+        heroImg.setAttribute('onclick', onclickAttr);
+    }
+}
+
 // Open the lightbox on a contact's avatar with a "Suggest a new picture"
 // action button, restoring the feature that lived on the old inline-expanded
 // contact card.

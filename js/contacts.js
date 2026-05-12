@@ -259,6 +259,26 @@ function updateContactAvatarInList(contactId, avatarUrl, cacheBust) {
     }
 }
 
+// Patch display name in the contacts list row when we learn it changed (Realtime).
+function updateContactDisplayNameInList(contactId, displayName) {
+    if (!contactId) return;
+    const safeName = displayName || 'Unknown';
+    const row = (contactsLoadedRows || []).find(r => r.contact?.contact_id === contactId);
+    if (row) {
+        if (!row.profile) row.profile = {};
+        row.profile.display_name = safeName;
+    }
+    const rowEl = document.querySelector(`.contact-row[data-contact-id="${contactId}"]`);
+    if (!rowEl) return;
+    const nameEl = rowEl.querySelector('.contact-row-name-text');
+    if (nameEl) nameEl.textContent = safeName;
+    rowEl.querySelectorAll('.btn-share-with-contact[data-contact-id], .btn-vouch-with-contact[data-contact-id]').forEach((btn) => {
+        btn.setAttribute('data-contact-name', safeName);
+    });
+    const detailPhoto = rowEl.querySelector('.contact-detail-profile-photo');
+    if (detailPhoto) detailPhoto.setAttribute('alt', safeName + ' profile');
+}
+
 async function loadContactSelfies(contactId) {
     if (contactSelfiesCache[contactId]) return contactSelfiesCache[contactId];
     try {
@@ -1880,6 +1900,10 @@ async function saveShareWithContact() {
     const saveBtn = document.getElementById('shareSaveBtn');
     if (saveBtn) saveBtn.disabled = true;
 
+    const rowBefore = (contactsLoadedRows || []).find(r => r.contact?.contact_id === shareWithContactId);
+    const prevSharedPhone = rowBefore?.sharedByMe?.shared_phone ?? null;
+    const prevSharedEmail = rowBefore?.sharedByMe?.shared_email ?? null;
+
     try {
         await db.from('contact_shared').upsert({
             user_id: currentUser.id,
@@ -1896,6 +1920,16 @@ async function saveShareWithContact() {
                 shared_type: sharedType
             });
         }
+
+        const phoneFirst = wantPhone && newlyShared.includes('phone');
+        const emailFirst = wantEmail && newlyShared.includes('email');
+        const phoneUpdate = wantPhone && !phoneFirst && String(phone || '') !== String(prevSharedPhone || '');
+        const emailUpdate = wantEmail && !emailFirst && String(email || '') !== String(prevSharedEmail || '');
+        const sharePushBody = buildInboundShareEmailPhonePushBody(
+            currentProfile?.display_name || 'Someone',
+            { phoneFirst, phoneUpdate, emailFirst, emailUpdate }
+        );
+        if (sharePushBody) sendInboundShareEmailPhonePush(shareWithContactId, sharePushBody);
 
         // Reflect locally so the dialog re-opens with the correct checkbox
         // state without needing a refetch. Note: row.shared is what THEY

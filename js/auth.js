@@ -509,6 +509,34 @@ function subscribeToContactNotifications() {
                     }
                 }
                 if (msg) showToast(msg, 'info');
+            } else if (payload.new?.notification_type === 'display_name_changed') {
+                const fromId = payload.new?.from_user_id;
+                const msg = payload.new?.message;
+                const data = payload.new?.data;
+                let newName = data && typeof data.new_display_name === 'string' ? data.new_display_name : null;
+                if (fromId && !newName) {
+                    try {
+                        const { data: fresh } = await db.from('profiles')
+                            .select('display_name')
+                            .eq('id', fromId)
+                            .single();
+                        newName = fresh?.display_name || null;
+                    } catch (e) {
+                        console.warn('refresh contact display name failed:', e);
+                    }
+                }
+                if (fromId && newName) {
+                    if (typeof profileCache !== 'undefined' && profileCache[fromId]) {
+                        profileCache[fromId].name = newName;
+                    }
+                    if (typeof updateContactDisplayNameInList === 'function') {
+                        updateContactDisplayNameInList(fromId, newName);
+                    }
+                    if (typeof cdUpdateHeroDisplayName === 'function') {
+                        cdUpdateHeroDisplayName(fromId, newName);
+                    }
+                }
+                if (msg) showToast(msg, 'info');
             } else {
                 const msg = payload.new?.message;
                 if (msg) showToast(msg, 'info');

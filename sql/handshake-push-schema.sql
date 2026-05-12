@@ -40,7 +40,8 @@ ALTER TABLE public.contact_notifications
     'nearby_alert',
     'new_selfie',
     'location_share_started',
-    'new_contact'
+    'new_contact',
+    'display_name_changed'
   ));
 
 
