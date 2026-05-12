@@ -417,14 +417,32 @@ async function loadLocationShares() {
 
 async function claimUnownedLocationSharesForThisDevice() {
     if (!currentUser) return;
+    const meta = getLocationSharingSourceMetadata();
+    const instanceId = meta.source_instance_id;
+    if (!instanceId) return;
+    const nowIso = new Date().toISOString();
+    const notExpired = 'expires_at.is.null,expires_at.gt.' + nowIso;
     try {
-        const { error } = await db
+        // (1) Rows never bound to a device. (2) Rows still tied to another
+        // install's source_instance_id (e.g. after delete/reinstall: new
+        // localStorage id, DB still has the old UUID). Without (2),
+        // hasAnyActiveLocationShares() stays false while contact switches stay
+        // ON, so native sharing and the iOS "Always" upgrade never run until
+        // the user toggles a share.
+        const { error: e1 } = await db
             .from('location_shares')
-            .update(getLocationSharingSourceMetadata())
+            .update(meta)
             .eq('from_user_id', currentUser.id)
             .is('source_instance_id', null)
-            .or('expires_at.is.null,expires_at.gt.' + new Date().toISOString());
-        if (error) throw error;
+            .or(notExpired);
+        if (e1) throw e1;
+        const { error: e2 } = await db
+            .from('location_shares')
+            .update(meta)
+            .eq('from_user_id', currentUser.id)
+            .neq('source_instance_id', instanceId)
+            .or(notExpired);
+        if (e2) throw e2;
         await loadLocationShares();
     } catch (e) {
         console.warn('claimUnownedLocationSharesForThisDevice failed:', e);

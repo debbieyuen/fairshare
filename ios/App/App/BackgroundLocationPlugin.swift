@@ -13,6 +13,12 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
     private var tokenRefreshInFlight = false
     private var locationUploadEnabled = false
     private var uploadRetryWorkItem: DispatchWorkItem?
+    /// iOS 13+ never offers "Always" on the first location alert; the system only
+    /// shows the upgrade sheet after `requestAlwaysAuthorization()` is called
+    /// while status is already `authorizedWhenInUse`. We set this when we have
+    /// invoked that upgrade request during the current sharing session so the
+    /// delegate does not stack duplicate prompts; reset in `stop()`.
+    private var didRequestAlwaysUpgradeThisSharingSession = false
 
     // Queue of pending one-shot getCurrentPosition calls waiting on a fresh fix.
     // Each entry pairs a call with the previous fix timestamp it considers
@@ -83,8 +89,12 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
 
             switch status {
             case .notDetermined:
-                self.locationManager?.requestAlwaysAuthorization()
+                // First prompt is always When-In-Use only; the delegate chains
+                // `requestAlwaysAuthorization()` after the user grants so they see
+                // Apple's second "Change to Always Allow" sheet.
+                self.locationManager?.requestWhenInUseAuthorization()
             case .authorizedWhenInUse:
+                self.didRequestAlwaysUpgradeThisSharingSession = true
                 self.locationManager?.requestAlwaysAuthorization()
             case .denied, .restricted:
                 NSLog("[BackgroundLocation] start(): Location services are denied/restricted. User must enable in Settings -> Privacy -> Location Services -> Union.")
@@ -104,6 +114,7 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.locationUploadEnabled = false
+            self.didRequestAlwaysUpgradeThisSharingSession = false
             self.pendingUploadLocation = nil
             self.uploadRetryWorkItem?.cancel()
             self.uploadRetryWorkItem = nil
@@ -237,6 +248,11 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
     public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         let status = manager.authorizationStatus
         NSLog("[BackgroundLocation] authorization changed -> \(describe(status))")
+        if status == .authorizedWhenInUse, locationUploadEnabled,
+           !didRequestAlwaysUpgradeThisSharingSession {
+            didRequestAlwaysUpgradeThisSharingSession = true
+            manager.requestAlwaysAuthorization()
+        }
         if status == .authorizedAlways || status == .authorizedWhenInUse {
             applyBackgroundUpdatesIfAuthorized()
             manager.startUpdatingLocation()

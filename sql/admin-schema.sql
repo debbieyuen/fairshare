@@ -110,6 +110,98 @@ begin
 end;
 $$;
 
+-- Resolve a user from a single pasted value: UUID, email, or exact display_name.
+create or replace function public.admin_lookup_user(p_query text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_admin_id uuid := 'a8253eea-e76a-46d1-a92d-6fe36911f038';
+  v_q text := trim(p_query);
+  v_target_id uuid;
+  v_target_email text;
+  v_display_name text;
+  v_sponsor_name text;
+  v_contact_count int;
+  v_profile_count int;
+begin
+  if auth.uid() is null or auth.uid() != v_admin_id then
+    raise exception 'Unauthorized: admin access required';
+  end if;
+
+  if v_q = '' then
+    return jsonb_build_object('error', 'Enter a display name, email, or user ID.');
+  end if;
+
+  -- 1) User ID (UUID)
+  if v_q ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+    begin
+      select u.id, u.email into v_target_id, v_target_email
+        from auth.users u
+       where u.id = v_q::uuid;
+    exception when invalid_text_representation then
+      v_target_id := null;
+      v_target_email := null;
+    end;
+  end if;
+
+  -- 2) Email
+  if v_target_id is null and position('@' in v_q) > 0 then
+    select u.id, u.email into v_target_id, v_target_email
+      from auth.users u
+     where lower(u.email) = lower(v_q);
+  end if;
+
+  -- 3) Exact display name
+  if v_target_id is null then
+    select count(*)::int into v_profile_count
+      from public.profiles p
+     where p.display_name = v_q;
+
+    if v_profile_count > 1 then
+      return jsonb_build_object(
+        'error',
+        'Multiple accounts share that display name; use email or user ID instead.'
+      );
+    end if;
+
+    if v_profile_count = 1 then
+      select p.id into v_target_id
+        from public.profiles p
+       where p.display_name = v_q;
+
+      select u.email into v_target_email
+        from auth.users u
+       where u.id = v_target_id;
+    end if;
+  end if;
+
+  if v_target_id is null then
+    return jsonb_build_object('error', 'No user found matching: ' || v_q);
+  end if;
+
+  select p.display_name, s.display_name
+    into v_display_name, v_sponsor_name
+    from public.profiles p
+    left join public.profiles s on s.id = p.sponsor_id
+   where p.id = v_target_id;
+
+  select count(*)::int into v_contact_count
+    from public.contacts c
+   where c.user_id = v_target_id;
+
+  return jsonb_build_object(
+    'id', v_target_id,
+    'email', coalesce(v_target_email, ''),
+    'display_name', v_display_name,
+    'sponsor_name', v_sponsor_name,
+    'contact_count', coalesce(v_contact_count, 0)
+  );
+end;
+$$;
+
 -- Delete an account (and its auth user) by email.
 -- Mirrors admin_delete_profile but keys off auth.users.email instead of profile display_name.
 create or replace function public.admin_delete_account_by_email(p_email text)
@@ -274,3 +366,4 @@ end;
 $$;
 
 grant execute on function public.admin_get_summary_stats() to authenticated;
+grant execute on function public.admin_lookup_user(text) to authenticated;

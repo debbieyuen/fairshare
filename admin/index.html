@@ -288,6 +288,19 @@
         <p class="admin-stats-foot" id="adminStatsFoot">For “Notify if nearby”, <strong>Total</strong> is contact rows with the setting on (one direction per row). <strong>Last week</strong> and <strong>Last day</strong> count <em>nearby alerts</em> sent in that window.</p>
     </div>
 
+    <!-- User lookup -->
+    <div class="card">
+        <h2>User lookup</h2>
+        <p style="font-size:0.82rem;color:var(--dark-gray);margin:-0.5rem 0 0.75rem 0;">
+            Paste a display name (exact match), email address, or user UUID.
+        </p>
+        <form class="input-row" onsubmit="event.preventDefault(); lookupUser();">
+            <input type="text" id="userLookupInput" placeholder="Display name, email, or UUID" autocomplete="off">
+            <button type="submit" class="btn btn-primary btn-sm">Look up</button>
+        </form>
+        <div class="result-box" id="userLookupResult"></div>
+    </div>
+
     <!-- Delete Profile -->
     <div class="card">
         <h2>Delete Profile</h2>
@@ -460,6 +473,35 @@ async function loadAdminStats() {
         row('Suggest profile pic', sp.total, sp.week, sp.day) +
         row('Location shares', ls.total, ls.week, ls.day) +
         row('Notify if nearby', nn.total, nn.week, nn.day);
+}
+
+// --- User lookup (display name, email, or UUID) ---
+
+async function lookupUser() {
+    const q = document.getElementById('userLookupInput').value.trim();
+    const resultBox = document.getElementById('userLookupResult');
+    if (!q) return;
+
+    const { data, error } = await db.rpc('admin_lookup_user', { p_query: q });
+
+    if (error) {
+        resultBox.className = 'result-box visible error';
+        resultBox.textContent = 'RPC error: ' + error.message;
+        return;
+    }
+    if (data?.error) {
+        resultBox.className = 'result-box visible error';
+        resultBox.textContent = data.error;
+        return;
+    }
+
+    resultBox.className = 'result-box visible';
+    resultBox.innerHTML =
+        `<span class="label">UUID:</span> <span class="value">${esc(data.id)}</span><br>` +
+        `<span class="label">Display name:</span> <span class="value">${esc(data.display_name || '(no profile)')}</span><br>` +
+        `<span class="label">Email:</span> <span class="value">${esc(data.email || '—')}</span><br>` +
+        `<span class="label">Sponsor:</span> <span class="value">${esc(data.sponsor_name || '—')}</span><br>` +
+        `<span class="label">Contacts:</span> <span class="value">${typeof data.contact_count === 'number' ? data.contact_count : '—'}</span>`;
 }
 
 // --- Profile lookup & delete ---
