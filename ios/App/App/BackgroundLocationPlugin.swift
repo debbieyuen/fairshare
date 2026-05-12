@@ -13,6 +13,11 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
     private var tokenRefreshInFlight = false
     private var locationUploadEnabled = false
     private var uploadRetryWorkItem: DispatchWorkItem?
+    /// While sharing, Core Location may not call `didUpdateLocations` for a long
+    /// time when `distanceFilter` suppresses callbacks for a stationary device.
+    /// Viewers key off `user_locations.updated_at`, so we periodically re-post the
+    /// last good fix with a fresh `updated_at` (same cadence as JS foreground poll).
+    private var stationaryUploadHeartbeatTimer: Timer?
     /// iOS 13+ never offers "Always" on the first location alert; the system only
     /// shows the upgrade sheet after `requestAlwaysAuthorization()` is called
     /// while status is already `authorizedWhenInUse`. We set this when we have
@@ -52,6 +57,8 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
     // check above is the main defense against stale-cache replay.
     private let minAcceptableHorizontalAccuracy: CLLocationAccuracy = 0
     private let locationUploadRetryDelay: TimeInterval = 15
+    /// Keep `js/constants.js` `APP_TIMING.FOREGROUND_LOCATION_POLL_MS` in sync.
+    private let stationaryLocationHeartbeatInterval: TimeInterval = 60
 
     private struct SupabaseLocationConfig: Codable {
         let supabaseUrl: String
@@ -105,6 +112,7 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
             self.applyBackgroundUpdatesIfAuthorized()
             self.locationManager?.startUpdatingLocation()
             NSLog("[BackgroundLocation] startUpdatingLocation called")
+            self.scheduleStationaryLocationHeartbeat()
             self.logLocationRuntimeState(context: "start")
             call.resolve()
         }
@@ -118,6 +126,7 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
             self.pendingUploadLocation = nil
             self.uploadRetryWorkItem?.cancel()
             self.uploadRetryWorkItem = nil
+            self.invalidateStationaryLocationHeartbeat()
             self.locationManager?.stopUpdatingLocation()
             self.logLocationRuntimeState(context: "stop")
             call.resolve()
@@ -328,6 +337,31 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
               let config = try? JSONDecoder().decode(SupabaseLocationConfig.self, from: data)
         else { return }
         supabaseConfig = config
+    }
+
+    private func scheduleStationaryLocationHeartbeat() {
+        invalidateStationaryLocationHeartbeat()
+        let timer = Timer(timeInterval: stationaryLocationHeartbeatInterval, repeats: true) { [weak self] _ in
+            self?.uploadStationaryHeartbeatIfPossible()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        stationaryUploadHeartbeatTimer = timer
+    }
+
+    private func invalidateStationaryLocationHeartbeat() {
+        stationaryUploadHeartbeatTimer?.invalidate()
+        stationaryUploadHeartbeatTimer = nil
+    }
+
+    /// Re-upsert the latest coordinates so `updated_at` stays fresh for viewers
+    /// when the device has not moved enough to trigger `didUpdateLocations`.
+    private func uploadStationaryHeartbeatIfPossible() {
+        guard locationUploadEnabled else { return }
+        guard let location = lastPosition else { return }
+        guard location.horizontalAccuracy > minAcceptableHorizontalAccuracy else { return }
+        NSLog("[BackgroundLocation] stationary heartbeat upload lat=\(location.coordinate.latitude) lng=\(location.coordinate.longitude) fixAge=\(String(format: "%.1f", Date().timeIntervalSince(location.timestamp)))s")
+        locationManager?.requestLocation()
+        postLocationToSupabase(location)
     }
 
     private func postLocationToSupabase(_ location: CLLocation) {
