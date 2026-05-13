@@ -14,14 +14,44 @@ function canUseWebPush() {
 }
 
 function canUseNativePush() {
-    return IS_NATIVE && window.Capacitor?.Plugins?.PushNotifications;
+    if (!IS_NATIVE || !window.Capacitor?.Plugins?.PushNotifications) return false;
+    // Android: @capacitor/push-notifications uses FCM; without google-services.json
+    // FirebaseApp is never initialized and PushNotifications.register() crashes
+    // the CapacitorPlugins thread. MainActivity sets __UNION_ANDROID_FCM__ when the
+    // file is present (BuildConfig.HAS_GOOGLE_SERVICES).
+    if (typeof NATIVE_PLATFORM !== 'undefined' && NATIVE_PLATFORM === 'android') {
+        if (window.__UNION_ANDROID_FCM__ !== true) return false;
+    }
+    return true;
 }
 
 function canUsePush() {
     return canUseWebPush() || canUseNativePush();
 }
 
-// ---- Native (APNs via Capacitor) ----
+function getNativePushPlatform() {
+    return NATIVE_PLATFORM === 'android' ? 'android' : 'ios';
+}
+
+async function ensureAndroidPushChannel(PushNotifications) {
+    if (getNativePushPlatform() !== 'android' || typeof PushNotifications.createChannel !== 'function') return;
+    try {
+        await PushNotifications.createChannel({
+            id: 'default',
+            name: APP_NAME,
+            description: APP_NAME + ' notifications',
+            importance: 4,
+            visibility: 1,
+            lights: true,
+            lightColor: '#3A7CA5',
+            vibration: true,
+        });
+    } catch (e) {
+        console.warn('[push] Failed to create Android notification channel:', e);
+    }
+}
+
+// ---- Native (APNs/FCM via Capacitor) ----
 
 let _nativePushListenersRegistered = false;
 
@@ -33,12 +63,13 @@ async function subscribeToNativePush() {
         _nativePushListenersRegistered = true;
 
         await PushNotifications.addListener('registration', async (token) => {
-            console.log('[push] APNs device token:', token.value);
+            const platform = getNativePushPlatform();
+            console.log('[push] Native device token:', platform, token.value);
             try {
                 const { error } = await db.from('device_push_tokens').upsert({
                     user_id: currentUser.id,
                     token: token.value,
-                    platform: 'ios',
+                    platform,
                 }, { onConflict: 'user_id,token' });
                 if (error) console.error('[push] Token upsert error:', error);
                 else console.log('[push] Device token saved successfully');
@@ -58,10 +89,12 @@ async function subscribeToNativePush() {
         await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
             console.log('[push] Notification tapped:', JSON.stringify(action));
             const data = action.notification?.data || {};
-            const url = data.url || '/';
+            const url = data.url || action.notification?.link || '/';
             handleNotificationNavigation(url);
         });
     }
+
+    await ensureAndroidPushChannel(PushNotifications);
 
     const permResult = await PushNotifications.requestPermissions();
     console.log('[push] Permission result:', JSON.stringify(permResult));

@@ -18,6 +18,7 @@ async function init() {
     if (authSubtitle) authSubtitle.textContent = APP_TAG_LINE;
 
     console.log('[init] Starting…');
+    void lockAppToPortrait();
     if (!db) {
         showToast('Could not connect to database. Check Supabase config.', 'error');
         showAuth();

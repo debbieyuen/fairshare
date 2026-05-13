@@ -5,6 +5,10 @@ const IS_NATIVE = typeof window !== 'undefined'
   && window.Capacitor !== undefined
   && window.Capacitor.isNativePlatform();
 
+const NATIVE_PLATFORM = IS_NATIVE && typeof window.Capacitor.getPlatform === 'function'
+  ? window.Capacitor.getPlatform()
+  : 'web';
+
 // Canonical public web origin. Used whenever we need to mint a URL that will
 // be opened *outside* this client (QR codes, share links, vCards, push deep
 // links, etc.). On the iOS Capacitor shell window.location.origin resolves to

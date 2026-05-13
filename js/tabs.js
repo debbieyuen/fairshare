@@ -1,4 +1,7 @@
 async function switchTab(tabName) {
+    if (tabName !== 'chat' && typeof unbindChatViewportListeners === 'function') {
+        unbindChatViewportListeners();
+    }
     activeTab = tabName;
     document.querySelectorAll('.tab-btn').forEach(btn =>
         btn.classList.toggle('active', btn.dataset.tab === tabName));

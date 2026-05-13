@@ -10,6 +10,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return true
     }
 
+    /// Let the Capacitor bridge control allowed orientations (used by @capacitor/screen-orientation).
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        guard let root = window?.rootViewController as? CAPBridgeViewController else {
+            return .portrait
+        }
+        return UIInterfaceOrientationMask(rawValue: root.supportedInterfaceOrientations.rawValue)
+    }
+
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: deviceToken)
     }

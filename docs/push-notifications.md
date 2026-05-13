@@ -21,15 +21,16 @@ All pushes flow through the same plumbing.
   themselves.
 - **Web Push channel:** [supabase/functions/send-push/index.ts](../supabase/functions/send-push/index.ts)
   — fans out to `push_subscriptions` rows via the `web-push` library.
-- **APNs channel:** [supabase/functions/send-push-apns/index.ts](../supabase/functions/send-push-apns/index.ts)
-  — fans out to `device_push_tokens` via APNs HTTP/2. Only active if
+- **Native app channel:** [supabase/functions/send-push-apns/index.ts](../supabase/functions/send-push-apns/index.ts)
+  — fans out to `device_push_tokens`, routing iOS tokens through APNs HTTP/2
+  and Android tokens through Firebase Cloud Messaging HTTP v1. Only active if
   [sql/apns-push-schema.sql](../sql/apns-push-schema.sql) has been applied (it
   overrides `send_push_to_group` / `send_push_to_users` to also POST to the
-  APNs Edge Function).
+  native-device Edge Function).
 - **Opt-in:** All pushes are gated by `profiles.push_notifications` for the
   recipient (NULL is treated as enabled).
 - **Tap routing:** Deep links are handled by `handleNotificationNavigation` in
-  [js/push.js](../js/push.js) (178–220). Service-worker fallback for Web Push
+  [js/push.js](../js/push.js). Service-worker fallback for Web Push
   is in [sw.js](../sw.js) (71–103).
 
 ---
@@ -259,16 +260,6 @@ contact.
 
 In-app: also inserts a `contact_notifications` row of type
 `location_share_started`.
-
----
-
-## Reserved / not currently wired
-
-These appear in the codebase but do **not** currently send pushes:
-
-- **Android push tokens** — the `device_push_tokens` table accepts `'android'`,
-  but [js/push.js](../js/push.js) line 41 only registers tokens with
-  `platform: 'ios'`. Android browser users get Web Push only.
 
 ---
 

@@ -1632,6 +1632,7 @@ async function _openSelfieOverlay(contactId, bannerName) {
         });
         video.srcObject = newContactSelfieStream;
         await video.play();
+        await unlockNativeOrientationForSelfiePreview();
     } catch (e) {
         console.error('Selfie camera error:', e);
         showToast('Camera unavailable: ' + (e.message || 'error'), 'error');
@@ -1655,6 +1656,7 @@ function closeSelfieOverlay() {
     newContactSelfieId = null;
     newContactSelfieContactName = '';
     contactSelfieId = null;
+    void lockAppToPortrait();
     if (newCid) {
         openContactDetailsById(newCid);
     }
@@ -1788,7 +1790,7 @@ function getGPSLocation(options) {
     const maxAgeMs = (options && Number.isFinite(options.maxAgeMs))
         ? options.maxAgeMs
         : NATIVE_GPS_CACHE_MAX_AGE_MS;
-    if (IS_NATIVE) {
+    if (IS_NATIVE && NATIVE_PLATFORM !== 'android') {
         if (
             nativeLocationLastPosition &&
             (Date.now() - nativeLocationLastAt) < maxAgeMs

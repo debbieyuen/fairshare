@@ -25,7 +25,7 @@ function getLocationSharingInstanceId() {
 }
 
 function getLocationSharingPlatform() {
-    if (IS_NATIVE) return 'ios';
+    if (IS_NATIVE) return NATIVE_PLATFORM === 'android' ? 'android' : 'ios';
     return 'web';
 }
 
@@ -199,7 +199,7 @@ async function getNativeLocationSharingConfig() {
 }
 
 async function startNativeLocationSharing() {
-    if (!IS_NATIVE) return;
+    if (!IS_NATIVE || NATIVE_PLATFORM === 'android') return;
     try {
         const plugin = Capacitor.Plugins.BackgroundLocation;
         if (!plugin) {
@@ -278,7 +278,7 @@ function stopLocationSharingUpdates() {
 
     // Always tell native when there is no active sharing. One-shot GPS lookups
     // should never keep the direct Supabase background uploader armed.
-    if (IS_NATIVE) {
+    if (IS_NATIVE && NATIVE_PLATFORM !== 'android') {
         try {
             const plugin = Capacitor.Plugins.BackgroundLocation;
             if (plugin && !hasAnyNearbyContacts()) {

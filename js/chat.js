@@ -1,7 +1,49 @@
 const CHAT_PAGE_SIZE = 25;
 
+/** Bottom Y of the visible layout viewport (accounts for on-screen keyboard on Android WebView). */
+function getVisibleViewportBottom() {
+    if (window.visualViewport) {
+        return window.visualViewport.offsetTop + window.visualViewport.height;
+    }
+    return window.innerHeight;
+}
+
+let _chatSizeTimer = null;
+let _chatViewportCleanup = null;
+
+function scheduleSizeChatContainer() {
+    clearTimeout(_chatSizeTimer);
+    _chatSizeTimer = setTimeout(() => {
+        _chatSizeTimer = null;
+        sizeChatContainer();
+    }, 80);
+}
+
+function unbindChatViewportListeners() {
+    if (typeof _chatViewportCleanup === 'function') {
+        _chatViewportCleanup();
+        _chatViewportCleanup = null;
+    }
+}
+
+function bindChatViewportListeners() {
+    unbindChatViewportListeners();
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onVv = () => {
+        if (activeTab === 'chat') scheduleSizeChatContainer();
+    };
+    vv.addEventListener('resize', onVv);
+    vv.addEventListener('scroll', onVv);
+    _chatViewportCleanup = () => {
+        vv.removeEventListener('resize', onVv);
+        vv.removeEventListener('scroll', onVv);
+    };
+}
+
 async function renderChatTab() {
     if (!selectedGroup) return;
+    unbindChatViewportListeners();
     const content = document.getElementById('tabContent');
 
     content.innerHTML = `
@@ -25,6 +67,7 @@ async function renderChatTab() {
 
     // Size the chat container to fill remaining viewport
     sizeChatContainer();
+    bindChatViewportListeners();
 
     // Build profile cache from current members
     await buildProfileCache();
@@ -39,14 +82,15 @@ function sizeChatContainer() {
     const el = document.getElementById('chatContainer');
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    // Fill from the top of the container to the bottom of the viewport, with a small margin
-    const available = window.innerHeight - rect.top - 16;
+    // Use visual viewport when available so height tracks the IME on Android WebView
+    const bottom = getVisibleViewportBottom();
+    const available = bottom - rect.top - 16;
     el.style.height = Math.max(available, 300) + 'px';
 }
 
 // Resize chat on window resize
 window.addEventListener('resize', () => {
-    if (activeTab === 'chat') sizeChatContainer();
+    if (activeTab === 'chat') scheduleSizeChatContainer();
 });
 
 async function buildProfileCache() {
