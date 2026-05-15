@@ -237,7 +237,13 @@ async function handleMeetScan(token) {
 
         const contactName = data?.contact_name || 'New contact';
         const contactId = data?.contact_id || null;
-        meetSuccess(contactName, contactId);
+        const serverAlready = Boolean(data?.already_contact);
+        const clientAlready = Boolean(
+            contactId
+            && typeof contactsLoadedRows !== 'undefined'
+            && contactsLoadedRows.some((r) => r.contact?.contact_id === contactId)
+        );
+        meetSuccess(contactName, contactId, serverAlready || clientAlready);
     } catch (e) {
         showToast('Meet error: ' + e.message, 'error');
         meetHandled = false;
@@ -245,7 +251,7 @@ async function handleMeetScan(token) {
     }
 }
 
-function meetSuccess(contactName, contactId = null) {
+function meetSuccess(contactName, contactId = null, alreadyContact = false) {
     // Vibrate the phone
     if (navigator.vibrate) {
         navigator.vibrate([200, 100, 200]);
@@ -259,18 +265,20 @@ function meetSuccess(contactName, contactId = null) {
     flash.classList.add('active');
     flash.addEventListener('animationend', () => flash.classList.remove('active'), { once: true });
 
-    // Show success in the overlay
     document.getElementById('meetScanHint').textContent = '';
-    const qrBox = document.getElementById('meetQrBox');
-    qrBox.outerHTML = `<div class="meet-success">✓ Connected with ${esc(contactName)}!</div>`;
+    if (!alreadyContact) {
+        const qrBox = document.getElementById('meetQrBox');
+        if (qrBox) {
+            qrBox.outerHTML = `<div class="meet-success">✓ Connected with ${esc(contactName)}!</div>`;
+        }
+        showToast('Contact added: ' + contactName, 'success');
+    }
 
-    showToast('Contact added: ' + contactName, 'success');
-
-    // Auto-close after a short delay, then open selfie overlay for new contact.
+    const delayMs = alreadyContact ? 0 : 2500;
     setTimeout(() => {
         closeMeetScreen();
         openNewContactSelfieOverlay(contactId, contactName);
-    }, 2500);
+    }, delayMs);
 }
 
 function copyMeetLink() {

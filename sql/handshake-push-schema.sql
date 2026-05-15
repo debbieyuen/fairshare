@@ -59,6 +59,7 @@ DECLARE
   v_admitted boolean;
   v_is_new_account boolean;
   v_push_msg text;
+  v_already_contact boolean;
 BEGIN
   -- Look up the meet request by token, locking the row so a concurrent
   -- call cannot also pass the used_by check before we mark it used.
@@ -79,6 +80,11 @@ BEGIN
   IF v_meet_request.user_id = v_caller_id THEN
     RAISE EXCEPTION 'Cannot create a contact with yourself';
   END IF;
+
+  SELECT EXISTS (
+    SELECT 1 FROM public.contacts
+    WHERE user_id = v_caller_id AND contact_id = v_meet_request.user_id
+  ) INTO v_already_contact;
 
   -- Mark the token as used
   UPDATE public.meet_requests
@@ -189,13 +195,15 @@ BEGIN
       'contact_name', COALESCE(v_contact_name, 'Unknown'),
       'group_id', v_meet_request.group_id,
       'group_name', v_group_name,
-      'admitted', COALESCE(v_admitted, false)
+      'admitted', COALESCE(v_admitted, false),
+      'already_contact', COALESCE(v_already_contact, false)
     );
   END IF;
 
   RETURN json_build_object(
     'contact_id', v_meet_request.user_id,
-    'contact_name', COALESCE(v_contact_name, 'Unknown')
+    'contact_name', COALESCE(v_contact_name, 'Unknown'),
+    'already_contact', COALESCE(v_already_contact, false)
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

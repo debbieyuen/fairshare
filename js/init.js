@@ -505,7 +505,12 @@ async function handlePendingMeet() {
                     showToast(`You've been sponsored to join "${data.group_name}"! Awaiting group endorsement.`, 'success');
                 }
             } else {
-                showToast(`Connected with ${contactName}!`, 'success');
+                const alreadyContact = Boolean(data?.already_contact)
+                    || (data?.contact_id && typeof contactsLoadedRows !== 'undefined'
+                        && contactsLoadedRows.some((r) => r.contact?.contact_id === data.contact_id));
+                if (!alreadyContact) {
+                    showToast(`Connected with ${contactName}!`, 'success');
+                }
             }
         }
     } catch (e) {
