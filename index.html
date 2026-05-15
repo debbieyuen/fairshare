@@ -36,13 +36,13 @@
 
 <!-- ===== HEADER ===== -->
 <div class="header">
-    <button type="button" class="header-icon-btn header-heart-btn" onclick="navigateTo('globe')" title="Globe" aria-label="Globe">❤️</button>
+    <button type="button" class="header-icon-btn header-globe-btn" onclick="navigateTo('globe')" title="Globe" aria-label="Globe"><i data-lucide="globe" aria-hidden="true"></i></button>
     <span class="user-name" id="userDisplay" onclick="navigateTo('profile')" title="My Profile"></span>
     <div class="header-right">
         <div class="header-menu-wrap">
             <button type="button" id="headerAvatarBtn" class="header-avatar-btn" onclick="toggleHeaderMenu(event)" aria-label="Account menu" aria-haspopup="menu" aria-expanded="false" title="Account">
                 <img id="headerAvatar" class="header-avatar-img hidden" src="" alt="">
-                <span id="headerAvatarFallback" class="header-avatar-fallback" aria-hidden="true">👤</span>
+                <span id="headerAvatarFallback" class="header-avatar-fallback" aria-hidden="true"><i data-lucide="user-round" aria-hidden="true"></i></span>
             </button>
             <div id="headerMenu" class="header-menu hidden" role="menu" aria-labelledby="headerAvatarBtn">
                 <button type="button" class="header-menu-item" role="menuitem" onclick="onHeaderMenuClick('profile')">My Profile</button>
@@ -114,7 +114,7 @@
                 Scan the QR code on their app.
             </p>
             <button type="button" class="btn btn-primary auth-signup-gate-btn" onclick="openAuthScanOverlay()">
-                <span class="auth-scan-btn-icon" aria-hidden="true">📷</span> Scan QR
+                <span class="auth-scan-btn-icon" aria-hidden="true"><i data-lucide="qr-code" aria-hidden="true"></i></span> Scan QR
             </button>
         </div>
         <div id="signupFields">
@@ -155,7 +155,7 @@
         <div id="contactsScreen">
             <div class="contacts-toolbar">
                 <div class="contacts-search-wrap">
-                    <svg class="contacts-search-icon" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="7"/><line x1="15.5" y1="15.5" x2="21" y2="21"/></svg>
+                    <i class="contacts-search-icon" data-lucide="search" aria-hidden="true"></i>
                     <input
                         type="search"
                         id="contactsSearchInput"
@@ -168,7 +168,7 @@
                         id="contactsSearchClearBtn"
                         class="contacts-search-clear hidden"
                         aria-label="Clear search">
-                        ✕
+                        <i data-lucide="x" aria-hidden="true"></i>
                     </button>
                 </div>
                 <button
@@ -178,7 +178,7 @@
                     aria-label="Change sort order"
                     title="Sort contacts">
                     <span class="contacts-sort-label" id="contactsSortLabel">Met</span>
-                    <span class="contacts-sort-arrow">▾</span>
+                    <span class="contacts-sort-arrow"><i data-lucide="chevron-down" aria-hidden="true"></i></span>
                 </button>
             </div>
             <div class="contacts-list-wrap">
@@ -209,7 +209,7 @@
                 <div class="card balance-card group-name-link" onclick="showGroupsList()" style="display:flex;align-items:center;">
                     <div class="group-header-center">
                         <div class="group-avatar-wrap group-header-avatar-wrap" onclick="onGroupLogoClick(event)" title="Click to change group logo">
-                            <div id="groupAvatarImg" class="group-avatar-placeholder" aria-label="Group logo">👥</div>
+                            <div id="groupAvatarImg" class="group-avatar-placeholder" aria-label="Group logo"><i data-lucide="users-round" aria-hidden="true"></i></div>
                         </div>
                         <div class="balance-amount" id="groupNameDisplay"></div>
                     </div>
@@ -219,16 +219,16 @@
                 <!-- Tab bar -->
                 <div class="tab-bar" id="tabBar">
                     <button class="tab-btn active" data-tab="money" onclick="switchTab('money')">
-                        <span class="tab-icon">🪙</span><span class="tab-label"> Credits</span>
+                        <span class="tab-icon"><i data-lucide="coins" aria-hidden="true"></i></span><span class="tab-label"> Credits</span>
                     </button>
                     <button class="tab-btn" data-tab="members" onclick="switchTab('members')">
-                        <span class="tab-icon">👥</span><span class="tab-label"> Members</span>
+                        <span class="tab-icon"><i data-lucide="users" aria-hidden="true"></i></span><span class="tab-label"> Members</span>
                     </button>
                     <button class="tab-btn" data-tab="constitution" onclick="switchTab('constitution')">
-                        <span class="tab-icon">📄</span><span class="tab-label"> Docs</span>
+                        <span class="tab-icon"><i data-lucide="file-text" aria-hidden="true"></i></span><span class="tab-label"> Docs</span>
                     </button>
                     <button class="tab-btn" data-tab="chat" onclick="switchTab('chat')">
-                        <span class="tab-icon">💬</span><span class="tab-label"> Chat</span>
+                        <span class="tab-icon"><i data-lucide="messages-square" aria-hidden="true"></i></span><span class="tab-label"> Chat</span>
                     </button>
                 </div>
 
@@ -266,8 +266,11 @@
                 <div id="globeEmptyHint" class="globe-empty-hint hidden">No selfie locations yet. Take a selfie with someone to see them here.</div>
             </div>
             <div class="globe-stats-panel">
+                <div id="globeSharingLine" class="globe-stats-sharing"></div>
                 <div id="globeCitiesLine" class="globe-stats-cities"></div>
-                <div id="globeStatsList" class="globe-stats-list"></div>
+                <table class="globe-stats-table">
+                    <tbody id="globeStatsTableBody"></tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -275,14 +278,14 @@
     <!-- ===== BOTTOM BAR ===== -->
     <div class="bottom-bar" id="bottomBar">
         <button type="button" class="bottom-bar-btn active" data-view="contacts" onclick="navigateTo('contacts')" aria-label="Contacts">
-            <svg class="bottom-bar-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
+            <i class="bottom-bar-lucide" data-lucide="user-round" aria-hidden="true"></i>
             <span class="bottom-bar-label">Contacts</span>
         </button>
         <button type="button" class="bottom-bar-btn bottom-bar-btn-center" onclick="openMeetScreen()" aria-label="Handshake">
-            <span class="bottom-bar-handshake">🤝</span>
+            <span class="bottom-bar-handshake"><i data-lucide="heart-handshake" aria-hidden="true"></i></span>
         </button>
         <button type="button" class="bottom-bar-btn" data-view="groups" onclick="navigateTo('groups')" aria-label="Groups">
-            <svg class="bottom-bar-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 11c1.66 0 3-1.34 3-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm8 0c1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3 1.34 3 3 3zM8 13c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+            <i class="bottom-bar-lucide" data-lucide="users-round" aria-hidden="true"></i>
             <span class="bottom-bar-label">Groups</span>
         </button>
     </div>
@@ -295,13 +298,13 @@
 <div id="newContactSelfieOverlay" class="new-contact-selfie-overlay hidden">
     <video id="newContactSelfieVideo" autoplay playsinline muted class="new-contact-selfie-video"></video>
     <div class="new-contact-selfie-banner" id="newContactSelfieBanner">Take a selfie with your new contact!</div>
-    <button class="new-contact-selfie-skip" id="newContactSelfieSkipBtn" onclick="closeNewContactSelfieOverlay({navigate:true})">✕</button>
-    <button class="new-contact-selfie-capture" id="newContactSelfieCaptureBtn" onclick="captureContactSelfie()">📸</button>
+    <button class="new-contact-selfie-skip" id="newContactSelfieSkipBtn" onclick="closeNewContactSelfieOverlay({navigate:true})"><i data-lucide="x" aria-hidden="true"></i></button>
+    <button class="new-contact-selfie-capture" id="newContactSelfieCaptureBtn" onclick="captureContactSelfie()"><i data-lucide="camera" aria-hidden="true"></i></button>
 </div>
 
 <!-- ===== MEET / QR CONTACT EXCHANGE OVERLAY ===== -->
 <div id="meetOverlay" class="meet-overlay hidden">
-    <button class="meet-close" onclick="closeMeetScreen()" aria-label="Close">✕</button>
+    <button class="meet-close" onclick="closeMeetScreen()" aria-label="Close"><i data-lucide="x" aria-hidden="true"></i></button>
     <div class="meet-camera-pip">
         <video id="meetVideo" autoplay playsinline muted></video>
     </div>
@@ -310,14 +313,14 @@
         <div class="meet-qr-box" id="meetQrBox">
             <!-- QR code rendered here -->
         </div>
-        <button class="meet-copy-btn" id="meetCopyBtn" onclick="copyMeetLink()" style="display:none;">📋 Copy invite link</button>
+        <button class="meet-copy-btn" id="meetCopyBtn" onclick="copyMeetLink()" style="display:none;"><i data-lucide="clipboard-copy" aria-hidden="true"></i><span>Copy invite link</span></button>
         <div class="meet-profile-row">
             <button class="meet-share-icon" id="meetSharePhone" onclick="toggleMeetShare('phone')" title="Share phone number">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                <i data-lucide="phone" aria-hidden="true"></i>
             </button>
             <img class="meet-profile-photo" id="meetProfilePhoto" alt="" />
             <button class="meet-share-icon" id="meetShareEmail" onclick="toggleMeetShare('email')" title="Share email address">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                <i data-lucide="mail" aria-hidden="true"></i>
             </button>
         </div>
         <div class="meet-profile-name" id="meetProfileName"></div>
@@ -332,7 +335,7 @@
 <div id="authScanOverlay" class="auth-scan-overlay hidden">
     <video id="authScanVideo" autoplay playsinline muted class="auth-scan-video"></video>
     <div class="auth-scan-banner">Point your camera at your sponsor's QR code</div>
-    <button class="auth-scan-close" onclick="closeAuthScanOverlay()" aria-label="Close">✕</button>
+    <button class="auth-scan-close" onclick="closeAuthScanOverlay()" aria-label="Close"><i data-lucide="x" aria-hidden="true"></i></button>
     <canvas id="authScanCanvas" style="display:none;"></canvas>
 </div>
 
@@ -344,6 +347,8 @@
 </div>
 
 <!-- ===== EXTERNAL LIBRARIES ===== -->
+<script src="vendor/lucide.min.js"></script>
+<script src="js/lucide-refresh.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>

@@ -18,7 +18,8 @@ function setGroupAvatar(url, cacheBust) {
             const placeholder = document.createElement('div');
             placeholder.className = 'group-avatar-placeholder';
             placeholder.id = 'groupAvatarImg';
-            placeholder.textContent = '👥';
+            placeholder.innerHTML = '<i data-lucide="users-round" aria-hidden="true"></i>';
+            if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
             parent.replaceChild(placeholder, el);
         }
     }

@@ -305,7 +305,7 @@ function formatSelfieDate(iso) {
 function buildSelfiesStripHtml(selfies, contactId) {
     const addTileHtml = `
         <div class="selfie-tile selfie-tile-add" onclick="event.stopPropagation();openContactSelfie('${contactId}')" title="Add a selfie">
-            <div class="selfie-tile-add-icon">📷</div>
+            <div class="selfie-tile-add-icon"><i data-lucide="image-plus" aria-hidden="true"></i></div>
         </div>`;
     if (!selfies || selfies.length === 0) {
         return `<div class="selfies-strip">${addTileHtml}</div>`;
@@ -380,7 +380,7 @@ function ensureLightbox() {
     el.id = 'img-lightbox';
     el.className = 'img-lightbox';
     el.innerHTML = `
-        <button class="img-lightbox-close" aria-label="Close">✕</button>
+        <button class="img-lightbox-close" aria-label="Close"><i data-lucide="x" aria-hidden="true"></i></button>
         <img class="img-lightbox-img" id="img-lightbox-img" alt="">
         <div class="img-lightbox-caption" id="img-lightbox-caption"></div>
         <div class="img-lightbox-actions" id="img-lightbox-actions"></div>`;
@@ -396,6 +396,7 @@ function ensureLightbox() {
     el.querySelector('.img-lightbox-close').addEventListener('click', closeLightbox);
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLightbox(); });
     document.body.appendChild(el);
+    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
 }
 
 // openLightbox(url, dateStr?, locationStr?, actions?)
@@ -534,6 +535,7 @@ function renderContactRows(rows) {
     bindContactRowEvents(content);
     bindContactActionEvents(content);
     bindContactDragSort(content);
+    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
 }
 
 function renderContactsForCurrentQuery() {
@@ -542,12 +544,14 @@ function renderContactsForCurrentQuery() {
 
     if (!contactsLoadedRows.length) {
         content.innerHTML = getNoContactsHtml();
+        if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
         return;
     }
 
     const filteredRows = contactsLoadedRows.filter(matchesContactSearch);
     if (!filteredRows.length) {
         content.innerHTML = getNoMatchingContactsHtml();
+        if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
         return;
     }
 
@@ -629,6 +633,7 @@ async function loadAndRenderContactList() {
         if (visibleContacts.length === 0) {
             contactsLoadedRows = [];
             content.innerHTML = getNoContactsHtml();
+            if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
             return;
         }
 
@@ -676,6 +681,7 @@ async function loadAndRenderContactList() {
         console.error('Load contacts error:', e);
         contactsLoadedRows = [];
         content.innerHTML = '<p style="color:var(--red);text-align:center;padding:2rem;">Failed to load contacts.</p>';
+        if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
     }
 }
 
@@ -1100,22 +1106,22 @@ function renderContactRow(contact, profile, shared, maxTrustScore) {
     const firstMetDisplayValue = formatFirstMetDisplay(knownSinceDateStr);
     const avatarHtml = avatarUrl
         ? `<img class="contact-row-avatar" src="${esc(avatarUrl)}" alt="">`
-        : '<div class="contact-row-avatar-placeholder">👤</div>';
+        : '<div class="contact-row-avatar-placeholder"><i data-lucide="user-round" aria-hidden="true"></i></div>';
     const largeAvatarHtml = avatarUrl
         ? `<img class="contact-detail-profile-photo" src="${esc(avatarUrl)}" alt="${esc(name)} profile"
                style="cursor:pointer"
                onclick="event.stopPropagation(); openLightbox('${esc(avatarUrl)}')">`
         : `<div class="contact-detail-profile-placeholder" style="cursor:pointer"
-               onclick="event.stopPropagation(); openSuggestPicture('${cid}')">👤</div>`;
+               onclick="event.stopPropagation(); openSuggestPicture('${cid}')"><i data-lucide="user-round" aria-hidden="true"></i></div>`;
     const contactLoc = contactLocationsCache[contact.contact_id];
     const isInboundShare = !!locationSharesInbound[contact.contact_id];
     const hasLocationShare = !!(isInboundShare || locationSharesOutbound[contact.contact_id]);
     const hasAnyIcon = hasSharedPhone || hasSharedEmail || hasLocationShare;
     const sharedIconHtml = hasAnyIcon
         ? `<span class="contact-row-shared-icons" aria-label="Contact details shared with you">
-                ${hasLocationShare ? '<span class="contact-row-shared-icon" title="Location shared">📍</span>' : ''}
-                ${hasSharedPhone ? '<span class="contact-row-shared-icon" title="Phone shared">📞</span>' : ''}
-                ${hasSharedEmail ? '<span class="contact-row-shared-icon contact-row-shared-icon-email" title="Email shared">✉</span>' : ''}
+                ${hasLocationShare ? '<span class="contact-row-shared-icon" title="Location shared"><i data-lucide="map-pin" aria-hidden="true"></i></span>' : ''}
+                ${hasSharedPhone ? '<span class="contact-row-shared-icon" title="Phone shared"><i data-lucide="phone" aria-hidden="true"></i></span>' : ''}
+                ${hasSharedEmail ? '<span class="contact-row-shared-icon contact-row-shared-icon-email" title="Email shared"><i data-lucide="mail" aria-hidden="true"></i></span>' : ''}
             </span>`
         : '';
     return `
@@ -1161,7 +1167,7 @@ function renderContactRow(contact, profile, shared, maxTrustScore) {
                     <div id="selfies-strip-${cid}" class="selfies-strip-container">
                         <div class="selfies-strip">
                             <div class="selfie-tile selfie-tile-add" onclick="event.stopPropagation();openContactSelfie('${cid}')" title="Add a selfie">
-                                <div class="selfie-tile-add-icon">📷</div>
+                                <div class="selfie-tile-add-icon"><i data-lucide="image-plus" aria-hidden="true"></i></div>
                             </div>
                         </div>
                     </div>
@@ -1193,12 +1199,12 @@ function renderContactRow(contact, profile, shared, maxTrustScore) {
                 </div>
                 <div class="contact-shared-details">
                     <div class="contact-shared-title">Shared with you</div>
-                    ${phone ? `<div class="contact-detail-line">📞 <a href="tel:${esc(phone)}">${esc(phone)}</a> <a href="sms:${esc(phone)}" class="contact-action-icon" title="Send message">💬</a></div>` : ''}
-                    ${email ? `<div class="contact-detail-line">✉ <a href="mailto:${esc(email)}">${esc(email)}</a></div>` : ''}
+                    ${phone ? `<div class="contact-detail-line"><span class="contact-detail-inline-icon" aria-hidden="true"><i data-lucide="phone"></i></span><a href="tel:${esc(phone)}">${esc(phone)}</a> <a href="sms:${esc(phone)}" class="contact-action-icon" title="Send message"><i data-lucide="message-circle" aria-hidden="true"></i></a></div>` : ''}
+                    ${email ? `<div class="contact-detail-line"><span class="contact-detail-inline-icon" aria-hidden="true"><i data-lucide="mail"></i></span><a href="mailto:${esc(email)}">${esc(email)}</a></div>` : ''}
                     ${!phone && !email ? '<div class="contact-detail-line contact-detail-muted">No phone or email shared with you yet.</div>' : ''}
                 </div>
                 <div class="pref-sponsor-card" id="contact-sponsor-${cid}">
-                    <div id="contactSponsorAvatar-${cid}" class="pref-sponsor-avatar">👤</div>
+                    <div id="contactSponsorAvatar-${cid}" class="pref-sponsor-avatar"><i data-lucide="user-round" aria-hidden="true"></i></div>
                     <div>
                         <div class="pref-sponsor-label">${sponsoredAgoLabel(profile.created_at)}</div>
                         <div id="contactSponsorName-${cid}" class="pref-sponsor-name">${profile.sponsor_id ? 'Loading sponsor...' : 'Root user (no sponsor)'}</div>
@@ -1382,11 +1388,12 @@ async function loadContactSponsor(contactId) {
         if (sp?.profile_image_url) {
             avatarEl.innerHTML = `<img src="${esc(sp.profile_image_url)}" alt="${esc(sponsorName)}">`;
         } else {
-            avatarEl.textContent = sponsorName.charAt(0).toUpperCase() || '\uD83D\uDC64';
+            avatarEl.textContent = sponsorName.charAt(0).toUpperCase() || '';
         }
     } catch (_) {
         nameEl.textContent = '';
-        avatarEl.textContent = '\uD83D\uDC64';
+        avatarEl.innerHTML = '<i data-lucide="user-round" aria-hidden="true"></i>';
+        if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
     }
 }
 

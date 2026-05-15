@@ -150,13 +150,14 @@ function renderSponsorContacts() {
         const isSelected = cid === sponsorSelectedContactId;
         const avatarHtml = avatarUrl
             ? `<img class="sponsor-contact-avatar" src="${esc(avatarUrl)}" alt="">`
-            : '<div class="sponsor-contact-avatar-placeholder">👤</div>';
+            : '<div class="sponsor-contact-avatar-placeholder"><i data-lucide="user-round" aria-hidden="true"></i></div>';
         return `<div class="sponsor-contact-row${isSelected ? ' selected' : ''}" onclick="selectSponsorContact('${esc(cid)}')">
             ${avatarHtml}
             <span class="sponsor-contact-name">${esc(name)}</span>
             ${isSelected ? '<span class="sponsor-contact-check">✓</span>' : ''}
         </div>`;
     }).join('');
+    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
 }
 
 function selectSponsorContact(contactId) {

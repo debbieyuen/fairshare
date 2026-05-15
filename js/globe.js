@@ -1,9 +1,11 @@
-// Globe screen: slowly auto-rotating earth with one pin per meeting-location
-// cluster. Clicking a pin opens a carousel popup that cycles through every
-// selfie in that cluster. Below the globe, a stats panel shows how many
-// distinct places the user has met contacts, plus the love/trust stats.
-
-const GLOBE_PIN_COLOR = '#ff3b30'; // classic red — pops on the blue-marble texture
+// Globe screen: slowly auto-rotating earth with HTML map-marker pins for meeting
+// selfie clusters (red) and live locations from contacts sharing with you (blue).
+// HTML/CSS2D markers avoid cylinder z-fighting; htmlTransitionDuration(0) prevents
+// vertical jitter when live coordinates refresh.
+const GLOBE_MARKER_SVG = `<svg viewBox="-4 0 36 36" aria-hidden="true" focusable="false">
+    <path fill="currentColor" d="M14,0 C21.732,0 28,5.641 28,12.6 C28,23.963 14,36 14,36 C14,36 0,24.064 0,12.6 C0,5.641 6.268,0 14,0 Z"></path>
+    <circle fill="white" cx="14" cy="14" r="6"></circle>
+    </svg>`;
 const CLUSTER_RADIUS_KM = 15;      // points within this distance collapse to one pin
 
 let _globe = null;
@@ -31,21 +33,29 @@ async function openGlobeScreen() {
     }
 
     const selfies = await loadGlobeSelfies();
-    _globeClusters = buildClusters(selfies);
+    if (typeof loadContactLocations === 'function') {
+        await loadContactLocations();
+    }
+
+    _globeClusters = buildClusters(selfies).map(c => ({ ...c, globePinType: 'meeting' }));
+    const livePins = await loadLiveShareGlobePins();
+    const allPins = orderedGlobeHtmlMarkers(_globeClusters, livePins);
 
     if (_globe === null) {
         _globe = Globe()(container)
             .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
             .backgroundColor('rgba(0,0,0,0)')
-            // Fatter, taller pins so they're easy to hit with a fingertip.
-            // globe.gl renders points as cylinders; both the radius and the
-            // altitude contribute to the pickable area, so we bump both.
-            .pointAltitude(d => 0.02 + Math.min(0.08, Math.log2(d.count + 1) * 0.02))
-            .pointColor(() => GLOBE_PIN_COLOR)
-            .pointRadius(d => 0.55 + Math.min(1.4, Math.log2(d.count + 1) * 0.28))
-            .pointLabel(d => clusterTooltipHtml(d))
-            .onPointClick(cluster => {
-                if (cluster) openClusterPopup(cluster);
+            .pointsData([])
+            .htmlElementsData([])
+            .htmlLat('lat')
+            .htmlLng('lng')
+            // Slight lift reduces overlap with the globe texture at oblique angles.
+            .htmlAltitude(0.012)
+            // Live location polls update lat/lng often; animating CSS2D positions causes vertical flicker.
+            .htmlTransitionDuration(0)
+            .htmlElement(d => createGlobeHtmlMarker(d))
+            .htmlElementVisibilityModifier((el, isVisible) => {
+                el.style.opacity = isVisible ? '1' : '0';
             });
 
         const controls = _globe.controls();
@@ -71,7 +81,7 @@ async function openGlobeScreen() {
     const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     _globe.controls().autoRotate = !reduceMotion;
 
-    _globe.pointsData(_globeClusters);
+    _globe.htmlElementsData(allPins);
 
     requestAnimationFrame(() => {
         sizeGlobeToContainer();
@@ -79,7 +89,7 @@ async function openGlobeScreen() {
     });
 
     if (emptyHint) {
-        if (_globeClusters.length === 0) emptyHint.classList.remove('hidden');
+        if (_globeClusters.length === 0 && livePins.length === 0) emptyHint.classList.remove('hidden');
         else emptyHint.classList.add('hidden');
     }
 
@@ -207,23 +217,161 @@ function haversineKm(lat1, lng1, lat2, lng2) {
     return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
-// ---------- Tooltips and stats ----------
-
-function clusterTooltipHtml(cluster) {
-    const title = cluster.locationLabel || 'Unknown location';
-    const meetings = cluster.count === 1 ? '1 meeting' : `${cluster.count} meetings`;
-    return `<div style="font-family:system-ui,sans-serif;padding:6px 10px;background:rgba(0,0,0,0.78);color:#fff;border-radius:6px;font-size:0.82rem;max-width:220px;">
-        <div><strong>${escapeHtmlForLabel(title)}</strong></div>
-        <div style="opacity:0.85;">${meetings} &middot; tap to view</div>
-    </div>`;
+function countInboundLocationShares() {
+    return Object.keys(locationSharesInbound || {}).length;
 }
 
-async function renderGlobeStats(clusters) {
-    const citiesEl = document.getElementById('globeCitiesLine');
-    const listEl = document.getElementById('globeStatsList');
-    if (!citiesEl || !listEl) return;
+/** Meetings first, then live shares so CSS2D stack order paints blue markers on top */
+function orderedGlobeHtmlMarkers(meetingClusters, livePins) {
+    return [...meetingClusters, ...(livePins || [])].sort((a, b) => {
+        const rk = x => (x.globePinType === 'liveShare' ? 1 : 0);
+        return rk(a) - rk(b);
+    });
+}
 
-    const n = clusters.length;
+function globeMarkerPixelWidth(d) {
+    if (d.globePinType === 'liveShare') return 27;
+    const base = 26;
+    const bump = Math.min(20, Math.log2((d.count || 1) + 1) * 6.5);
+    return Math.round(base + bump);
+}
+
+/** Label shown in custom tooltip + native title attribute */
+function globeMarkerTooltipLabel(d) {
+    if (d.globePinType === 'liveShare') {
+        return d.contactName || 'Someone';
+    }
+    const title = d.locationLabel || 'Unknown location';
+    const meetings = d.count === 1 ? '1 meeting' : `${d.count} meetings`;
+    return `${title} · ${meetings}`;
+}
+
+function handleGlobeMarkerClick(d) {
+    if (!d) return;
+    if (d.globePinType === 'liveShare') {
+        const plain = d.contactName || 'Someone';
+        const msg = `${plain} is sharing their location with you`;
+        if (typeof showToast === 'function') showToast(msg);
+        else window.alert(msg);
+        return;
+    }
+    openClusterPopup(d);
+}
+
+function createGlobeHtmlMarker(d) {
+    const anchor = document.createElement('div');
+    const isLive = d.globePinType === 'liveShare';
+    anchor.className = `globe-marker-anchor${isLive ? ' globe-marker-anchor--live' : ' globe-marker-anchor--meeting'}`;
+
+    const tip = document.createElement('div');
+    tip.className = `globe-marker-tooltip${isLive ? ' globe-marker-tooltip--live' : ' globe-marker-tooltip--meeting'}`;
+    tip.textContent = globeMarkerTooltipLabel(d);
+
+    const el = document.createElement('div');
+    el.className = `globe-marker-icon${isLive ? ' globe-marker-icon--live' : ' globe-marker-icon--meeting'}`;
+    el.style.width = `${globeMarkerPixelWidth(d)}px`;
+    el.innerHTML = GLOBE_MARKER_SVG;
+    el.setAttribute('role', 'button');
+    el.title = globeMarkerTooltipLabel(d);
+
+    const showTip = () => tip.classList.add('globe-marker-tooltip--visible');
+    const hideTip = () => tip.classList.remove('globe-marker-tooltip--visible');
+    anchor.addEventListener('pointerenter', showTip);
+    anchor.addEventListener('pointerleave', hideTip);
+
+    el.addEventListener('click', ev => {
+        ev.stopPropagation();
+        handleGlobeMarkerClick(d);
+    });
+
+    anchor.appendChild(tip);
+    anchor.appendChild(el);
+    return anchor;
+}
+
+async function loadLiveShareGlobePins() {
+    const inbound = locationSharesInbound || {};
+    const ids = [];
+    for (const cid of Object.keys(inbound)) {
+        const loc = contactLocationsCache[cid];
+        if (!loc) continue;
+        const lat = Number(loc.lat);
+        const lng = Number(loc.lng);
+        if (!isFinite(lat) || !isFinite(lng)) continue;
+        ids.push(cid);
+    }
+
+    const nameById = {};
+    if (ids.length > 0) {
+        try {
+            const { data: profiles, error } = await db
+                .from('profiles')
+                .select('id, display_name')
+                .in('id', ids);
+            if (!error) {
+                (profiles || []).forEach(p => { nameById[p.id] = p.display_name; });
+            }
+        } catch (_) { /* best effort */ }
+    }
+
+    return ids.map(cid => {
+        const loc = contactLocationsCache[cid];
+        return {
+            globePinType: 'liveShare',
+            lat: Math.round(Number(loc.lat) * 1e5) / 1e5,
+            lng: Math.round(Number(loc.lng) * 1e5) / 1e5,
+            contactId: cid,
+            contactName: nameById[cid] || 'Someone',
+            count: 1
+        };
+    });
+}
+
+async function refreshGlobePinsIfOnScreen() {
+    if (activeMainView !== 'globe' || !_globe) return;
+    if (!currentUser) return;
+    try {
+        if (typeof loadContactLocations === 'function') {
+            await loadContactLocations();
+        }
+        const livePins = await loadLiveShareGlobePins();
+        const allPins = orderedGlobeHtmlMarkers(_globeClusters, livePins);
+
+        _globe.htmlElementsData(allPins);
+
+        const emptyHint = document.getElementById('globeEmptyHint');
+        if (emptyHint) {
+            if (_globeClusters.length === 0 && livePins.length === 0) emptyHint.classList.remove('hidden');
+            else emptyHint.classList.add('hidden');
+        }
+    } catch (e) {
+        console.warn('[globe] refreshGlobePinsIfOnScreen:', e);
+    }
+}
+
+window.addEventListener('union:contactLocationsLoaded', () => {
+    refreshGlobePinsIfOnScreen();
+});
+
+// ---------- Stats ----------
+
+async function renderGlobeStats(meetingClusters) {
+    const sharingEl = document.getElementById('globeSharingLine');
+    const citiesEl = document.getElementById('globeCitiesLine');
+    const tbody = document.getElementById('globeStatsTableBody');
+    if (!citiesEl || !tbody) return;
+
+    const inboundN = countInboundLocationShares();
+    if (sharingEl) {
+        if (inboundN === 0) {
+            sharingEl.textContent = '';
+        } else {
+            const peopleWord = inboundN === 1 ? 'person is' : 'people are';
+            sharingEl.textContent = `${inboundN} ${peopleWord} sharing location with you.`;
+        }
+    }
+
+    const n = meetingClusters.length;
     if (n === 0) {
         citiesEl.textContent = '';
     } else {
@@ -231,7 +379,10 @@ async function renderGlobeStats(clusters) {
         citiesEl.textContent = `Contacts in ${n} ${word}.`;
     }
 
-    // Reuse the same attestation counts + formatting as the heart dialog.
+    function row(label, valueHtml) {
+        return `<tr><th scope="row">${esc(label)}</th><td>${valueHtml}</td></tr>`;
+    }
+
     try {
         const { data, error } = await db.rpc('get_my_attestation_counts');
         if (error) throw error;
@@ -244,30 +395,29 @@ async function renderGlobeStats(clusters) {
         const sponsDirect = data.sponsored_direct      || 0;
         const sponsMore   = data.sponsored_indirect    || 0;
 
-        const lines = [];
+        const rows = [];
         if (sponsDirect > 0) {
             const personWord = sponsDirect === 1 ? 'person' : 'people';
-            let line = `You have sponsored ${sponsDirect} ${personWord}`;
-            if (sponsMore > 0) line += `, who have sponsored ${sponsMore} more`;
-            lines.push(line + '.');
+            let val = `You have sponsored ${sponsDirect} ${personWord}`;
+            if (sponsMore > 0) val += `, who have sponsored ${sponsMore} more`;
+            rows.push({ label: 'Sponsorship', text: val + '.' });
         }
-        const picLine   = formatHeartStatLine(pic,     'people have validated your profile picture');
-        const helpLine  = formatHeartStatLine(help,    'others will help you');
-        const respLine  = formatHeartStatLine(respect, 'others respect you');
-        const trustLine = formatHeartStatLine(trust,   'others trust you');
-        const loveLine  = formatHeartStatLine(love,    'others love you');
-        if (picLine)   lines.push(picLine);
-        if (helpLine)  lines.push(helpLine);
-        if (respLine)  lines.push(respLine);
-        if (trustLine) lines.push(trustLine);
-        if (loveLine)  lines.push(loveLine);
+        const addLine = (cnt, label, phrase) => {
+            const line = formatHeartStatLine(cnt, phrase);
+            if (line) rows.push({ label, text: line });
+        };
+        addLine(pic,     'Profile photo', 'people have validated your profile picture');
+        addLine(help,    'Help',          'others will help you');
+        addLine(respect, 'Respect',       'others respect you');
+        addLine(trust,   'Trust',         'others trust you');
+        addLine(love,    'Love',          'others love you');
 
-        listEl.innerHTML = lines.length
-            ? lines.map(l => `<p>${esc(l)}</p>`).join('')
-            : '<p style="opacity:0.7;">No attestations yet.</p>';
+        tbody.innerHTML = rows.length
+            ? rows.map(r => row(r.label, esc(r.text))).join('')
+            : `<tr><td class="globe-stats-empty" colspan="2">${esc('No attestations yet.')}</td></tr>`;
     } catch (e) {
         console.error('[globe] Failed to load attestation counts:', e);
-        listEl.innerHTML = '<p style="opacity:0.7;">Could not load trust stats.</p>';
+        tbody.innerHTML = `<tr><td class="globe-stats-empty" colspan="2">${esc('Could not load trust stats.')}</td></tr>`;
     }
 }
 
@@ -294,7 +444,7 @@ function openClusterPopup(cluster) {
     overlay.className = 'globe-cluster-overlay';
     overlay.innerHTML = `
         <div class="globe-cluster-modal" role="dialog" aria-modal="true">
-            <button class="globe-cluster-close" aria-label="Close">✕</button>
+            <button class="globe-cluster-close" aria-label="Close"><i data-lucide="x" aria-hidden="true"></i></button>
             <div class="globe-cluster-header">
                 <div class="globe-cluster-title" id="globeClusterTitle"></div>
                 <div class="globe-cluster-subtitle" id="globeClusterSubtitle"></div>
@@ -313,6 +463,8 @@ function openClusterPopup(cluster) {
             </div>
         </div>`;
     document.body.appendChild(overlay);
+
+    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
 
     _clusterPopup = { overlay, state };
 
@@ -392,14 +544,4 @@ function formatClusterDate(iso) {
     } catch (_) {
         return '';
     }
-}
-
-function escapeHtmlForLabel(s) {
-    if (s == null) return '';
-    return String(s)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
 }

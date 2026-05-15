@@ -58,7 +58,7 @@ async function renderChatTab() {
                 <input type="text" id="chatInput" placeholder="Type a message…" maxlength="2000"
                        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMessage();}">
                 <button class="btn-icon chat-map-btn" onclick="openMapPicker()" title="Share location" type="button">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 1 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                    <i data-lucide="map-pin" aria-hidden="true"></i>
                 </button>
                 <button class="btn btn-primary" onclick="sendChatMessage()">Send</button>
             </div>
@@ -68,6 +68,8 @@ async function renderChatTab() {
     // Size the chat container to fill remaining viewport
     sizeChatContainer();
     bindChatViewportListeners();
+
+    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
 
     // Build profile cache from current members
     await buildProfileCache();
@@ -192,6 +194,8 @@ async function loadChatMessages(before) {
             loadMoreEl.dataset.before = messages[0].created_at;
         }
     }
+
+    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
 }
 
 async function loadOlderMessages() {
@@ -314,5 +318,6 @@ function appendChatMessage(msg) {
         if (atBottom) {
             msgsEl.scrollTop = msgsEl.scrollHeight;
         }
+        if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
     });
 }

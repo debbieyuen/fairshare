@@ -76,7 +76,7 @@ function renderProfileScreen() {
             </div>
             <form id="preferencesForm">
                 <div class="pref-profile-row">
-                    <div id="prefPhotoPreview" class="contact-selfie-wrap pref-photo-preview" onclick="document.getElementById('prefPhotoInput').click()">📷</div>
+                    <div id="prefPhotoPreview" class="contact-selfie-wrap pref-photo-preview" onclick="document.getElementById('prefPhotoInput').click()"><i data-lucide="camera" aria-hidden="true"></i></div>
                     <input type="file" id="prefPhotoInput" accept="image/*" style="display:none;">
                     <div class="form-group pref-display-name-group">
                         <label for="prefDisplayName">Display Name</label>
@@ -94,7 +94,7 @@ function renderProfileScreen() {
                 </div>
                 <p class="pref-help-text pref-contact-hint">(You choose when to share these)</p>
                 <div class="pref-sponsor-card">
-                    <div id="prefSponsorAvatar" class="pref-sponsor-avatar">👤</div>
+                    <div id="prefSponsorAvatar" class="pref-sponsor-avatar"><i data-lucide="user-round" aria-hidden="true"></i></div>
                     <div>
                         <div class="pref-sponsor-label">${sponsoredAgoLabel(currentProfile?.created_at)}</div>
                         <div id="prefSponsorName" class="pref-sponsor-name">Loading sponsor...</div>
@@ -171,6 +171,8 @@ function renderProfileScreen() {
         prefPreview.appendChild(img);
     }
 
+    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
+
     document.getElementById('prefPhotoInput').addEventListener('change', (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -211,7 +213,7 @@ function renderProfileScreen() {
                 if (sp?.profile_image_url) {
                     sponsorAvatarEl.innerHTML = `<img src="${esc(sp.profile_image_url)}" alt="${esc(sponsorName)}">`;
                 } else {
-                    sponsorAvatarEl.textContent = sponsorName.charAt(0).toUpperCase() || '👤';
+                    sponsorAvatarEl.textContent = sponsorName.charAt(0).toUpperCase() || '';
                 }
             } else {
                 sponsorNameEl.textContent = 'Root user (no sponsor)';
@@ -219,8 +221,9 @@ function renderProfileScreen() {
             }
         } catch (_) {
             sponsorNameEl.textContent = '';
-            sponsorAvatarEl.textContent = '👤';
+            sponsorAvatarEl.innerHTML = '<i data-lucide="user-round" aria-hidden="true"></i>';
         }
+        if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
     })();
 
     if (canUsePush()) {

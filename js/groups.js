@@ -55,7 +55,7 @@ function renderGroupCardLogo(logoUrl, groupName, logoUpdatedAt) {
         const src = esc(withImageCacheBust(logoUrl, logoUpdatedAt));
         return `<img class="group-card-logo" src="${src}" alt="${esc(groupName)} logo">`;
     }
-    return '<div class="group-card-logo-placeholder" aria-hidden="true">👥</div>';
+    return '<div class="group-card-logo-placeholder" aria-hidden="true"><i data-lucide="users-round" aria-hidden="true"></i></div>';
 }
 
 function renderGroupList() {
@@ -85,6 +85,7 @@ function renderGroupList() {
             </div>
         </div>
     `).join('');
+    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
 }
 
 async function leaveGroup(groupId, groupName, event) {

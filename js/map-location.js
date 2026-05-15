@@ -199,10 +199,12 @@ function renderLocationPreview(container, lat, lng, radius) {
 
     container.innerHTML = `
         <div class="chat-location-preview" id="${mapId}"></div>
-        <div class="chat-location-label">📍 Location (${formatRadius(radius)} radius) · Tap to open in Maps</div>
+        <div class="chat-location-label"><i data-lucide="map-pin" class="chat-location-label-icon" aria-hidden="true"></i> Location (${formatRadius(radius)} radius) · Tap to open in Maps</div>
     `;
 
     attachLocationPreviewOpenHandler(container, lat, lng);
+
+    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
 
     requestAnimationFrame(function () {
         const el = document.getElementById(mapId);

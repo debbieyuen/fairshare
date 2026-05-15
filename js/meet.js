@@ -143,6 +143,7 @@ async function openMeetScreen(options) {
     if (qrBox) qrBox.innerHTML = qr.createSvgTag({ cellSize: 5, margin: 4 });
     const copyBtn = document.getElementById('meetCopyBtn');
     if (copyBtn) copyBtn.style.display = '';
+    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
 
     // 6. Subscribe to Realtime on contacts table for this user
     // (so if the OTHER person scans first, we still get notified)

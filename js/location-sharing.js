@@ -750,7 +750,7 @@ function openContactLocationFullscreen(contactId, contactName) {
         overlay.id = 'contact-location-fullscreen';
         overlay.className = 'contact-location-fullscreen';
         overlay.innerHTML = `
-            <button class="contact-location-fullscreen-close" aria-label="Close">✕</button>
+            <button class="contact-location-fullscreen-close" aria-label="Close"><i data-lucide="x" aria-hidden="true"></i></button>
             <div class="contact-location-fullscreen-map" id="contact-location-fullscreen-map"></div>`;
         overlay.querySelector('.contact-location-fullscreen-close')
             .addEventListener('click', closeContactLocationFullscreen);
@@ -761,6 +761,7 @@ function openContactLocationFullscreen(contactId, contactName) {
             if (e.key === 'Escape' && overlay.classList.contains('active')) closeContactLocationFullscreen();
         });
         document.body.appendChild(overlay);
+        if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
     }
 
     overlay.classList.add('active');

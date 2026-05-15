@@ -28,6 +28,7 @@ function openContactDetailsScreen(contactId) {
     if (!contactId) {
         if (typeof clearContactDetailResumeState === 'function') clearContactDetailResumeState();
         root.innerHTML = '<div class="cd-empty">Contact not found.</div>';
+        if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
         return;
     }
 
@@ -40,6 +41,7 @@ function openContactDetailsScreen(contactId) {
         // Fallback: list not loaded yet (e.g. deep link, hot reload).
         // Show skeleton with what we know, then fetch + re-render.
         root.innerHTML = renderCdSkeleton({ name: 'Loading…', avatarUrl: null });
+        if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
         loadAndRenderContactList()
             .then(() => {
                 if (cdCurrentContactId !== contactId) return;
@@ -50,11 +52,13 @@ function openContactDetailsScreen(contactId) {
                 } else {
                     if (typeof clearContactDetailResumeState === 'function') clearContactDetailResumeState();
                     root.innerHTML = '<div class="cd-empty">Contact not found.</div>';
+                    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
                 }
             })
             .catch(() => {
                 if (typeof clearContactDetailResumeState === 'function') clearContactDetailResumeState();
                 root.innerHTML = '<div class="cd-empty">Could not load contact.</div>';
+                if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
             });
     }
 }
@@ -69,9 +73,7 @@ function renderCdSkeleton(seed) {
     return `
         <div class="cd-back-row">
             <button class="cd-back-link" type="button" onclick="closeContactDetailsScreen()">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
+                <i data-lucide="chevron-left" aria-hidden="true"></i>
                 Contacts
             </button>
             <span class="cd-last-seen">&nbsp;</span>
@@ -149,9 +151,7 @@ function renderContactDetailsScreen(root, row) {
     root.innerHTML = `
         <div class="cd-back-row">
             <button class="cd-back-link" type="button" onclick="closeContactDetailsScreen()">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
+                <i data-lucide="chevron-left" aria-hidden="true"></i>
                 Contacts
             </button>
             <span class="cd-last-seen">${lastSeen ? 'Last met ' + esc(lastSeen) : ''}</span>
@@ -245,9 +245,7 @@ function renderContactDetailsScreen(root, row) {
                     onclick="cdOpenMutualsDialog('${esc(id)}', '${esc(name)}')">
                 <div class="cd-mutuals-text" id="cd-mutuals-text"></div>
                 <span class="cd-mutuals-chevron" aria-hidden="true">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                        <path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
+                    <i data-lucide="chevron-right" aria-hidden="true"></i>
                 </span>
             </button>
         </div>
@@ -309,6 +307,7 @@ function renderContactDetailsScreen(root, row) {
             </p>
         </div>
     `;
+    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
 }
 
 function cdOnReportContact(contactId, name) {
@@ -416,6 +415,7 @@ function cdRenderSelfies(contactId, selfies) {
             <span>Take selfie</span>
         </button>`;
     strip.innerHTML = tilesHtml + addHtml;
+    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
 }
 
 function cdRenderTrust(t) {
@@ -589,9 +589,7 @@ function cdOpenMutualsDialog(contactId, name) {
                 ${avatar}
                 <span class="cd-mutuals-item-name">${esc(c.display_name || 'Unknown')}</span>
                 <span class="cd-mutuals-item-chevron" aria-hidden="true">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                        <path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
+                    <i data-lucide="chevron-right" aria-hidden="true"></i>
                 </span>
             </button>`;
     }).join('');
@@ -607,9 +605,7 @@ function cdOpenMutualsDialog(contactId, name) {
                 ${tile}
                 <span class="cd-mutuals-item-name">${esc(g.name || 'Group')}</span>
                 <span class="cd-mutuals-item-chevron" aria-hidden="true">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                        <path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
+                    <i data-lucide="chevron-right" aria-hidden="true"></i>
                 </span>
             </button>`;
     }).join('');
@@ -648,6 +644,7 @@ function cdOpenMutualsDialog(contactId, name) {
         </div>
     `;
     overlay.classList.remove('hidden');
+    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
 }
 
 // Explain how the three components of the trust score are computed and
@@ -728,6 +725,7 @@ function cdOpenTrustInfoDialog() {
         </div>
     `;
     overlay.classList.remove('hidden');
+    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
 }
 
 // "× 2" badge next to a component name in the trust-info dialog. Hidden
@@ -923,12 +921,12 @@ function cdRenderSharingLocationPane(contactId) {
             </div>
             ${loc ? `<span class="cd-sharing-loc-view">
                 View
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
+                <i data-lucide="chevron-right" aria-hidden="true"></i>
             </span>` : ''}
         </button>
     `;
+
+    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
 
     if (loc) cdHydrateSharingLocationPane(contactId, loc);
 }
@@ -1189,57 +1187,35 @@ function cdOpenAvatarLightbox(contactId, avatarUrl, _name) {
     ]);
 }
 
-// Inline SVG icon helpers (kept local to avoid adding a global icon system).
+// Lucide placeholders — hydrated by refreshLucideIcons() after DOM updates.
+function cdLucideIcon(name, extraClass) {
+    const cls = extraClass ? ` class="${extraClass}"` : '';
+    return `<i data-lucide="${name}"${cls} aria-hidden="true"></i>`;
+}
 function cdPencilIcon() {
-    return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">'
-        + '<path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
-        + '</svg>';
+    return cdLucideIcon('pencil');
 }
 function cdShieldIcon() {
-    return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">'
-        + '<path d="M12 2l9 4v6c0 5-4 9-9 10-5-1-9-5-9-10V6l9-4z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>'
-        + '<path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
-        + '</svg>';
+    return cdLucideIcon('shield-check');
 }
 function cdShareIcon() {
-    return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">'
-        + '<path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
-        + '<path d="M16 6l-4-4-4 4M12 2v13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
-        + '</svg>';
+    return cdLucideIcon('share');
 }
 function cdPhoneIcon() {
-    return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">'
-        + '<path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
-        + '</svg>';
+    return cdLucideIcon('phone');
 }
 function cdMessageIcon() {
-    return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">'
-        + '<path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
-        + '</svg>';
+    return cdLucideIcon('message-circle');
 }
 function cdCameraIcon() {
-    return '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">'
-        + '<path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
-        + '<circle cx="12" cy="13" r="4" stroke="currentColor" stroke-width="2"/>'
-        + '</svg>';
+    return cdLucideIcon('camera');
 }
 function cdNearIcon() {
-    return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">'
-        + '<circle cx="12" cy="12" r="2" fill="currentColor"/>'
-        + '<circle cx="12" cy="12" r="6" stroke="currentColor" stroke-width="2" opacity="0.5"/>'
-        + '<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.25"/>'
-        + '</svg>';
+    return cdLucideIcon('radar');
 }
 function cdInfoIcon() {
-    return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">'
-        + '<circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>'
-        + '<path d="M12 11v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
-        + '<circle cx="12" cy="8" r="1.1" fill="currentColor"/>'
-        + '</svg>';
+    return cdLucideIcon('info');
 }
 function cdLocationIcon() {
-    return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">'
-        + '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
-        + '<circle cx="12" cy="10" r="3" stroke="currentColor" stroke-width="2"/>'
-        + '</svg>';
+    return cdLucideIcon('map-pin');
 }

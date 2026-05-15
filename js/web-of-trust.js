@@ -68,8 +68,12 @@ async function openHeartDialog() {
         const html = lines.map(l => `<p style="margin:0.35rem 0;">${esc(l)}</p>`).join('');
         showModal('heartDialog');
         document.getElementById('modalBody').innerHTML = `
-            <h3 style="margin-bottom:1rem;">❤️ Love &amp; Trust</h3>
+            <h3 style="margin-bottom:1rem;display:flex;align-items:center;gap:0.45rem;">
+                <i data-lucide="heart" aria-hidden="true"></i>
+                Love &amp; Trust
+            </h3>
             <div style="font-size:1.05rem;line-height:1.6;">${html}</div>`;
+        if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
         heartDialogTimer = setTimeout(() => {
             const overlay = document.getElementById('modalOverlay');
             if (overlay && !overlay.classList.contains('hidden')) closeModal();

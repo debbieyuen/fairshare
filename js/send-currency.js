@@ -38,6 +38,7 @@ async function loadSendModal() {
         </form>
     `;
     document.getElementById('sendForm').addEventListener('submit', (e) => sendCurrency(e));
+    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
 }
 
 async function sendCurrency(e) {
