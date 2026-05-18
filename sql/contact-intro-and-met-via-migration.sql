@@ -332,6 +332,7 @@ BEGIN
 
     UNION ALL
 
+    -- Recipient accepted an intro: how this contact was linked to you.
     SELECT
       ('i:' || c.id::text)         AS id,
       'intro'::text                AS kind,
@@ -342,6 +343,22 @@ BEGIN
     WHERE c.user_id = v_caller_id
       AND c.contact_id = p_contact_id
       AND c.introduced_by_user_id IS NOT NULL
+
+    UNION ALL
+
+    -- Introducer sent an intro involving this contact (one row per intro sent).
+    SELECT
+      ('ci:' || ci.id::text)       AS id,
+      'intro'::text                AS kind,
+      ('Introduced to ' || COALESCE(po.display_name, 'Someone')) AS text,
+      ci.created_at                AS occurred_at
+    FROM public.contact_intros ci
+    JOIN public.profiles po ON po.id = CASE
+      WHEN ci.contact_a_id = p_contact_id THEN ci.contact_b_id
+      ELSE ci.contact_a_id
+    END
+    WHERE ci.introducer_id = v_caller_id
+      AND (ci.contact_a_id = p_contact_id OR ci.contact_b_id = p_contact_id)
   )
   SELECT events.id, events.kind, events.text, events.occurred_at
   FROM events

@@ -387,6 +387,16 @@ async function hydrateContactDetailsScreen(contactId) {
 // Called from the contacts.selfie_url realtime UPDATE handler (recipient side)
 // and from captureContactSelfie() right after a successful upload (uploader
 // side) so the carousel doesn't go stale until the user re-enters the screen.
+function cdRefreshHistoryIfOpen(contactId) {
+    if (!contactId || cdCurrentContactId !== contactId) return;
+    if (typeof db === 'undefined' || !db || typeof db.rpc !== 'function') return;
+    db.rpc('get_contact_history', { p_contact_id: contactId, p_limit: 6 })
+        .then(({ data, error }) => {
+            if (error || cdCurrentContactId !== contactId) return;
+            cdRenderHistory(Array.isArray(data) ? data : []);
+        });
+}
+
 function cdRefreshSelfiesIfOpen(contactId) {
     if (!contactId || cdCurrentContactId !== contactId) return;
     if (typeof loadContactSelfies === 'function') {

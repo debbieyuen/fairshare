@@ -819,6 +819,9 @@ async function submitIntroContactForm() {
         });
         if (error) throw error;
         showToast('Intro sent.', 'success');
+        if (typeof cdRefreshHistoryIfOpen === 'function') {
+            cdRefreshHistoryIfOpen(introSubjectContactId);
+        }
         closeModal();
     } catch (e) {
         console.error('send_contact_intro error:', e);
