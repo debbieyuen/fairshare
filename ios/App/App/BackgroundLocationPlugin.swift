@@ -36,6 +36,9 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
     private var lastTokenRefreshSucceeded: Bool?
     private var lastHeartbeatAt: Date?
     private var lastDidUpdateAt: Date?
+    private var lastUploadedPosition: CLLocation?
+    private var lastSuccessfulUploadAt: Date?
+    private var lastDidUpdateLogAt: Date?
 
     // Queue of pending one-shot getCurrentPosition calls waiting on a fresh fix.
     // Each entry pairs a call with the previous fix timestamp it considers
@@ -71,6 +74,10 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
     private let locationUploadRetryDelay: TimeInterval = 15
     /// Keep `js/constants.js` `APP_TIMING.FOREGROUND_LOCATION_POLL_MS` in sync.
     private let stationaryLocationHeartbeatInterval: TimeInterval = 60
+    /// Minimum time between movement-driven uploads (heartbeat bypasses this).
+    private let minimumUploadInterval: TimeInterval = 60
+    /// Upload before `minimumUploadInterval` only if the device moved at least this far.
+    private let movementUploadThresholdMeters: CLLocationDistance = 10
 
     private struct SupabaseLocationConfig: Codable {
         let supabaseUrl: String
@@ -256,16 +263,21 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
             return
         }
 
-        NSLog("[BackgroundLocation] didUpdateLocations lat=\(location.coordinate.latitude) lng=\(location.coordinate.longitude) horizAcc=\(location.horizontalAccuracy)m age=\(String(format: "%.1f", age))s")
         lastDidUpdateAt = Date()
         persistUploadDiagnostics()
-        logLocationRuntimeState(context: "didUpdateLocations")
         lastPosition = location
-        postLocationToSupabase(location)
-        notifyListeners("locationUpdate", data: [
-            "lat": location.coordinate.latitude,
-            "lng": location.coordinate.longitude
-        ])
+
+        if shouldUploadLocation(location, bypassThrottle: false) {
+            NSLog("[BackgroundLocation] didUpdateLocations lat=\(location.coordinate.latitude) lng=\(location.coordinate.longitude) horizAcc=\(location.horizontalAccuracy)m age=\(String(format: "%.1f", age))s — uploading")
+            logLocationRuntimeState(context: "didUpdateLocations")
+            postLocationToSupabase(location, bypassThrottle: false)
+            notifyListeners("locationUpdate", data: [
+                "lat": location.coordinate.latitude,
+                "lng": location.coordinate.longitude
+            ])
+        } else if shouldLogThrottledDidUpdate() {
+            NSLog("[BackgroundLocation] didUpdateLocations (upload throttled, heartbeat will refresh updated_at)")
+        }
         flushPendingCalls(force: false)
     }
 
@@ -401,14 +413,17 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
         NSLog("[BackgroundLocation] stationary heartbeat upload lat=\(location.coordinate.latitude) lng=\(location.coordinate.longitude) fixAge=\(String(format: "%.1f", Date().timeIntervalSince(location.timestamp)))s")
         proactiveTokenRefreshIfNeeded()
         locationManager?.requestLocation()
-        postLocationToSupabase(location)
+        postLocationToSupabase(location, bypassThrottle: true)
     }
 
-    private func postLocationToSupabase(_ location: CLLocation) {
+    private func postLocationToSupabase(_ location: CLLocation, bypassThrottle: Bool) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             guard self.locationUploadEnabled else {
                 NSLog("[BackgroundLocation] location upload skipped: upload disabled")
+                return
+            }
+            guard self.shouldUploadLocation(location, bypassThrottle: bypassThrottle) else {
                 return
             }
             self.pendingUploadLocation = location
@@ -658,7 +673,30 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
             scheduleLocationUploadRetry()
             return
         }
+        lastUploadedPosition = location
+        lastSuccessfulUploadAt = Date()
         startNextLocationUploadIfNeeded()
+    }
+
+    /// Movement-driven uploads are capped at ~60s unless the user moves ≥10 m.
+    /// Stationary heartbeats pass `bypassThrottle: true`.
+    private func shouldUploadLocation(_ location: CLLocation, bypassThrottle: Bool) -> Bool {
+        if bypassThrottle { return true }
+        guard let lastAt = lastSuccessfulUploadAt else { return true }
+        let elapsed = Date().timeIntervalSince(lastAt)
+        if elapsed >= minimumUploadInterval { return true }
+        if let lastUploaded = lastUploadedPosition,
+           location.distance(from: lastUploaded) >= movementUploadThresholdMeters {
+            return true
+        }
+        return false
+    }
+
+    private func shouldLogThrottledDidUpdate() -> Bool {
+        let now = Date()
+        if let last = lastDidUpdateLogAt, now.timeIntervalSince(last) < 30 { return false }
+        lastDidUpdateLogAt = now
+        return true
     }
 
     private func scheduleLocationUploadRetry() {
@@ -673,10 +711,11 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
     }
 
     /// While live sharing is active, use settings that reduce iOS 16.4+
-    /// background suspension (distance filter + blue bar indicator).
+    /// background suspension (blue bar + significant-change wake). Keep a
+    /// 10 m distance filter so GPS jitter does not upload every second.
     private func applySharingLocationConfiguration() {
         guard let manager = locationManager, locationUploadEnabled else { return }
-        manager.distanceFilter = kCLDistanceFilterNone
+        manager.distanceFilter = idleDistanceFilterMeters
         if manager.authorizationStatus == .authorizedAlways {
             manager.showsBackgroundLocationIndicator = true
         }
