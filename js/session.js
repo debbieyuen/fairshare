@@ -94,6 +94,9 @@ document.addEventListener('visibilitychange', async () => {
             currentUser = session.user;
             if (selectedGroup) subscribeToGroup(selectedGroup.id);
             subscribeToContactEvents();
+            if (typeof resumeLocationSharingAfterForeground === 'function') {
+                resumeLocationSharingAfterForeground();
+            }
             Object.keys(contactSelfiesCache).forEach(k => delete contactSelfiesCache[k]);
             const expandedRow = document.querySelector('.contact-row.expanded');
             if (expandedRow?.dataset?.contactId) {
@@ -131,6 +134,9 @@ setInterval(async () => {
                 } else {
                     currentUser = session.user;
                     console.log('[heartbeat] session refreshed OK after DB failure');
+                    if (typeof refreshNativeLocationSharingAuth === 'function') {
+                        refreshNativeLocationSharingAuth();
+                    }
                 }
             } else {
                 window.location.reload();
@@ -147,6 +153,9 @@ setInterval(async () => {
                 await logout();
             } else {
                 currentUser = session.user;
+                if (typeof refreshNativeLocationSharingAuth === 'function') {
+                    refreshNativeLocationSharingAuth();
+                }
             }
         } else {
             window.location.reload();

@@ -24,6 +24,18 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
     /// invoked that upgrade request during the current sharing session so the
     /// delegate does not stack duplicate prompts; reset in `stop()`.
     private var didRequestAlwaysUpgradeThisSharingSession = false
+    private var significantLocationMonitoringActive = false
+    /// Refresh the access token this many seconds before JWT `exp` so background
+    /// uploads do not stall when the WebView cannot run JS auto-refresh.
+    private let accessTokenRefreshLeadSeconds: TimeInterval = 5 * 60
+    private let diagnosticsDefaultsKey = "BackgroundLocationUploadDiagnostics"
+    private var lastUploadAt: Date?
+    private var lastUploadHttpStatus: Int?
+    private var lastUploadErrorSnippet: String?
+    private var lastTokenRefreshAt: Date?
+    private var lastTokenRefreshSucceeded: Bool?
+    private var lastHeartbeatAt: Date?
+    private var lastDidUpdateAt: Date?
 
     // Queue of pending one-shot getCurrentPosition calls waiting on a fresh fix.
     // Each entry pairs a call with the previous fix timestamp it considers
@@ -72,6 +84,8 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
     }
 
     private let configDefaultsKey = "BackgroundLocationSupabaseConfig"
+    /// Default distance filter when not actively sharing live location.
+    private let idleDistanceFilterMeters: CLLocationDistance = 10
     private let isoFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -110,9 +124,11 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
             }
 
             self.applyBackgroundUpdatesIfAuthorized()
+            self.applySharingLocationConfiguration()
             self.locationManager?.startUpdatingLocation()
             NSLog("[BackgroundLocation] startUpdatingLocation called")
             self.scheduleStationaryLocationHeartbeat()
+            self.proactiveTokenRefreshIfNeeded()
             self.logLocationRuntimeState(context: "start")
             call.resolve()
         }
@@ -127,6 +143,7 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
             self.uploadRetryWorkItem?.cancel()
             self.uploadRetryWorkItem = nil
             self.invalidateStationaryLocationHeartbeat()
+            self.restoreIdleLocationConfiguration()
             self.locationManager?.stopUpdatingLocation()
             self.logLocationRuntimeState(context: "stop")
             call.resolve()
@@ -240,6 +257,8 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
         }
 
         NSLog("[BackgroundLocation] didUpdateLocations lat=\(location.coordinate.latitude) lng=\(location.coordinate.longitude) horizAcc=\(location.horizontalAccuracy)m age=\(String(format: "%.1f", age))s")
+        lastDidUpdateAt = Date()
+        persistUploadDiagnostics()
         logLocationRuntimeState(context: "didUpdateLocations")
         lastPosition = location
         postLocationToSupabase(location)
@@ -254,6 +273,18 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
         NSLog("[BackgroundLocation] didFailWithError: \(error.localizedDescription)")
     }
 
+    public func locationManagerDidPauseLocationUpdates(_ manager: CLLocationManager) {
+        NSLog("[BackgroundLocation] location updates paused by system — requesting fix and heartbeat upload")
+        manager.requestLocation()
+        uploadStationaryHeartbeatIfPossible()
+    }
+
+    public func locationManagerDidResumeLocationUpdates(_ manager: CLLocationManager) {
+        NSLog("[BackgroundLocation] location updates resumed")
+        proactiveTokenRefreshIfNeeded()
+        uploadStationaryHeartbeatIfPossible()
+    }
+
     public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         let status = manager.authorizationStatus
         NSLog("[BackgroundLocation] authorization changed -> \(describe(status))")
@@ -264,6 +295,9 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
         }
         if status == .authorizedAlways || status == .authorizedWhenInUse {
             applyBackgroundUpdatesIfAuthorized()
+            if locationUploadEnabled {
+                applySharingLocationConfiguration()
+            }
             manager.startUpdatingLocation()
             // If a one-shot caller (e.g. selfie capture) is waiting on this
             // prompt, kick the manager to deliver a single fresh fix asap
@@ -293,8 +327,9 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
             // distanceFilter means Core Location pushes us updates shortly
             // after any real movement instead of waiting for a 100m hop.
             manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
-            manager.distanceFilter = 10
+            manager.distanceFilter = idleDistanceFilterMeters
             manager.pausesLocationUpdatesAutomatically = false
+            loadUploadDiagnostics()
             locationManager = manager
             loadSupabaseConfig()
         }
@@ -341,9 +376,11 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
 
     private func scheduleStationaryLocationHeartbeat() {
         invalidateStationaryLocationHeartbeat()
+        uploadStationaryHeartbeatIfPossible()
         let timer = Timer(timeInterval: stationaryLocationHeartbeatInterval, repeats: true) { [weak self] _ in
             self?.uploadStationaryHeartbeatIfPossible()
         }
+        timer.tolerance = 5
         RunLoop.main.add(timer, forMode: .common)
         stationaryUploadHeartbeatTimer = timer
     }
@@ -359,7 +396,10 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
         guard locationUploadEnabled else { return }
         guard let location = lastPosition else { return }
         guard location.horizontalAccuracy > minAcceptableHorizontalAccuracy else { return }
+        lastHeartbeatAt = Date()
+        persistUploadDiagnostics()
         NSLog("[BackgroundLocation] stationary heartbeat upload lat=\(location.coordinate.latitude) lng=\(location.coordinate.longitude) fixAge=\(String(format: "%.1f", Date().timeIntervalSince(location.timestamp)))s")
+        proactiveTokenRefreshIfNeeded()
         locationManager?.requestLocation()
         postLocationToSupabase(location)
     }
@@ -382,6 +422,8 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
         guard !uploadInFlight else { return }
         guard !tokenRefreshInFlight else { return }
         guard locationUploadEnabled else { return }
+        proactiveTokenRefreshIfNeeded()
+        guard !tokenRefreshInFlight else { return }
         guard let location = pendingUploadLocation else { return }
         guard let config = supabaseConfig else {
             NSLog("[BackgroundLocation] no Supabase config; keeping latest location pending")
@@ -449,6 +491,7 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
             if let error = error {
                 NSLog("[BackgroundLocation] Supabase location upload failed: \(error.localizedDescription)")
                 DispatchQueue.main.async {
+                    self?.recordUploadResult(httpStatus: nil, errorSnippet: error.localizedDescription)
                     self?.handleLocationUploadFinished(location: location, succeeded: false)
                 }
                 return
@@ -459,6 +502,7 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
                 let trimmedBody = String(responseBody.prefix(1000))
                 NSLog("[BackgroundLocation] Supabase location upload returned HTTP \(statusCode) body=\(trimmedBody)")
                 DispatchQueue.main.async {
+                    self?.recordUploadResult(httpStatus: statusCode, errorSnippet: trimmedBody)
                     if statusCode == 401 {
                         self?.handleUnauthorizedLocationUpload(location)
                     } else {
@@ -469,6 +513,7 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
             }
             NSLog("[BackgroundLocation] Supabase location upload succeeded")
             DispatchQueue.main.async {
+                self?.recordUploadResult(httpStatus: statusCode, errorSnippet: nil)
                 self?.handleLocationUploadFinished(location: location, succeeded: true)
             }
         }.resume()
@@ -562,6 +607,9 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
 
     private func handleTokenRefreshFinished(config: SupabaseLocationConfig, data: Data?, succeeded: Bool) {
         tokenRefreshInFlight = false
+        lastTokenRefreshAt = Date()
+        lastTokenRefreshSucceeded = succeeded
+        persistUploadDiagnostics()
         guard succeeded,
               let data = data,
               let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
@@ -624,6 +672,118 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + locationUploadRetryDelay, execute: workItem)
     }
 
+    /// While live sharing is active, use settings that reduce iOS 16.4+
+    /// background suspension (distance filter + blue bar indicator).
+    private func applySharingLocationConfiguration() {
+        guard let manager = locationManager, locationUploadEnabled else { return }
+        manager.distanceFilter = kCLDistanceFilterNone
+        if manager.authorizationStatus == .authorizedAlways {
+            manager.showsBackgroundLocationIndicator = true
+        }
+        if CLLocationManager.significantLocationChangeMonitoringAvailable(),
+           !significantLocationMonitoringActive {
+            manager.startMonitoringSignificantLocationChanges()
+            significantLocationMonitoringActive = true
+            NSLog("[BackgroundLocation] started significant location change monitoring")
+        }
+    }
+
+    private func restoreIdleLocationConfiguration() {
+        guard let manager = locationManager else { return }
+        manager.distanceFilter = idleDistanceFilterMeters
+        manager.showsBackgroundLocationIndicator = false
+        if significantLocationMonitoringActive {
+            manager.stopMonitoringSignificantLocationChanges()
+            significantLocationMonitoringActive = false
+            NSLog("[BackgroundLocation] stopped significant location change monitoring")
+        }
+    }
+
+    private func proactiveTokenRefreshIfNeeded() {
+        guard locationUploadEnabled else { return }
+        guard let config = supabaseConfig else { return }
+        guard !tokenRefreshInFlight else { return }
+        guard let exp = jwtExpirationDate(accessToken: config.accessToken) else { return }
+        let refreshBy = exp.addingTimeInterval(-accessTokenRefreshLeadSeconds)
+        guard Date() >= refreshBy else { return }
+        NSLog("[BackgroundLocation] access token near expiry — proactive refresh")
+        refreshSupabaseAccessTokenIfPossible()
+    }
+
+    private func jwtExpirationDate(accessToken: String) -> Date? {
+        let parts = accessToken.split(separator: ".")
+        guard parts.count >= 2 else { return nil }
+        var payload = String(parts[1])
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        while payload.count % 4 != 0 { payload.append("=") }
+        guard let data = Data(base64Encoded: payload),
+              let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+        else { return nil }
+        if let exp = json["exp"] as? TimeInterval {
+            return Date(timeIntervalSince1970: exp)
+        }
+        if let exp = json["exp"] as? Int {
+            return Date(timeIntervalSince1970: TimeInterval(exp))
+        }
+        return nil
+    }
+
+    private func recordUploadResult(httpStatus: Int?, errorSnippet: String?) {
+        lastUploadAt = Date()
+        lastUploadHttpStatus = httpStatus
+        lastUploadErrorSnippet = errorSnippet.map { String($0.prefix(200)) }
+        persistUploadDiagnostics()
+    }
+
+    private struct PersistedUploadDiagnostics: Codable {
+        let lastUploadAt: Date?
+        let lastUploadHttpStatus: Int?
+        let lastUploadErrorSnippet: String?
+        let lastTokenRefreshAt: Date?
+        let lastTokenRefreshSucceeded: Bool?
+        let lastHeartbeatAt: Date?
+        let lastDidUpdateAt: Date?
+    }
+
+    private func persistUploadDiagnostics() {
+        let snapshot = PersistedUploadDiagnostics(
+            lastUploadAt: lastUploadAt,
+            lastUploadHttpStatus: lastUploadHttpStatus,
+            lastUploadErrorSnippet: lastUploadErrorSnippet,
+            lastTokenRefreshAt: lastTokenRefreshAt,
+            lastTokenRefreshSucceeded: lastTokenRefreshSucceeded,
+            lastHeartbeatAt: lastHeartbeatAt,
+            lastDidUpdateAt: lastDidUpdateAt
+        )
+        if let encoded = try? JSONEncoder().encode(snapshot) {
+            UserDefaults.standard.set(encoded, forKey: diagnosticsDefaultsKey)
+        }
+    }
+
+    private func loadUploadDiagnostics() {
+        guard let data = UserDefaults.standard.data(forKey: diagnosticsDefaultsKey),
+              let snapshot = try? JSONDecoder().decode(PersistedUploadDiagnostics.self, from: data)
+        else { return }
+        lastUploadAt = snapshot.lastUploadAt
+        lastUploadHttpStatus = snapshot.lastUploadHttpStatus
+        lastUploadErrorSnippet = snapshot.lastUploadErrorSnippet
+        lastTokenRefreshAt = snapshot.lastTokenRefreshAt
+        lastTokenRefreshSucceeded = snapshot.lastTokenRefreshSucceeded
+        lastHeartbeatAt = snapshot.lastHeartbeatAt
+        lastDidUpdateAt = snapshot.lastDidUpdateAt
+    }
+
+    private func isoString(_ date: Date?) -> String? {
+        guard let date = date else { return nil }
+        return isoFormatter.string(from: date)
+    }
+
+    private func accessTokenExpiresAtIso() -> String? {
+        guard let token = supabaseConfig?.accessToken else { return nil }
+        return isoString(jwtExpirationDate(accessToken: token))
+    }
+
     /// `allowsBackgroundLocationUpdates` requires Always authorization at the
     /// time it's set. Setting it earlier is ignored (or on some iOS versions,
     /// logs a runtime warning), so we defer it until we actually have the
@@ -635,6 +795,9 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
             if !manager.allowsBackgroundLocationUpdates {
                 manager.allowsBackgroundLocationUpdates = true
             }
+            if locationUploadEnabled {
+                manager.showsBackgroundLocationIndicator = true
+            }
         } else {
             if manager.allowsBackgroundLocationUpdates {
                 manager.allowsBackgroundLocationUpdates = false
@@ -643,32 +806,39 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
     }
 
     private func buildStatusPayload() -> [String: Any] {
-        guard let manager = locationManager else {
-            return [
-                "authorizationStatus": "notInitialized",
-                "allowsBackgroundLocationUpdates": false,
-                "pausesLocationUpdatesAutomatically": false,
-                "hasSupabaseConfig": supabaseConfig != nil,
-                "configUser": redact(supabaseConfig?.userId),
-                "configInstance": redact(supabaseConfig?.instanceId),
-                "locationUploadEnabled": locationUploadEnabled,
-                "hasPendingUpload": pendingUploadLocation != nil,
-                "uploadInFlight": uploadInFlight,
-                "appState": describe(UIApplication.shared.applicationState)
-            ]
-        }
-        return [
-            "authorizationStatus": describe(manager.authorizationStatus),
-            "allowsBackgroundLocationUpdates": manager.allowsBackgroundLocationUpdates,
-            "pausesLocationUpdatesAutomatically": manager.pausesLocationUpdatesAutomatically,
+        var base: [String: Any] = [
             "hasSupabaseConfig": supabaseConfig != nil,
             "configUser": redact(supabaseConfig?.userId),
             "configInstance": redact(supabaseConfig?.instanceId),
             "locationUploadEnabled": locationUploadEnabled,
             "hasPendingUpload": pendingUploadLocation != nil,
             "uploadInFlight": uploadInFlight,
-            "appState": describe(UIApplication.shared.applicationState)
+            "tokenRefreshInFlight": tokenRefreshInFlight,
+            "appState": describe(UIApplication.shared.applicationState),
+            "significantLocationMonitoringActive": significantLocationMonitoringActive
         ]
+        if let v = isoString(lastUploadAt) { base["lastUploadAt"] = v }
+        if let v = lastUploadHttpStatus { base["lastUploadHttpStatus"] = v }
+        if let v = lastUploadErrorSnippet { base["lastUploadErrorSnippet"] = v }
+        if let v = isoString(lastTokenRefreshAt) { base["lastTokenRefreshAt"] = v }
+        if let v = lastTokenRefreshSucceeded { base["lastTokenRefreshSucceeded"] = v }
+        if let v = isoString(lastHeartbeatAt) { base["lastHeartbeatAt"] = v }
+        if let v = isoString(lastDidUpdateAt) { base["lastDidUpdateAt"] = v }
+        if let v = accessTokenExpiresAtIso() { base["accessTokenExpiresAt"] = v }
+        guard let manager = locationManager else {
+            base["authorizationStatus"] = "notInitialized"
+            base["allowsBackgroundLocationUpdates"] = false
+            base["pausesLocationUpdatesAutomatically"] = false
+            base["showsBackgroundLocationIndicator"] = false
+            base["distanceFilter"] = idleDistanceFilterMeters
+            return base
+        }
+        base["authorizationStatus"] = describe(manager.authorizationStatus)
+        base["allowsBackgroundLocationUpdates"] = manager.allowsBackgroundLocationUpdates
+        base["pausesLocationUpdatesAutomatically"] = manager.pausesLocationUpdatesAutomatically
+        base["showsBackgroundLocationIndicator"] = manager.showsBackgroundLocationIndicator
+        base["distanceFilter"] = manager.distanceFilter
+        return base
     }
 
     private func logLocationRuntimeState(context: String) {

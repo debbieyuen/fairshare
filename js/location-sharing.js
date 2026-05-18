@@ -236,6 +236,98 @@ function refreshNativeLocationSharingAuth() {
     startNativeLocationSharing();
 }
 
+/**
+ * Logs sharer/viewer ground truth for background-location debugging (Supabase row,
+ * share expiry, instance_id vs native plugin diagnostics). Call after resume or
+ * when uploads appear stale.
+ */
+async function logLocationSharingDiagnostics(context) {
+    if (!currentUser) return;
+    const label = context ? String(context) : 'manual';
+    const prefix = '[location-diagnostics]';
+    const instanceId = getLocationSharingInstanceId();
+    const now = Date.now();
+    const outboundSummary = {};
+    let anyExpired = false;
+    let anyInstanceMismatch = false;
+
+    for (const [contactId, share] of Object.entries(locationSharesOutbound || {})) {
+        const expiresAt = share?.expires_at || null;
+        const expired = expiresAt ? new Date(expiresAt).getTime() <= now : false;
+        const owned = isLocationShareOwnedByThisDevice(share);
+        if (expired) anyExpired = true;
+        if (!owned) anyInstanceMismatch = true;
+        outboundSummary[contactId] = {
+            expires_at: expiresAt,
+            expired,
+            source_instance_id: share?.source_instance_id || null,
+            owned_by_this_device: owned
+        };
+    }
+
+    let ownLocation = null;
+    try {
+        const { data, error } = await db
+            .from('user_locations')
+            .select('user_id, lat, lng, updated_at, source_instance_id, source_platform')
+            .eq('user_id', currentUser.id)
+            .maybeSingle();
+        if (error) throw error;
+        ownLocation = data;
+        if (ownLocation?.updated_at) {
+            const ageMin = Math.round((now - new Date(ownLocation.updated_at).getTime()) / APP_TIMING.MINUTE_MS);
+            ownLocation._ageMinutes = ageMin;
+        }
+    } catch (e) {
+        console.warn(prefix, label, 'user_locations read failed:', e);
+    }
+
+    console.log(prefix, label, {
+        instanceId,
+        outbound: outboundSummary,
+        inboundContactIds: Object.keys(locationSharesInbound || {}),
+        ownLocation,
+        anyExpired,
+        anyInstanceMismatch
+    });
+
+    if (anyExpired) {
+        console.warn(prefix, label, 'One or more outbound shares are expired — RLS may block uploads until sharing is restarted.');
+    }
+    if (anyInstanceMismatch) {
+        console.warn(prefix, label, 'source_instance_id does not match this device — uploads may be rejected by RLS.');
+    }
+    if (ownLocation?._ageMinutes != null && ownLocation._ageMinutes >= 5 && hasAnyActiveLocationShares()) {
+        console.warn(prefix, label, 'user_locations.updated_at is', ownLocation._ageMinutes, 'min old while sharing is active.');
+    }
+
+    if (IS_NATIVE && NATIVE_PLATFORM !== 'android') {
+        try {
+            const plugin = Capacitor.Plugins.BackgroundLocation;
+            if (plugin && typeof plugin.getStatus === 'function') {
+                const status = await plugin.getStatus();
+                console.log(prefix, label, 'native', status);
+            }
+        } catch (e) {
+            console.warn(prefix, label, 'native getStatus failed:', e);
+        }
+    }
+}
+
+if (typeof window !== 'undefined') {
+    window.logLocationSharingDiagnostics = logLocationSharingDiagnostics;
+}
+
+function resumeLocationSharingAfterForeground() {
+    if (!currentUser) return;
+    refreshShareRemainingTimers();
+    checkAndStartLocationSharing();
+    refreshNativeLocationSharingAuth();
+    resubscribeContactLocationsRealtime();
+    startContactLocationsPolling();
+    void logLocationSharingDiagnostics('foreground-resume');
+}
+
 async function logNativeLocationSharingStatus(plugin) {
     if (!plugin || typeof plugin.getStatus !== 'function') return;
     try {
@@ -508,6 +600,17 @@ function refreshContactLocationsSubscriptions() {
     startContactLocationsPolling();
 }
 
+/** Drop and recreate the viewer Realtime channel (e.g. after long background). */
+function resubscribeContactLocationsRealtime() {
+    if (contactLocationsChannel) {
+        try { db.removeChannel(contactLocationsChannel); } catch (_) { /* noop */ }
+        contactLocationsChannel = null;
+    }
+    if (Object.keys(locationSharesInbound || {}).length > 0) {
+        startContactLocationsRealtime();
+    }
+}
+
 function startContactLocationsRealtime() {
     if (contactLocationsChannel) return;
     if (!currentUser) return;
@@ -566,6 +669,7 @@ function stopContactLocationsRefresh() {
 
 function handleContactLocationsVisibility() {
     if (document.visibilityState === 'visible') {
+        resubscribeContactLocationsRealtime();
         loadContactLocations();
     }
 }
