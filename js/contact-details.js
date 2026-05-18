@@ -90,19 +90,15 @@ function renderCdSkeleton(seed) {
     `;
 }
 
-function cdHasOutboundProfileShare(row) {
-    const sbm = row?.sharedByMe || {};
-    const p = sbm.shared_phone != null && String(sbm.shared_phone).trim() !== '';
-    const e = sbm.shared_email != null && String(sbm.shared_email).trim() !== '';
-    return p || e;
-}
-
-function cdRefreshShareButtonIfOpen(contactId) {
+function cdRefreshProfileShareTogglesIfOpen(contactId) {
     if (!contactId || cdCurrentContactId !== contactId) return;
     const row = (contactsLoadedRows || []).find(r => r.contact?.contact_id === contactId);
-    const btn = document.getElementById('cd-share-btn');
-    if (!btn || !row) return;
-    btn.classList.toggle('cd-action-filled', cdHasOutboundProfileShare(row));
+    if (!row) return;
+    const sbm = row.sharedByMe || {};
+    const outPhoneOn = sbm.shared_phone != null && String(sbm.shared_phone).trim() !== '';
+    const outEmailOn = sbm.shared_email != null && String(sbm.shared_email).trim() !== '';
+    cdSetSwitch('cd-toggle-share-email', outEmailOn);
+    cdSetSwitch('cd-toggle-share-phone', outPhoneOn);
 }
 
 function renderContactDetailsScreen(root, row) {
@@ -146,7 +142,11 @@ function renderContactDetailsScreen(root, row) {
     }
 
     const knownLineText = cdHeroKnownLineText(c.first_met_at || null, c.created_at || null);
-    const shareHighlighted = cdHasOutboundProfileShare(row);
+    const sbm = row.sharedByMe || {};
+    const outPhoneOn = sbm.shared_phone != null && String(sbm.shared_phone).trim() !== '';
+    const outEmailOn = sbm.shared_email != null && String(sbm.shared_email).trim() !== '';
+    const hasProfPhone = !!currentProfile?.phone;
+    const hasProfEmail = !!currentProfile?.email;
 
     root.innerHTML = `
         <div class="cd-back-row">
@@ -188,10 +188,10 @@ function renderContactDetailsScreen(root, row) {
                     <span class="cd-action-icon">${cdShieldIcon()}</span>
                     <span class="cd-action-label">Vouch</span>
                 </button>
-                <button type="button" class="cd-action-btn${shareHighlighted ? ' cd-action-filled' : ''}" id="cd-share-btn"
-                    onclick="openShareWithContact('${esc(id)}', '${esc(name)}')">
-                    <span class="cd-action-icon">${cdShareIcon()}</span>
-                    <span class="cd-action-label">Share</span>
+                <button type="button" class="cd-action-btn" id="cd-intro-btn"
+                    onclick="cdOpenIntroModal()">
+                    <span class="cd-action-icon">${cdIntroIcon()}</span>
+                    <span class="cd-action-label">Intro</span>
                 </button>
                 <a class="cd-action-btn cd-action-link ${callDisabled ? 'cd-action-disabled' : ''}" href="${callHref}" ${callDisabled} aria-disabled="${callDisabled ? 'true' : 'false'}">
                     <span class="cd-action-icon">${cdPhoneIcon()}</span>
@@ -279,6 +279,28 @@ function renderContactDetailsScreen(root, row) {
                     <div class="cd-toggle-sub">${esc(firstName(name))} can see you on the map</div>
                 </div>
                 <div class="cd-switch ${shareLoc ? 'cd-switch-on' : ''}"><div class="cd-switch-knob"></div></div>
+            </button>
+            <div class="cd-toggle-divider"></div>
+            <button type="button" class="cd-toggle-row" id="cd-toggle-share-email"
+                onclick="cdOnToggleShareEmail('${esc(id)}')"
+                ${hasProfEmail ? '' : 'disabled'}>
+                <div class="cd-toggle-icon ${outEmailOn ? 'cd-toggle-icon-on' : ''}">${cdLucideIcon('mail')}</div>
+                <div class="cd-toggle-text">
+                    <div class="cd-toggle-label">Share my email</div>
+                    <div class="cd-toggle-sub">${hasProfEmail ? 'They can see the email on your profile' : 'Add an email in your profile first'}</div>
+                </div>
+                <div class="cd-switch ${outEmailOn ? 'cd-switch-on' : ''}"><div class="cd-switch-knob"></div></div>
+            </button>
+            <div class="cd-toggle-divider"></div>
+            <button type="button" class="cd-toggle-row" id="cd-toggle-share-phone"
+                onclick="cdOnToggleSharePhone('${esc(id)}')"
+                ${hasProfPhone ? '' : 'disabled'}>
+                <div class="cd-toggle-icon ${outPhoneOn ? 'cd-toggle-icon-on' : ''}">${cdPhoneIcon()}</div>
+                <div class="cd-toggle-text">
+                    <div class="cd-toggle-label">Share my phone</div>
+                    <div class="cd-toggle-sub">${hasProfPhone ? 'They can see the phone on your profile' : 'Add a phone in your profile first'}</div>
+                </div>
+                <div class="cd-switch ${outPhoneOn ? 'cd-switch-on' : ''}"><div class="cd-switch-knob"></div></div>
             </button>
         </div>
 
@@ -550,7 +572,7 @@ function cdRenderHistory(events) {
         list.innerHTML = '<div class="cd-history-empty">No shared events yet.</div>';
         return;
     }
-    const kindLabel = { nearby: 'Nearby', selfie: 'Selfie', vouch: 'Vouch', group: 'Group' };
+    const kindLabel = { nearby: 'Nearby', selfie: 'Selfie', vouch: 'Vouch', group: 'Group', intro: 'Intro' };
     list.innerHTML = events.map((h, i) => {
         const dotClass = `cd-history-dot cd-history-dot-${esc(h.kind)}`;
         const isLast = i === events.length - 1;
@@ -839,6 +861,52 @@ async function cdOnToggleNotify(contactId) {
         cdSetSwitch('cd-toggle-notify', !next);
         if (row?.contact) row.contact.notify_nearby = !next;
     }
+}
+
+function cdIntroIcon() {
+    return cdLucideIcon('users');
+}
+
+function cdOpenIntroModal() {
+    if (!cdCurrentContactId) return;
+    const row = (contactsLoadedRows || []).find(r => r.contact?.contact_id === cdCurrentContactId);
+    introSubjectContactId = cdCurrentContactId;
+    introSubjectContactName = (row?.profile?.display_name) || 'contact';
+    showModal('introContact');
+}
+
+function cdOutboundPhoneOn(row) {
+    const sbm = row?.sharedByMe || {};
+    return sbm.shared_phone != null && String(sbm.shared_phone).trim() !== '';
+}
+
+function cdOutboundEmailOn(row) {
+    const sbm = row?.sharedByMe || {};
+    return sbm.shared_email != null && String(sbm.shared_email).trim() !== '';
+}
+
+async function cdOnToggleShareEmail(contactId) {
+    if (!contactId || !currentUser || !currentProfile?.email) return;
+    const row = (contactsLoadedRows || []).find(r => r.contact?.contact_id === contactId);
+    if (!row) return;
+    const wantEmail = !cdOutboundEmailOn(row);
+    const wantPhone = cdOutboundPhoneOn(row);
+    await saveOutboundProfileShareForContact(contactId, wantPhone, wantEmail);
+    const row2 = (contactsLoadedRows || []).find(r => r.contact?.contact_id === contactId);
+    cdSetSwitch('cd-toggle-share-email', cdOutboundEmailOn(row2));
+    cdSetSwitch('cd-toggle-share-phone', cdOutboundPhoneOn(row2));
+}
+
+async function cdOnToggleSharePhone(contactId) {
+    if (!contactId || !currentUser || !currentProfile?.phone) return;
+    const row = (contactsLoadedRows || []).find(r => r.contact?.contact_id === contactId);
+    if (!row) return;
+    const wantPhone = !cdOutboundPhoneOn(row);
+    const wantEmail = cdOutboundEmailOn(row);
+    await saveOutboundProfileShareForContact(contactId, wantPhone, wantEmail);
+    const row2 = (contactsLoadedRows || []).find(r => r.contact?.contact_id === contactId);
+    cdSetSwitch('cd-toggle-share-email', cdOutboundEmailOn(row2));
+    cdSetSwitch('cd-toggle-share-phone', cdOutboundPhoneOn(row2));
 }
 
 function cdOnToggleShareLoc(contactId) {

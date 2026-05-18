@@ -92,12 +92,12 @@ that pushes.
 
 | Field | Value |
 |-------|-------|
-| Trigger | RPC `complete_meet(p_token)` after pairing |
+| Trigger | RPC `complete_meet(p_token, p_meet_source)` after pairing (`p_meet_source` defaults to `URL`; in-app QR scans use `F2F`) |
 | Recipient | The meet issuer (`v_meet_request.user_id`) |
 | Title | `"FairShare"` |
 | Body | `"{name} just joined FairShare via your handshake."` if the newcomer signed up via that token, otherwise `"{name} is now your contact."` |
 | URL | `/?action=view_contact&contact={newContactUuid}` |
-| Source | [sql/handshake-push-schema.sql](../sql/handshake-push-schema.sql) 47–145 |
+| Source | [sql/handshake-push-schema.sql](../sql/handshake-push-schema.sql) 47–145; optional `p_meet_source` and `contacts.met_via` in [sql/contact-intro-and-met-via-migration.sql](../sql/contact-intro-and-met-via-migration.sql) |
 
 Also writes a `contact_notifications` row of type `new_contact` for in-app
 display.
@@ -116,6 +116,25 @@ When a contact saves a selfie of the two of you via `add_contact_selfie`.
 | Body | `"{name} took a new selfie with you."` |
 | URL | `/?action=view_contact&contact={callerUuid}` |
 | Source | [sql/contact-list-schema.sql](../sql/contact-list-schema.sql) 147–155 |
+
+---
+
+## 5a. Contact intro (introduce two contacts)
+
+When someone sends an intro from Contact Details, each recipient gets a push.
+Tap opens the intro dialog (`handleNotificationNavigation` in
+[js/push.js](../js/push.js); in-app Realtime in [js/auth.js](../js/auth.js)).
+
+| Field | Value |
+|-------|-------|
+| Trigger | RPC `send_contact_intro(p_contact_a, p_contact_b, p_message)` |
+| Recipient | Each of the two parties (`p_contact_a`, `p_contact_b`), excluding the actor |
+| Title | `"FairShare"` |
+| Body | `"{introducer} wants you to meet {other}"` — `other` is the opposite party for that recipient |
+| URL | `/?action=contact_intro&intro={introUuid}` |
+| Source | [sql/contact-intro-and-met-via-migration.sql](../sql/contact-intro-and-met-via-migration.sql) `send_contact_intro` |
+
+Also inserts `contact_notifications` rows of type `contact_intro` with `data.intro_id`, `data.other_user_id`, and `data.intro_text`.
 
 ---
 
@@ -181,7 +200,7 @@ Realtime toasts while foregrounded.
 
 | Field | Value |
 |-------|-------|
-| Trigger | `saveShareWithContact` in [js/contacts.js](../js/contacts.js) and `submitSponsorShareInfoDialog` in [js/modals.js](../js/modals.js) call `sendInboundShareEmailPhonePush` ([js/utils.js](../js/utils.js)) |
+| Trigger | `saveOutboundProfileShareForContact` / `saveShareWithContact` in [js/contacts.js](../js/contacts.js) and `submitSponsorShareInfoDialog` in [js/modals.js](../js/modals.js) call `sendInboundShareEmailPhonePush` ([js/utils.js](../js/utils.js)) |
 | Recipient | The `contact_id` / sponsor receiving the share |
 | Title | `APP_NAME` (`"Union"`) |
 | Body | Built by `buildInboundShareEmailPhonePushBody` — e.g. `"{name} shared their email with you."`, `"{name} updated the phone number they share with you."`, or combined first/update phrases |

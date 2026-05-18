@@ -227,7 +227,10 @@ async function handleMeetScan(token) {
     document.getElementById('meetScanHint').textContent = 'Connecting...';
 
     try {
-        const { data, error } = await db.rpc('complete_meet', { p_token: token });
+        const { data, error } = await db.rpc('complete_meet', {
+            p_token: token,
+            p_meet_source: 'F2F',
+        });
 
         if (error) {
             showToast('Meet failed: ' + error.message, 'error');

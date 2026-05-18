@@ -104,6 +104,53 @@ function showModal(type) {
             break;
         }
 
+        case 'introContact': {
+            document.getElementById('modalBody').classList.remove('share-modal');
+            const subj = introSubjectContactId;
+            const subjName = esc(introSubjectContactName || 'contact');
+            const rows = (contactsLoadedRows || [])
+                .filter((r) => {
+                    const cid = r.contact?.contact_id;
+                    return cid && cid !== subj;
+                })
+                .slice()
+                .sort((a, b) => {
+                    const na = (a.profile?.display_name || '').toLowerCase();
+                    const nb = (b.profile?.display_name || '').toLowerCase();
+                    return na.localeCompare(nb);
+                });
+            const options = rows.map((r) => {
+                const cid = r.contact.contact_id;
+                const nm = esc(r.profile?.display_name || 'Unknown');
+                return `<option value="${esc(cid)}">${nm}</option>`;
+            }).join('');
+            body.innerHTML = `
+                <h3>Introduce ${subjName}</h3>
+                <p style="font-size:0.9rem;color:var(--dark-gray);margin-bottom:0.75rem;">
+                    Pick someone from your contacts and add a short message. Both people get a notification.
+                </p>
+                <div class="form-group">
+                    <label for="introContactPick">Introduce to</label>
+                    <select id="introContactPick" class="form-control" onchange="syncIntroSendEnabled()">
+                        <option value="">Choose a contact\u2026</option>
+                        ${options}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="introContactMessage">Introductory message</label>
+                    <textarea id="introContactMessage" class="form-control" rows="4"
+                        placeholder="Say how you know each other or why they should connect."
+                        oninput="syncIntroSendEnabled()"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="introSendBtn" disabled onclick="submitIntroContactForm()">Send intro</button>
+                </div>
+            `;
+            syncIntroSendEnabled();
+            break;
+        }
+
         case 'vouchChoice':
             body.innerHTML = `
                 <h3>Vouch for ${esc(vouchWithContactName || 'contact')}</h3>
@@ -202,6 +249,8 @@ function closeModal(_options = {}) {
     shareWithContactName = '';
     shareWithInitialPhone = false;
     shareWithInitialEmail = false;
+    introSubjectContactId = null;
+    introSubjectContactName = '';
     sponsorShareInfoContactId = null;
     sponsorShareInfoContactName = '';
     vouchWithContactId = null;
@@ -353,7 +402,7 @@ async function submitSponsorShareInfoDialog() {
             row.sharedByMe.shared_email = sharedEmail;
         }
 
-        if (typeof cdRefreshShareButtonIfOpen === 'function') cdRefreshShareButtonIfOpen(cid);
+        if (typeof cdRefreshProfileShareTogglesIfOpen === 'function') cdRefreshProfileShareTogglesIfOpen(cid);
 
         markSponsorShareInfoPromptDone(cid);
         if (newlyShared.length > 0) {
@@ -736,6 +785,45 @@ async function saveSuggestedPicture(imageUrl) {
         if (e.name === 'AbortError') return;
         console.error('Save suggested picture error:', e);
         showToast('Could not save picture: ' + (e.message || 'error'), 'error');
+    }
+}
+
+function syncIntroSendEnabled() {
+    const sel = document.getElementById('introContactPick');
+    const ta = document.getElementById('introContactMessage');
+    const btn = document.getElementById('introSendBtn');
+    if (!btn || !sel || !ta) return;
+    const ok = !!sel.value && !!String(ta.value || '').trim();
+    btn.disabled = !ok;
+}
+
+async function submitIntroContactForm() {
+    if (!introSubjectContactId || !currentUser) {
+        closeModal();
+        return;
+    }
+    const sel = document.getElementById('introContactPick');
+    const ta = document.getElementById('introContactMessage');
+    const otherId = sel?.value;
+    const msg = String(ta?.value || '').trim();
+    if (!otherId || !msg) return;
+
+    const btn = document.getElementById('introSendBtn');
+    if (btn) btn.disabled = true;
+
+    try {
+        const { error } = await db.rpc('send_contact_intro', {
+            p_contact_a: introSubjectContactId,
+            p_contact_b: otherId,
+            p_message: msg,
+        });
+        if (error) throw error;
+        showToast('Intro sent.', 'success');
+        closeModal();
+    } catch (e) {
+        console.error('send_contact_intro error:', e);
+        showToast('Could not send intro: ' + (e.message || 'error'), 'error');
+        if (btn) btn.disabled = false;
     }
 }
 

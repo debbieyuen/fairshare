@@ -53,7 +53,8 @@ async function init() {
     } else if (meetToken) {
         localStorage.setItem('fairshare_meet', JSON.stringify({
             token: meetToken,
-            savedAt: Date.now()
+            savedAt: Date.now(),
+            meetSource: 'URL',
         }));
         window.history.replaceState({}, document.title, window.location.pathname);
         await showMeetBanner(meetToken);
@@ -90,6 +91,14 @@ async function init() {
         const notifContactId = urlParams.get('contact');
         if (notifContactId) {
             pendingOpenContactId = notifContactId;
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    }
+
+    if (urlParams.get('action') === 'contact_intro') {
+        const introId = urlParams.get('intro');
+        if (introId) {
+            pendingContactIntroId = introId;
             window.history.replaceState({}, document.title, window.location.pathname);
         }
     }
@@ -442,6 +451,7 @@ async function handlePendingMeet() {
     // localStorage first, then fall back to user_metadata (set at signup
     // time). See handlePendingInvite for the cross-origin rationale.
     let token = null;
+    let meetSource = 'URL';
     let staleLocal = false;
     const stored = localStorage.getItem('fairshare_meet');
     if (stored) {
@@ -450,11 +460,13 @@ async function handlePendingMeet() {
             const ONE_DAY_MS = 24 * 60 * 60 * 1000;
             if (parsed.token && (Date.now() - parsed.savedAt) < ONE_DAY_MS) {
                 token = parsed.token;
+                if (parsed.meetSource === 'F2F') meetSource = 'F2F';
             } else {
                 staleLocal = true;
             }
         } catch {
             token = stored;
+            meetSource = 'URL';
         }
     }
     if (!token && currentUser?.user_metadata?.meet_token) {
@@ -469,7 +481,10 @@ async function handlePendingMeet() {
     let claimedGroupId = null;
     let consumed = false;
     try {
-        const { data, error } = await db.rpc('complete_meet', { p_token: token });
+        const { data, error } = await db.rpc('complete_meet', {
+            p_token: token,
+            p_meet_source: meetSource,
+        });
         if (error) {
             const msg = (error.message || '').toLowerCase();
             if (msg.includes('already been used') || msg.includes('already used')) {

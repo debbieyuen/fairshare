@@ -584,6 +584,13 @@ async function openNewestContactDetails() {
 }
 
 async function openPendingContactDetailsIfAny() {
+    if (pendingContactIntroId) {
+        const iid = pendingContactIntroId;
+        pendingContactIntroId = null;
+        if (typeof showContactIntroDialog === 'function') {
+            await showContactIntroDialog(iid);
+        }
+    }
     if (pendingOpenContactId) {
         const cid = pendingOpenContactId;
         pendingOpenContactId = null;
@@ -1882,7 +1889,7 @@ async function openShareWithContact(contactId, contactName) {
         shareWithInitialPhone = dbPhone;
         shareWithInitialEmail = dbEmail;
 
-        if (typeof cdRefreshShareButtonIfOpen === 'function') cdRefreshShareButtonIfOpen(contactId);
+        if (typeof cdRefreshProfileShareTogglesIfOpen === 'function') cdRefreshProfileShareTogglesIfOpen(contactId);
 
         const phoneCheck = document.getElementById('shareCheckPhone');
         const emailCheck = document.getElementById('shareCheckEmail');
@@ -1891,41 +1898,50 @@ async function openShareWithContact(contactId, contactName) {
     } catch (_) { /* non-fatal */ }
 }
 
-async function saveShareWithContact() {
-    if (!shareWithContactId || !currentUser) { closeModal(); return; }
+/**
+ * Upsert outbound phone/email sharing for a contact (contact_shared + optional
+ * contact_shares + push). Used by the shareChoice modal and contact-details toggles.
+ * @param {string} contactId
+ * @param {boolean} wantPhone
+ * @param {boolean} wantEmail
+ * @param {{ initialPhone?: boolean, initialEmail?: boolean, saveButtonEl?: HTMLElement }} [opts]
+ * @returns {Promise<boolean>} true on success
+ */
+async function saveOutboundProfileShareForContact(contactId, wantPhone, wantEmail, opts) {
+    opts = opts || {};
+    if (!contactId || !currentUser) return false;
 
-    const phoneCheck = document.getElementById('shareCheckPhone');
-    const emailCheck = document.getElementById('shareCheckEmail');
-    const wantPhone = !!(phoneCheck?.checked && currentProfile?.phone);
-    const wantEmail = !!(emailCheck?.checked && currentProfile?.email);
-
-    const phone = wantPhone ? currentProfile.phone : null;
-    const email = wantEmail ? currentProfile.email : null;
-
-    const newlyShared = [];
-    if (wantPhone && !shareWithInitialPhone) newlyShared.push('phone');
-    if (wantEmail && !shareWithInitialEmail) newlyShared.push('email');
-
-    const saveBtn = document.getElementById('shareSaveBtn');
-    if (saveBtn) saveBtn.disabled = true;
-
-    const rowBefore = (contactsLoadedRows || []).find(r => r.contact?.contact_id === shareWithContactId);
+    const rowBefore = (contactsLoadedRows || []).find(r => r.contact?.contact_id === contactId);
     const prevSharedPhone = rowBefore?.sharedByMe?.shared_phone ?? null;
     const prevSharedEmail = rowBefore?.sharedByMe?.shared_email ?? null;
+
+    let baseInitialPhone = !!(prevSharedPhone != null && String(prevSharedPhone).trim() !== '');
+    let baseInitialEmail = !!(prevSharedEmail != null && String(prevSharedEmail).trim() !== '');
+    if (typeof opts.initialPhone === 'boolean') baseInitialPhone = opts.initialPhone;
+    if (typeof opts.initialEmail === 'boolean') baseInitialEmail = opts.initialEmail;
+
+    const phone = wantPhone && currentProfile?.phone ? currentProfile.phone : null;
+    const email = wantEmail && currentProfile?.email ? currentProfile.email : null;
+
+    const newlyShared = [];
+    if (wantPhone && currentProfile?.phone && !baseInitialPhone) newlyShared.push('phone');
+    if (wantEmail && currentProfile?.email && !baseInitialEmail) newlyShared.push('email');
+
+    const saveBtn = opts.saveButtonEl;
+    if (saveBtn) saveBtn.disabled = true;
 
     try {
         await db.from('contact_shared').upsert({
             user_id: currentUser.id,
-            contact_id: shareWithContactId,
+            contact_id: contactId,
             shared_phone: phone,
             shared_email: email
         }, { onConflict: 'user_id,contact_id' });
 
-        // Log only newly-enabled shares so the recipient gets one toast per item.
         for (const sharedType of newlyShared) {
             await db.from('contact_shares').insert({
                 from_user_id: currentUser.id,
-                to_user_id: shareWithContactId,
+                to_user_id: contactId,
                 shared_type: sharedType
             });
         }
@@ -1938,19 +1954,18 @@ async function saveShareWithContact() {
             currentProfile?.display_name || 'Someone',
             { phoneFirst, phoneUpdate, emailFirst, emailUpdate }
         );
-        if (sharePushBody) sendInboundShareEmailPhonePush(shareWithContactId, sharePushBody);
+        if (sharePushBody) sendInboundShareEmailPhonePush(contactId, sharePushBody);
 
-        // Reflect locally so the dialog re-opens with the correct checkbox
-        // state without needing a refetch. Note: row.shared is what THEY
-        // shared with us (inbound) — we update row.sharedByMe (outbound).
-        const row = (contactsLoadedRows || []).find(r => r.contact?.contact_id === shareWithContactId);
+        const row = (contactsLoadedRows || []).find(r => r.contact?.contact_id === contactId);
         if (row) {
             row.sharedByMe = row.sharedByMe || {};
             row.sharedByMe.shared_phone = phone;
             row.sharedByMe.shared_email = email;
         }
 
-        if (typeof cdRefreshShareButtonIfOpen === 'function') cdRefreshShareButtonIfOpen(shareWithContactId);
+        if (typeof cdRefreshProfileShareTogglesIfOpen === 'function') {
+            cdRefreshProfileShareTogglesIfOpen(contactId);
+        }
 
         if (newlyShared.length > 0) {
             const labels = newlyShared.map(t => t === 'phone' ? 'phone number' : 'email');
@@ -1958,17 +1973,37 @@ async function saveShareWithContact() {
             showToast('Shared your ' + joined + '.', 'success');
         } else if (wantPhone || wantEmail) {
             showToast('Sharing preferences saved.', 'success');
-        } else if (shareWithInitialPhone || shareWithInitialEmail) {
+        } else if (baseInitialPhone || baseInitialEmail) {
             showToast('Stopped sharing.', 'success');
         } else {
             showToast('No changes.', 'info');
         }
+
+        return true;
     } catch (err) {
-        console.error('Share with contact error:', err);
+        console.error('saveOutboundProfileShareForContact error:', err);
         showToast('Could not save: ' + (err.message || 'error'), 'error');
         if (saveBtn) saveBtn.disabled = false;
-        return;
+        return false;
     }
+}
+
+async function saveShareWithContact() {
+    if (!shareWithContactId || !currentUser) { closeModal(); return; }
+
+    const phoneCheck = document.getElementById('shareCheckPhone');
+    const emailCheck = document.getElementById('shareCheckEmail');
+    const wantPhone = !!(phoneCheck?.checked && currentProfile?.phone);
+    const wantEmail = !!(emailCheck?.checked && currentProfile?.email);
+    const saveBtn = document.getElementById('shareSaveBtn');
+
+    const ok = await saveOutboundProfileShareForContact(shareWithContactId, wantPhone, wantEmail, {
+        initialPhone: shareWithInitialPhone,
+        initialEmail: shareWithInitialEmail,
+        saveButtonEl: saveBtn || undefined,
+    });
+    if (!ok) return;
+
     closeModal();
     shareWithContactId = null;
     shareWithContactName = '';

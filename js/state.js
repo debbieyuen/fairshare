@@ -12,6 +12,8 @@ let shareWithContactId = null;
 let shareWithContactName = '';
 let shareWithInitialPhone = false; // pre-checked state for shareChoice modal
 let shareWithInitialEmail = false;
+let introSubjectContactId = null; // "Intro" from contact details — first party
+let introSubjectContactName = '';
 let sponsorShareInfoContactId = null;
 let sponsorShareInfoContactName = '';
 let vouchWithContactId = null;
@@ -26,6 +28,7 @@ let suggestPicContactId = null;
 let suggestPicStream = null;
 let pendingOpenContactId = null; // open this contact detail after app render
 let pendingOpenNewestContact = false; // fallback when exact new contact id is unknown
+let pendingContactIntroId = null; // contact intro deep link / push (UUID)
 // Meet-link joiner: show new-contact selfie first; close navigates to sponsor details.
 let pendingPostHandshakeSelfieContactId = null;
 let pendingPostHandshakeSelfieContactName = null;

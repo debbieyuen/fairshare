@@ -3108,6 +3108,7 @@ a.contact-shared-group-link:active {
     --cd-history-selfie: #E3AD4F;
     --cd-history-vouch: #5CA68A;
     --cd-history-group: #A7729F;
+    --cd-history-intro: #6B7FD7;
     --cd-shadow-card: 0 1px 3px rgba(0,0,0,0.05);
     --cd-shadow-trust: 0 4px 14px rgba(59,124,160,0.28);
     --cd-shadow-sheet: 0 20px 50px rgba(0,0,0,0.2);
@@ -4003,6 +4004,12 @@ a.contact-shared-group-link:active {
 #contactDetailsScreen .cd-history-dot-selfie { background: var(--cd-history-selfie); }
 #contactDetailsScreen .cd-history-dot-vouch  { background: var(--cd-history-vouch); }
 #contactDetailsScreen .cd-history-dot-group  { background: var(--cd-history-group); }
+#contactDetailsScreen .cd-history-dot-intro  { background: var(--cd-history-intro); }
+
+#contactDetailsScreen button.cd-toggle-row:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
 #contactDetailsScreen .cd-history-line {
     flex: 1;
     width: 2px;

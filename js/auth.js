@@ -239,7 +239,8 @@ async function handleAuthQrScan(token) {
     try {
         localStorage.setItem('fairshare_meet', JSON.stringify({
             token: token,
-            savedAt: Date.now()
+            savedAt: Date.now(),
+            meetSource: 'F2F',
         }));
     } catch (e) {
         console.warn('[auth-scan] Could not persist meet token:', e);
@@ -296,9 +297,12 @@ async function logout() {
     selectedGroup = null;
     myGroups = [];
     if (typeof clearContactDetailResumeState === 'function') clearContactDetailResumeState();
-    pendingPostHandshakeSelfieContactId = null;
-    pendingPostHandshakeSelfieContactName = null;
-    currentUser = null;
+                pendingPostHandshakeSelfieContactId = null;
+                pendingPostHandshakeSelfieContactName = null;
+                pendingContactIntroId = null;
+                introSubjectContactId = null;
+                introSubjectContactName = '';
+                currentUser = null;
     currentProfile = null;
     profileCache = {};
     if (typeof blockedUserIds !== 'undefined' && typeof blockedUserIds.clear === 'function') {
@@ -370,7 +374,7 @@ async function showApp(navigateToGroupId) {
 
     if (!navigateToGroupId) {
         let resumeContactId = null;
-        if (!pendingOpenContactId && !pendingOpenNewestContact && typeof readContactDetailResumeContactId === 'function') {
+        if (!pendingOpenContactId && !pendingOpenNewestContact && !pendingContactIntroId && typeof readContactDetailResumeContactId === 'function') {
             resumeContactId = readContactDetailResumeContactId();
         }
         if (resumeContactId) {
@@ -509,6 +513,15 @@ function subscribeToContactNotifications() {
                     }
                 }
                 if (msg) showToast(msg, 'info');
+            } else if (payload.new?.notification_type === 'contact_intro') {
+                const raw = payload.new?.data;
+                const d = typeof raw === 'string' ? (() => { try { return JSON.parse(raw); } catch { return null; } })() : raw;
+                const introId = d?.intro_id || d?.introId;
+                if (introId && typeof showContactIntroDialog === 'function') {
+                    await showContactIntroDialog(introId);
+                } else if (payload.new?.message) {
+                    showToast(payload.new.message, 'info');
+                }
             } else if (payload.new?.notification_type === 'display_name_changed') {
                 const fromId = payload.new?.from_user_id;
                 const msg = payload.new?.message;
@@ -561,6 +574,7 @@ function subscribeToContactEvents() {
         }, async (payload) => {
             const contactId = payload.new?.contact_id;
             if (!contactId) return;
+            if (typeof window !== 'undefined' && window.__suppressContactOpenOnInsert) return;
             await openContactDetailsById(contactId);
         })
         .on('postgres_changes', {

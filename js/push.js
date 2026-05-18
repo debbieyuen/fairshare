@@ -230,6 +230,14 @@ function handleNotificationNavigation(url) {
             }
         }
 
+        if (params.get('action') === 'contact_intro') {
+            const iid = params.get('intro');
+            if (iid && typeof showContactIntroDialog === 'function') {
+                showContactIntroDialog(iid);
+                return;
+            }
+        }
+
         const groupId = params.get('group');
         if (groupId) {
             const tab = params.get('tab');
