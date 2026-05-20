@@ -151,6 +151,10 @@ function isLocationShareOwnedByThisDevice(share) {
     return !share?.source_instance_id || share.source_instance_id === getLocationSharingInstanceId();
 }
 
+function canReclaimLocationShareOwnership() {
+    return IS_NATIVE && NATIVE_PLATFORM !== 'android';
+}
+
 function checkAndStartLocationSharing() {
     const active = hasAnyActiveLocationShares();
     const outboundIds = Object.keys(locationSharesOutbound || {});
@@ -542,12 +546,8 @@ async function claimUnownedLocationSharesForThisDevice() {
     const nowIso = new Date().toISOString();
     const notExpired = 'expires_at.is.null,expires_at.gt.' + nowIso;
     try {
-        // (1) Rows never bound to a device. (2) Rows still tied to another
-        // install's source_instance_id (e.g. after delete/reinstall: new
-        // localStorage id, DB still has the old UUID). Without (2),
-        // hasAnyActiveLocationShares() stays false while contact switches stay
-        // ON, so native sharing and the iOS "Always" upgrade never run until
-        // the user toggles a share.
+        // Rows never bound to a device are legacy and safe for the current
+        // signed-in client to adopt.
         const { error: e1 } = await db
             .from('location_shares')
             .update(meta)
@@ -555,13 +555,19 @@ async function claimUnownedLocationSharesForThisDevice() {
             .is('source_instance_id', null)
             .or(notExpired);
         if (e1) throw e1;
-        const { error: e2 } = await db
-            .from('location_shares')
-            .update(meta)
-            .eq('from_user_id', currentUser.id)
-            .neq('source_instance_id', instanceId)
-            .or(notExpired);
-        if (e2) throw e2;
+        if (canReclaimLocationShareOwnership()) {
+            // A native reinstall creates a new localStorage instance id while
+            // the DB still has active shares tied to the old install. Let iOS
+            // reclaim those rows, but do not let web logins steal ownership
+            // from the phone that is responsible for background uploads.
+            const { error: e2 } = await db
+                .from('location_shares')
+                .update(meta)
+                .eq('from_user_id', currentUser.id)
+                .neq('source_instance_id', instanceId)
+                .or(notExpired);
+            if (e2) throw e2;
+        }
         await loadLocationShares();
     } catch (e) {
         console.warn('claimUnownedLocationSharesForThisDevice failed:', e);
