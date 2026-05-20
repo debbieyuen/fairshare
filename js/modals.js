@@ -1,6 +1,7 @@
 function showModal(type) {
     const overlay = document.getElementById('modalOverlay');
     const body = document.getElementById('modalBody');
+    body.classList.remove('beta-ios-modal');
     overlay.classList.remove('hidden');
 
     switch (type) {
@@ -103,6 +104,20 @@ function showModal(type) {
             `;
             break;
         }
+
+        case 'betaIosApp':
+            body.classList.add('beta-ios-modal');
+            body.innerHTML = `
+                <h3 class="beta-ios-title">Try the beta iOS app</h3>
+                <p class="beta-ios-copy">
+                    Get the native beta on your iPhone through TestFlight for a smoother mobile experience.
+                </p>
+                <div class="form-actions beta-ios-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Not now</button>
+                    <button type="button" class="btn btn-primary" onclick="openBetaIosTestFlight(); closeModal();">Try the beta iOS app</button>
+                </div>
+            `;
+            break;
 
         case 'introContact': {
             document.getElementById('modalBody').classList.remove('share-modal');
@@ -260,6 +275,84 @@ function closeModal(_options = {}) {
     document.getElementById('modalOverlay').classList.add('hidden');
     document.getElementById('modalBody').classList.remove('modal-wide');
     document.getElementById('modalBody').classList.remove('share-modal');
+    document.getElementById('modalBody').classList.remove('beta-ios-modal');
+}
+
+function openBetaIosTestFlight() {
+    if (IS_NATIVE) return;
+    openExternalUrl(BETA_IOS_TESTFLIGHT_URL);
+}
+
+function betaIosPromptStorageKey() {
+    return `fairshare_beta_ios_prompt_shown_v2_${currentUser?.id || 'anon'}`;
+}
+
+function hasShownBetaIosPrompt() {
+    try {
+        return localStorage.getItem(betaIosPromptStorageKey()) === '1';
+    } catch (_) {
+        return false;
+    }
+}
+
+function markBetaIosPromptShown() {
+    try {
+        localStorage.setItem(betaIosPromptStorageKey(), '1');
+    } catch (_) { /* quota / private mode */ }
+}
+
+function pendingBetaIosSignupStorageKey() {
+    return 'fairshare_beta_ios_signup_pending';
+}
+
+function hasPendingBetaIosWebSignup() {
+    try {
+        const startedAt = Number(localStorage.getItem(pendingBetaIosSignupStorageKey()) || 0);
+        return Number.isFinite(startedAt) && startedAt > 0
+            && (Date.now() - startedAt) < (7 * APP_TIMING.DAY_MS);
+    } catch (_) {
+        return false;
+    }
+}
+
+function clearPendingBetaIosWebSignup() {
+    try {
+        localStorage.removeItem(pendingBetaIosSignupStorageKey());
+    } catch (_) { /* quota / private mode */ }
+}
+
+function isRecentSignupForBetaIosPrompt() {
+    const createdAt = currentProfile?.created_at;
+    if (!createdAt) return false;
+    const createdMs = new Date(createdAt).getTime();
+    if (!Number.isFinite(createdMs)) return false;
+    return (Date.now() - createdMs) < (7 * APP_TIMING.DAY_MS);
+}
+
+function shouldOfferBetaIosPromptAfterSignup() {
+    if (IS_NATIVE || !currentUser || hasShownBetaIosPrompt()) return false;
+    return hasPendingBetaIosWebSignup() || isRecentSignupForBetaIosPrompt();
+}
+
+function maybeShowBetaIosPromptAfterSignup() {
+    if (IS_NATIVE) return;
+    if (!currentUser || !pendingBetaIosPromptAfterPostHandshakeSelfie) return;
+    pendingBetaIosPromptAfterPostHandshakeSelfie = false;
+    if (!shouldOfferBetaIosPromptAfterSignup()) return;
+
+    const showWhenModalIsFree = () => {
+        if (!currentUser) return;
+        const overlay = document.getElementById('modalOverlay');
+        const modalOpen = overlay && !overlay.classList.contains('hidden');
+        if (modalOpen) {
+            setTimeout(showWhenModalIsFree, 250);
+            return;
+        }
+        markBetaIosPromptShown();
+        clearPendingBetaIosWebSignup();
+        showModal('betaIosApp');
+    };
+    setTimeout(showWhenModalIsFree, 400);
 }
 
 function sponsorShareInfoPromptStorageKey(userId, sponsorContactId) {

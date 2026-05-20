@@ -10,14 +10,9 @@ async function switchTab(tabName) {
     const actLog = document.getElementById('activityLog');
     if (actLog) actLog.classList.toggle('hidden', tabName === 'chat');
 
-    // Check session health before loading data — if expired, bounce to login
-    // Use timeout guard in case Supabase client is hung (navigator.locks deadlock)
-    const { data: { session } } = await getSessionWithTimeout();
-    if (!session) {
-        showToast('Session expired — please log in again.', 'error');
-        await logout();
-        return;
-    }
+    // Check session health before loading data. Ambiguous failures are
+    // recoverable; explicit SIGNED_OUT remains the logout path.
+    if (!(await ensureSession())) return;
 
     switch (tabName) {
         case 'money': await renderMoneyTab(); break;

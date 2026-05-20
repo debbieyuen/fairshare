@@ -1,9 +1,10 @@
 // Synchronous peek: does Supabase have a cached session in localStorage?
 function hasStoredSession() {
     try {
-        const ref = SUPABASE_URL.match(/\/\/([^.]+)\./)?.[1];
-        if (!ref) return false;
-        const raw = localStorage.getItem('sb-' + ref + '-auth-token');
+        const storageKey = typeof SUPABASE_AUTH_STORAGE_KEY === 'string'
+            ? SUPABASE_AUTH_STORAGE_KEY
+            : 'sb-' + (SUPABASE_URL.match(/\/\/([^.]+)\./)?.[1] || '') + '-auth-token';
+        const raw = localStorage.getItem(storageKey);
         if (!raw) return false;
         const parsed = JSON.parse(raw);
         return !!(parsed?.access_token || parsed?.currentSession?.access_token);
@@ -157,6 +158,7 @@ async function init() {
                 if (typeof clearContactDetailResumeState === 'function') clearContactDetailResumeState();
                 pendingPostHandshakeSelfieContactId = null;
                 pendingPostHandshakeSelfieContactName = null;
+                pendingBetaIosPromptAfterPostHandshakeSelfie = false;
                 currentUser = null;
                 currentProfile = null;
                 if (typeof clearSponsorTokenValidated === 'function') clearSponsorTokenValidated();
@@ -509,6 +511,7 @@ async function handlePendingMeet() {
             if (data?.contact_id) {
                 pendingPostHandshakeSelfieContactId = data.contact_id;
                 pendingPostHandshakeSelfieContactName = data.contact_name || contactName;
+                pendingBetaIosPromptAfterPostHandshakeSelfie = true;
             }
 
             if (data?.group_id) {

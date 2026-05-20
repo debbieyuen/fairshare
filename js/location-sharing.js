@@ -8,6 +8,7 @@ const NATIVE_LOCATION_STATUS_WARNING_MS = 10 * APP_TIMING.MINUTE_MS;
 const INBOUND_LOCATION_POLL_MS = APP_TIMING.INBOUND_LOCATION_POLL_MS;
 const EARTH_RADIUS_MI = 3958.8;
 const FEET_PER_MILE = 5280;
+const LOCATION_UPLOAD_FUNCTION_URL = SUPABASE_URL + '/functions/v1/location-upload';
 let contactLocationsCache = {}; // contact_id -> { lat, lng }
 let nativeLocationStatusWarningLastAt = 0;
 
@@ -179,18 +180,44 @@ async function getNativeLocationSharingConfig() {
     if (!currentUser || !db?.auth?.getSession) return null;
     const { data, error } = await db.auth.getSession();
     if (error) {
-        console.warn('[location-sharing] could not read auth session for native location:', error);
+        console.warn('[location-sharing] could not read auth session for native grant:', error);
         return null;
     }
     const accessToken = data?.session?.access_token;
-    const refreshToken = data?.session?.refresh_token;
-    if (!accessToken || !refreshToken) return null;
     const sourceMetadata = getLocationSharingSourceMetadata();
+    if (!accessToken || !sourceMetadata.source_instance_id) return null;
+
+    let grantData = null;
+    try {
+        const resp = await fetch(LOCATION_UPLOAD_FUNCTION_URL, {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + accessToken,
+                'apikey': SUPABASE_ANON_KEY,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                action: 'grant',
+                instanceId: sourceMetadata.source_instance_id,
+                sourcePlatform: sourceMetadata.source_platform,
+                sourceUserAgent: sourceMetadata.source_user_agent
+            })
+        });
+        grantData = await resp.json().catch(() => null);
+        if (!resp.ok || !grantData?.uploadGrant) {
+            console.warn('[location-sharing] native grant mint failed:', resp.status, grantData);
+            return null;
+        }
+    } catch (e) {
+        console.warn('[location-sharing] native grant request failed:', e);
+        return null;
+    }
+
     return {
-        supabaseUrl: SUPABASE_URL,
         anonKey: SUPABASE_ANON_KEY,
-        accessToken,
-        refreshToken,
+        uploadUrl: grantData.uploadUrl || LOCATION_UPLOAD_FUNCTION_URL,
+        uploadGrant: grantData.uploadGrant,
+        uploadGrantExpiresAt: grantData.expiresAt || null,
         userId: currentUser.id,
         instanceId: sourceMetadata.source_instance_id,
         sourcePlatform: sourceMetadata.source_platform,
@@ -349,7 +376,7 @@ function maybeWarnNativeLocationSharingStatus(status) {
         message = 'Background sharing needs Location set to Always in iOS Settings.';
     } else if (status.allowsBackgroundLocationUpdates === false) {
         message = 'Background location is not active yet. Keep Union open briefly, then try again.';
-    } else if (status.hasSupabaseConfig === false) {
+    } else if (status.hasSupabaseConfig === false || status.hasUploadGrant === false) {
         message = 'Background sharing could not read your session. Reopen Union and try sharing again.';
     }
 
@@ -368,12 +395,12 @@ function stopLocationSharingUpdates() {
     }
     stopShareRemainingTimer();
 
-    // Always tell native when there is no active sharing. One-shot GPS lookups
-    // should never keep the direct Supabase background uploader armed.
+    // Always disable native background uploads when sharing stops. One-shot GPS
+    // lookups can restart Core Location later without keeping uploads armed.
     if (IS_NATIVE && NATIVE_PLATFORM !== 'android') {
         try {
             const plugin = Capacitor.Plugins.BackgroundLocation;
-            if (plugin && !hasAnyNearbyContacts()) {
+            if (plugin) {
                 plugin.stop().catch(err => console.warn('[location-sharing] plugin.stop rejected:', err));
             }
         } catch (e) {

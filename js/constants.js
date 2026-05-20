@@ -34,6 +34,8 @@ const LOCATION_DURATIONS = Object.freeze({
     WEEK_MS: APP_TIMING.WEEK_MS
 });
 
+const BETA_IOS_TESTFLIGHT_URL = 'https://testflight.apple.com/join/naW7xwrX';
+
 const APP_MAP = Object.freeze({
     TILE_URL: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
     TILE_SUBDOMAINS: 'abcd',

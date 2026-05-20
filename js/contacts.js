@@ -1629,6 +1629,9 @@ function openContactSelfie(contactId) {
 async function openNewContactSelfieOverlay(contactId, contactName) {
     newContactSelfieId = contactId;
     newContactSelfieContactName = contactName || 'your new contact';
+    if (typeof shouldOfferBetaIosPromptAfterSignup === 'function' && shouldOfferBetaIosPromptAfterSignup()) {
+        pendingBetaIosPromptAfterPostHandshakeSelfie = true;
+    }
     await _openSelfieOverlay(contactId, newContactSelfieContactName);
 }
 
@@ -1672,7 +1675,13 @@ function closeSelfieOverlay() {
     contactSelfieId = null;
     void lockAppToPortrait();
     if (newCid) {
-        openContactDetailsById(newCid);
+        const openPromise = openContactDetailsById(newCid);
+        if (typeof maybeShowBetaIosPromptAfterSignup === 'function') {
+            Promise.resolve(openPromise).then(
+                () => maybeShowBetaIosPromptAfterSignup(),
+                () => maybeShowBetaIosPromptAfterSignup()
+            );
+        }
     }
 }
 

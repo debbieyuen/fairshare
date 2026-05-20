@@ -141,6 +141,11 @@ async function handleSignup(e) {
             showToast(error.message, 'error');
         }
     } else {
+        if (!IS_NATIVE) {
+            try {
+                localStorage.setItem('fairshare_beta_ios_signup_pending', String(Date.now()));
+            } catch (_) { /* quota / private mode */ }
+        }
         showToast('Account created! Check your email to confirm, then log in.', 'success');
         switchAuthTab('login');
     }

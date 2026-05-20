@@ -1,22 +1,11 @@
 async function ensureSession() {
-    // Returns true if session is valid, false if expired (and forces re-login)
-    // Uses timeout guard in case the Supabase client is deadlocked
-    try {
-        const { data: { session }, error } = await getSessionWithTimeout();
-        if (error || !session) {
-            console.warn('[session] ensureSession: expired — redirecting to login');
-            showToast('Session expired. Please log in again.', 'error');
-            await logout();
-            return false;
-        }
+    const session = await recoverSessionIfNeeded('ensureSession');
+    if (session) {
         currentUser = session.user;
         return true;
-    } catch (e) {
-        console.warn('[session] ensureSession failed:', e);
-        showToast('Session expired. Please log in again.', 'error');
-        await logout();
-        return false;
     }
+    warnSessionRecoveryFailed('Could not verify your session. Check your connection and try again.');
+    return false;
 }
 
 // ---- Session keep-alive & recovery ----
@@ -33,34 +22,121 @@ async function ensureSession() {
 let _lastActiveAt = Date.now();
 const SESSION_STALE_MS = 30 * APP_TIMING.MINUTE_MS;
 
+let _sessionRecoveryInFlight = null;
+let _lastSessionRecoveryWarningAt = 0;
+
 // --- Timeout-guarded getSession ---
 // Supabase's internal navigator.locks can deadlock after a tab is
 // backgrounded.  If getSession doesn't resolve within a few seconds,
-// the client is stuck and we must hard-reload to recover.
+// report a recoverable timeout instead of treating the user as signed out.
 const GET_SESSION_TIMEOUT_MS = 5 * APP_TIMING.SECOND_MS;
 
 function getSessionWithTimeout() {
     return new Promise((resolve) => {
+        let settled = false;
+        const resolveOnce = (result) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            resolve(result);
+        };
         const timer = setTimeout(() => {
             console.error('[session] getSession() hung for ' +
                 GET_SESSION_TIMEOUT_MS + 'ms — Supabase client is stuck');
-            if (IS_NATIVE) {
-                // On native, avoid full WebView reload — fall through as expired
-                resolve({ data: { session: null }, error: new Error('getSession timeout') });
-            } else {
-                window.location.reload();
-            }
+            const error = new Error('getSession timeout');
+            error.recoverable = true;
+            error.code = 'session_timeout';
+            resolveOnce({ data: { session: null }, error, recoverable: true });
         }, GET_SESSION_TIMEOUT_MS);
 
         db.auth.getSession().then(result => {
-            clearTimeout(timer);
-            resolve(result);
+            resolveOnce(result);
         }).catch(err => {
-            clearTimeout(timer);
             console.warn('[session] getSession() threw:', err);
-            resolve({ data: { session: null }, error: err });
+            if (err) err.recoverable = true;
+            resolveOnce({ data: { session: null }, error: err, recoverable: true });
         });
     });
+}
+
+function isRecoverableSessionResult(result) {
+    const err = result?.error;
+    return Boolean(result?.recoverable || err?.recoverable || err?.code === 'session_timeout'
+        || /timeout|network|fetch|lock/i.test(err?.message || ''));
+}
+
+async function refreshSessionWithTimeout() {
+    try {
+        return await Promise.race([
+            db.auth.refreshSession(),
+            new Promise(resolve => setTimeout(() => {
+                const error = new Error('refreshSession timeout');
+                error.recoverable = true;
+                error.code = 'session_refresh_timeout';
+                resolve({ data: { session: null }, error, recoverable: true });
+            }, GET_SESSION_TIMEOUT_MS))
+        ]);
+    } catch (err) {
+        if (err) err.recoverable = true;
+        return { data: { session: null }, error: err, recoverable: true };
+    }
+}
+
+async function recoverSessionIfNeeded(context) {
+    if (_sessionRecoveryInFlight) return _sessionRecoveryInFlight;
+
+    _sessionRecoveryInFlight = (async () => {
+        const initial = await getSessionWithTimeout();
+        if (initial?.data?.session) return initial.data.session;
+
+        console.warn('[session] no session from getSession during', context, initial?.error || '');
+
+        const refreshed = await refreshSessionWithTimeout();
+        if (refreshed?.data?.session) {
+            console.log('[session] refreshSession recovered session during', context);
+            return refreshed.data.session;
+        }
+
+        const retry = await getSessionWithTimeout();
+        if (retry?.data?.session) {
+            console.log('[session] getSession recovered after refresh attempt during', context);
+            return retry.data.session;
+        }
+
+        if (!isRecoverableSessionResult(initial)
+                && !isRecoverableSessionResult(refreshed)
+                && !isRecoverableSessionResult(retry)) {
+            console.warn('[session] confirmed no local session during', context);
+            showAuth();
+        }
+        return null;
+    })();
+
+    try {
+        return await _sessionRecoveryInFlight;
+    } finally {
+        _sessionRecoveryInFlight = null;
+    }
+}
+
+function warnSessionRecoveryFailed(message) {
+    const now = Date.now();
+    if ((now - _lastSessionRecoveryWarningAt) < APP_TIMING.MINUTE_MS) return;
+    _lastSessionRecoveryWarningAt = now;
+    showToast(message, 'error');
+}
+
+function resumeAfterSessionVerified() {
+    if (selectedGroup) subscribeToGroup(selectedGroup.id);
+    subscribeToContactEvents();
+    if (typeof resumeLocationSharingAfterForeground === 'function') {
+        resumeLocationSharingAfterForeground();
+    }
+    Object.keys(contactSelfiesCache).forEach(k => delete contactSelfiesCache[k]);
+    const expandedRow = document.querySelector('.contact-row.expanded');
+    if (expandedRow?.dataset?.contactId) {
+        reloadContactSelfiesStrip(expandedRow.dataset.contactId);
+    }
 }
 
 // --- Mechanism 1: visibilitychange ---
@@ -84,24 +160,15 @@ document.addEventListener('visibilitychange', async () => {
         return;
     }
 
-    // Verify the session and re-subscribe to Realtime
+    // Verify the session and re-subscribe to Realtime. Ambiguous failures are
+    // recoverable; only an explicit SIGNED_OUT event should perform logout.
     try {
-        const { data: { session } } = await getSessionWithTimeout();
+        const session = await recoverSessionIfNeeded('visibility');
         if (!session) {
-            showToast('Session expired — please log in again.', 'error');
-            await logout();
+            warnSessionRecoveryFailed('Could not verify your session after resume. Retrying soon.');
         } else {
             currentUser = session.user;
-            if (selectedGroup) subscribeToGroup(selectedGroup.id);
-            subscribeToContactEvents();
-            if (typeof resumeLocationSharingAfterForeground === 'function') {
-                resumeLocationSharingAfterForeground();
-            }
-            Object.keys(contactSelfiesCache).forEach(k => delete contactSelfiesCache[k]);
-            const expandedRow = document.querySelector('.contact-row.expanded');
-            if (expandedRow?.dataset?.contactId) {
-                reloadContactSelfiesStrip(expandedRow.dataset.contactId);
-            }
+            resumeAfterSessionVerified();
         }
     } catch (e) {
         console.warn('[visibility] Session check failed:', e);
@@ -124,41 +191,30 @@ setInterval(async () => {
                 HEARTBEAT_TIMEOUT_MS))
         ]);
         if (error) {
-            console.warn('[heartbeat] failed — session likely expired', error);
-            if (IS_NATIVE) {
-                // On native, try refreshing the session before giving up
-                const { data: { session } } = await getSessionWithTimeout();
-                if (!session) {
-                    showToast('Session expired. Please log in again.', 'error');
-                    await logout();
-                } else {
-                    currentUser = session.user;
-                    console.log('[heartbeat] session refreshed OK after DB failure');
-                    if (typeof refreshNativeLocationSharingAuth === 'function') {
-                        refreshNativeLocationSharingAuth();
-                    }
+            console.warn('[heartbeat] failed — attempting session recovery', error);
+            const session = await recoverSessionIfNeeded('heartbeat-error');
+            if (session) {
+                currentUser = session.user;
+                console.log('[heartbeat] session recovered OK after DB failure');
+                if (typeof refreshNativeLocationSharingAuth === 'function') {
+                    refreshNativeLocationSharingAuth();
                 }
             } else {
-                window.location.reload();
+                warnSessionRecoveryFailed('Connection issue while checking your session. Retrying.');
             }
         } else {
             console.log('[heartbeat] OK');
         }
     } catch (e) {
         console.warn('[heartbeat] exception', e);
-        if (IS_NATIVE) {
-            const { data: { session } } = await getSessionWithTimeout();
-            if (!session) {
-                showToast('Session expired. Please log in again.', 'error');
-                await logout();
-            } else {
-                currentUser = session.user;
-                if (typeof refreshNativeLocationSharingAuth === 'function') {
-                    refreshNativeLocationSharingAuth();
-                }
+        const session = await recoverSessionIfNeeded('heartbeat-exception');
+        if (session) {
+            currentUser = session.user;
+            if (typeof refreshNativeLocationSharingAuth === 'function') {
+                refreshNativeLocationSharingAuth();
             }
         } else {
-            window.location.reload();
+            warnSessionRecoveryFailed('Connection issue while checking your session. Retrying.');
         }
     }
 }, HEARTBEAT_MS);

@@ -1,12 +1,6 @@
 async function loadMyGroups(autoNavigateGroupId) {
     // Verify session is still valid before fetching data
-    // Use timeout guard in case Supabase client is hung
-    const { data: { session } } = await getSessionWithTimeout();
-    if (!session) {
-        showToast('Session expired — please log in again.', 'error');
-        await logout();
-        return;
-    }
+    if (!(await ensureSession())) return;
 
     const { data, error } = await db
         .from('members')

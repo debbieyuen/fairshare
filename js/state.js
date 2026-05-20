@@ -32,6 +32,7 @@ let pendingContactIntroId = null; // contact intro deep link / push (UUID)
 // Meet-link joiner: show new-contact selfie first; close navigates to sponsor details.
 let pendingPostHandshakeSelfieContactId = null;
 let pendingPostHandshakeSelfieContactName = null;
+let pendingBetaIosPromptAfterPostHandshakeSelfie = false;
 let profileCache = {};   // user_id -> display_name cache for chat
 let nearbyTrackingInterval = null; // setInterval id for foreground GPS polling
 let nearbyTrackingActive = false; // true when at least one contact has notify_nearby
