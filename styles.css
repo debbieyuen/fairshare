@@ -2650,9 +2650,17 @@ body.drag-sort-active * { user-select: none; -webkit-user-select: none; }
    real mirror to the user. Capture/scan logic reads the raw video frames
    via canvas, so saved images and QR decoding are unaffected. */
 #newContactSelfieVideo,
+#newContactSelfiePreview,
 #meetVideo {
     transform: scaleX(-1);
 }
+.new-contact-selfie-preview {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.new-contact-selfie-preview.hidden { display: none; }
 .new-contact-selfie-banner {
     position: absolute;
     top: 0;
@@ -2708,6 +2716,37 @@ body.drag-sort-active * { user-select: none; -webkit-user-select: none; }
 .new-contact-selfie-capture svg.lucide-icon {
     width: 2rem;
     height: 2rem;
+}
+.new-contact-selfie-review {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
+    background: linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 100%);
+    z-index: 1;
+}
+.new-contact-selfie-review.hidden { display: none; }
+.new-contact-selfie-retake,
+.new-contact-selfie-use {
+    flex: 1;
+    border: none;
+    border-radius: 12px;
+    padding: 0.85rem 1rem;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.new-contact-selfie-retake {
+    background: rgba(255,255,255,0.2);
+    color: #fff;
+}
+.new-contact-selfie-use {
+    background: var(--primary-color, #2d6a4f);
+    color: #fff;
 }
 
 /* ---- Auth (pre-login) QR scan overlay ---- */

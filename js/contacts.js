@@ -1635,20 +1635,68 @@ async function openNewContactSelfieOverlay(contactId, contactName) {
     await _openSelfieOverlay(contactId, newContactSelfieContactName);
 }
 
+function _resetSelfieOverlayUi() {
+    pendingSelfieCanvas = null;
+    const video = document.getElementById('newContactSelfieVideo');
+    const preview = document.getElementById('newContactSelfiePreview');
+    const captureBtn = document.getElementById('newContactSelfieCaptureBtn');
+    const review = document.getElementById('newContactSelfieReview');
+    if (video) video.classList.remove('hidden');
+    if (preview) {
+        preview.removeAttribute('src');
+        preview.classList.add('hidden');
+    }
+    if (captureBtn) captureBtn.classList.remove('hidden');
+    if (review) review.classList.add('hidden');
+}
+
+function _stopSelfieCamera() {
+    if (newContactSelfieStream) {
+        newContactSelfieStream.getTracks().forEach(t => t.stop());
+        newContactSelfieStream = null;
+    }
+    const video = document.getElementById('newContactSelfieVideo');
+    if (video) video.srcObject = null;
+}
+
+async function _startSelfieCamera() {
+    const video = document.getElementById('newContactSelfieVideo');
+    if (!video) return;
+    _stopSelfieCamera();
+    newContactSelfieStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+    });
+    video.srcObject = newContactSelfieStream;
+    await video.play();
+}
+
+function _showSelfieReviewUi(canvas) {
+    pendingSelfieCanvas = canvas;
+    const video = document.getElementById('newContactSelfieVideo');
+    const preview = document.getElementById('newContactSelfiePreview');
+    const captureBtn = document.getElementById('newContactSelfieCaptureBtn');
+    const review = document.getElementById('newContactSelfieReview');
+    _stopSelfieCamera();
+    if (video) video.classList.add('hidden');
+    if (preview) {
+        preview.src = canvas.toDataURL('image/jpeg', 0.9);
+        preview.classList.remove('hidden');
+    }
+    if (captureBtn) captureBtn.classList.add('hidden');
+    if (review) review.classList.remove('hidden');
+}
+
 async function _openSelfieOverlay(contactId, bannerName) {
     const overlay = document.getElementById('newContactSelfieOverlay');
     const banner = document.getElementById('newContactSelfieBanner');
     const video = document.getElementById('newContactSelfieVideo');
     if (!overlay || !video) return;
     if (banner) banner.textContent = `Take a selfie with ${bannerName || 'your contact'}!`;
+    _resetSelfieOverlayUi();
     overlay.classList.remove('hidden');
     try {
-        newContactSelfieStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
-            audio: false
-        });
-        video.srcObject = newContactSelfieStream;
-        await video.play();
+        await _startSelfieCamera();
         await unlockNativeOrientationForSelfiePreview();
     } catch (e) {
         console.error('Selfie camera error:', e);
@@ -1663,12 +1711,8 @@ async function _openSelfieOverlay(contactId, bannerName) {
 function closeSelfieOverlay() {
     const overlay = document.getElementById('newContactSelfieOverlay');
     if (overlay) overlay.classList.add('hidden');
-    if (newContactSelfieStream) {
-        newContactSelfieStream.getTracks().forEach(t => t.stop());
-        newContactSelfieStream = null;
-    }
-    const video = document.getElementById('newContactSelfieVideo');
-    if (video) video.srcObject = null;
+    _stopSelfieCamera();
+    _resetSelfieOverlayUi();
     const newCid = newContactSelfieId;
     newContactSelfieId = null;
     newContactSelfieContactName = '';
@@ -1708,17 +1752,41 @@ async function captureContactSelfie() {
     const btn = document.getElementById('newContactSelfieCaptureBtn');
     if (btn) btn.disabled = true;
 
-    // Snapshot the current video frame synchronously, then close the overlay
-    // immediately so the user isn't left staring at a frozen camera while we
-    // wait on GPS / network. Upload and geocode continue in the background.
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0);
 
-    closeSelfieOverlay();
+    _showSelfieReviewUi(canvas);
     if (btn) btn.disabled = false;
+}
+
+async function retakeContactSelfie() {
+    _resetSelfieOverlayUi();
+    const useBtn = document.getElementById('newContactSelfieUseBtn');
+    if (useBtn) useBtn.disabled = true;
+    try {
+        await _startSelfieCamera();
+    } catch (e) {
+        console.error('Selfie camera error:', e);
+        showToast('Camera unavailable: ' + (e.message || 'error'), 'error');
+        closeSelfieOverlay();
+    } finally {
+        if (useBtn) useBtn.disabled = false;
+    }
+}
+
+async function useContactSelfie() {
+    const cid = contactSelfieId || newContactSelfieId;
+    const canvas = pendingSelfieCanvas;
+    if (!cid || !currentUser || !canvas) return;
+    const useBtn = document.getElementById('newContactSelfieUseBtn');
+    if (useBtn) useBtn.disabled = true;
+
+    // Close immediately so upload/GPS work off-screen; same as before review step.
+    closeSelfieOverlay();
+    if (useBtn) useBtn.disabled = false;
 
     _uploadContactSelfieInBackground(cid, canvas).catch(e => {
         console.error('Capture selfie error:', e);

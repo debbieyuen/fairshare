@@ -297,9 +297,14 @@
 <!-- ===== NEW-CONTACT FULLSCREEN SELFIE OVERLAY ===== -->
 <div id="newContactSelfieOverlay" class="new-contact-selfie-overlay hidden">
     <video id="newContactSelfieVideo" autoplay playsinline muted class="new-contact-selfie-video"></video>
+    <img id="newContactSelfiePreview" class="new-contact-selfie-preview hidden" alt="Selfie preview" />
     <div class="new-contact-selfie-banner" id="newContactSelfieBanner">Take a selfie with your new contact!</div>
     <button class="new-contact-selfie-skip" id="newContactSelfieSkipBtn" onclick="closeNewContactSelfieOverlay({navigate:true})"><i data-lucide="x" aria-hidden="true"></i></button>
     <button class="new-contact-selfie-capture" id="newContactSelfieCaptureBtn" onclick="captureContactSelfie()"><i data-lucide="camera" aria-hidden="true"></i></button>
+    <div id="newContactSelfieReview" class="new-contact-selfie-review hidden">
+        <button type="button" class="new-contact-selfie-retake" id="newContactSelfieRetakeBtn" onclick="retakeContactSelfie()">Retake</button>
+        <button type="button" class="new-contact-selfie-use" id="newContactSelfieUseBtn" onclick="useContactSelfie()">Use</button>
+    </div>
 </div>
 
 <!-- ===== MEET / QR CONTACT EXCHANGE OVERLAY ===== -->

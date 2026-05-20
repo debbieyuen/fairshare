@@ -22,6 +22,7 @@ let contactSelfieId = null;
 let newContactSelfieId = null;
 let newContactSelfieContactName = '';
 let newContactSelfieStream = null;
+let pendingSelfieCanvas = null;
 let contactSelfiesCache = {}; // contact_id -> array of selfie records
 let recentSelfieUploads = {}; // contact_id -> timestamp for suppressing self notifications
 let suggestPicContactId = null;
