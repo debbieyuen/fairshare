@@ -54,45 +54,127 @@ async function ensureAndroidPushChannel(PushNotifications) {
 // ---- Native (APNs/FCM via Capacitor) ----
 
 let _nativePushListenersRegistered = false;
+let _pendingNativePushToken = null;
+const NATIVE_PUSH_TOKEN_STORAGE_KEY = 'fairshare_native_push_token';
+
+function cacheNativePushToken(tokenValue) {
+    if (!tokenValue) return;
+    try {
+        localStorage.setItem(NATIVE_PUSH_TOKEN_STORAGE_KEY, tokenValue);
+    } catch (_) { /* private mode / quota */ }
+}
+
+function getCachedNativePushToken() {
+    try {
+        return localStorage.getItem(NATIVE_PUSH_TOKEN_STORAGE_KEY) || null;
+    } catch (_) {
+        return null;
+    }
+}
+
+async function saveNativeDeviceToken(tokenValue) {
+    const platform = getNativePushPlatform();
+    cacheNativePushToken(tokenValue);
+    if (!currentUser?.id) {
+        _pendingNativePushToken = tokenValue;
+        console.log('[push] Token received before login; will save after sign-in');
+        return;
+    }
+    try {
+        const { error } = await db.from('device_push_tokens').upsert({
+            user_id: currentUser.id,
+            token: tokenValue,
+            platform,
+        }, { onConflict: 'user_id,token' });
+        if (error) console.error('[push] Token upsert error:', error);
+        else console.log('[push] Device token saved successfully');
+    } catch (e) {
+        console.warn('[push] Failed to save device token:', e);
+    }
+}
+
+/** FCM often does not re-fire registration after the first time; re-upsert this device's cached token. */
+async function resyncCachedNativePushToken() {
+    const cached = getCachedNativePushToken();
+    if (!cached || !currentUser?.id) return;
+    console.log('[push] Re-syncing cached device token to Supabase');
+    await saveNativeDeviceToken(cached);
+}
+
+async function flushPendingNativePushToken() {
+    if (!_pendingNativePushToken || !currentUser?.id) return;
+    const token = _pendingNativePushToken;
+    _pendingNativePushToken = null;
+    await saveNativeDeviceToken(token);
+}
+
+async function registerNativePushListeners() {
+    const PushNotifications = window.Capacitor?.Plugins?.PushNotifications;
+    if (!PushNotifications || _nativePushListenersRegistered) return PushNotifications;
+
+    _nativePushListenersRegistered = true;
+
+    await PushNotifications.addListener('registration', async (token) => {
+        const platform = getNativePushPlatform();
+        console.log('[push] Native device token:', platform, token.value);
+        await saveNativeDeviceToken(token.value);
+    });
+
+    await PushNotifications.addListener('registrationError', (err) => {
+        console.error('[push] Native push registration error:', JSON.stringify(err));
+    });
+
+    await PushNotifications.addListener('pushNotificationReceived', (notification) => {
+        console.log('[push] Foreground notification:', JSON.stringify(notification));
+    });
+
+    await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+        console.log('[push] Notification tapped:', JSON.stringify(action));
+        const data = action.notification?.data || {};
+        const url = data.url || action.notification?.link || '/';
+        handleNotificationNavigation(url);
+    });
+
+    return PushNotifications;
+}
+
+/** Attach listeners at boot so FCM registration is not missed before sign-in. */
+function initNativePushEarly() {
+    if (!IS_NATIVE || !window.Capacitor?.Plugins?.PushNotifications) return;
+
+    const attach = () => {
+        if (NATIVE_PLATFORM === 'android' && window.__UNION_ANDROID_FCM__ !== true) return;
+        void registerNativePushListeners();
+    };
+
+    if (NATIVE_PLATFORM !== 'android') {
+        attach();
+        return;
+    }
+
+    if (window.__UNION_ANDROID_FCM__ === true) {
+        attach();
+        return;
+    }
+    if (window.__UNION_ANDROID_FCM__ === false) return;
+
+    let attempts = 0;
+    const poll = setInterval(() => {
+        attempts += 1;
+        if (window.__UNION_ANDROID_FCM__ === true) {
+            clearInterval(poll);
+            attach();
+        } else if (window.__UNION_ANDROID_FCM__ === false || attempts > 30) {
+            clearInterval(poll);
+        }
+    }, 200);
+}
 
 async function subscribeToNativePush() {
-    const PushNotifications = window.Capacitor.Plugins.PushNotifications;
+    const PushNotifications = await registerNativePushListeners();
     if (!PushNotifications) return;
 
-    if (!_nativePushListenersRegistered) {
-        _nativePushListenersRegistered = true;
-
-        await PushNotifications.addListener('registration', async (token) => {
-            const platform = getNativePushPlatform();
-            console.log('[push] Native device token:', platform, token.value);
-            try {
-                const { error } = await db.from('device_push_tokens').upsert({
-                    user_id: currentUser.id,
-                    token: token.value,
-                    platform,
-                }, { onConflict: 'user_id,token' });
-                if (error) console.error('[push] Token upsert error:', error);
-                else console.log('[push] Device token saved successfully');
-            } catch (e) {
-                console.warn('[push] Failed to save device token:', e);
-            }
-        });
-
-        await PushNotifications.addListener('registrationError', (err) => {
-            console.error('[push] Native push registration error:', JSON.stringify(err));
-        });
-
-        await PushNotifications.addListener('pushNotificationReceived', (notification) => {
-            console.log('[push] Foreground notification:', JSON.stringify(notification));
-        });
-
-        await PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
-            console.log('[push] Notification tapped:', JSON.stringify(action));
-            const data = action.notification?.data || {};
-            const url = data.url || action.notification?.link || '/';
-            handleNotificationNavigation(url);
-        });
-    }
+    await flushPendingNativePushToken();
 
     await ensureAndroidPushChannel(PushNotifications);
 
@@ -104,15 +186,21 @@ async function subscribeToNativePush() {
     }
     await PushNotifications.register();
     console.log('[push] register() called successfully');
+    // Toggle on/off may call register() when FCM will not emit registration again.
+    await resyncCachedNativePushToken();
 }
 
 async function unsubscribeNativePush() {
     const PushNotifications = window.Capacitor?.Plugins?.PushNotifications;
     if (!PushNotifications) return;
+    if (!currentUser?.id) return;
+    const cached = getCachedNativePushToken();
     try {
-        await db.from('device_push_tokens')
-            .delete()
-            .eq('user_id', currentUser.id);
+        let query = db.from('device_push_tokens').delete().eq('user_id', currentUser.id);
+        // Only remove this device's token so emulator + phone can both stay registered.
+        if (cached) query = query.eq('token', cached);
+        await query;
+        if (cached) console.log('[push] Removed device token for this install from Supabase');
     } catch (e) {
         console.warn('[push] Failed to remove device tokens:', e);
     }
@@ -124,10 +212,10 @@ async function isNativePushRegistered() {
     try {
         const perm = await PushNotifications.checkPermissions();
         if (perm.receive !== 'granted') return false;
-        const { data, error } = await db.from('device_push_tokens')
-            .select('id')
-            .eq('user_id', currentUser.id)
-            .limit(1);
+        const cached = getCachedNativePushToken();
+        let query = db.from('device_push_tokens').select('id').eq('user_id', currentUser.id);
+        if (cached) query = query.eq('token', cached);
+        const { data, error } = await query.limit(1);
         return !error && data && data.length > 0;
     } catch { return false; }
 }
@@ -193,7 +281,14 @@ async function isWebPushSubscribed() {
 
 async function subscribeToPush() {
     if (canUseNativePush()) return subscribeToNativePush();
+    if (IS_NATIVE && NATIVE_PLATFORM === 'android') {
+        console.warn('[push] Native push skipped; __UNION_ANDROID_FCM__=', window.__UNION_ANDROID_FCM__);
+    }
     return subscribeToWebPush();
+}
+
+if (typeof IS_NATIVE !== 'undefined' && IS_NATIVE) {
+    initNativePushEarly();
 }
 
 async function unsubscribePush() {

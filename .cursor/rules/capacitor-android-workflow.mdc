@@ -1,0 +1,14 @@
+# Capacitor Android Build Workflow
+
+When making changes to web assets (HTML, CSS, JS) that need to be tested on Android:
+
+1. Run `npm run cap:sync:android` (cross-platform build; no rsync required on Windows)
+2. Open Android Studio: `npx cap open android` or open the `android/` folder
+3. **Build → Clean Project** if assets seem stale
+4. Run on emulator or USB device
+
+Verify toolchain: `.\scripts\check-android-toolchain.ps1`
+
+Push setup: see [docs/android.md](../docs/android.md) and `.\scripts\check-android-push.ps1`
+
+Always edit source files at the repo root, not under `www/`.

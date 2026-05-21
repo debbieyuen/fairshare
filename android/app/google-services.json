@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "397095849055",
+    "project_id": "union-db5c1",
+    "storage_bucket": "union-db5c1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:397095849055:android:25e4f6e06fdb72e909dfea",
+        "android_client_info": {
+          "package_name": "social.fairshare.union"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAi7pW3aEjIeAcp5hRI2DKFIu4mMn9NtLI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

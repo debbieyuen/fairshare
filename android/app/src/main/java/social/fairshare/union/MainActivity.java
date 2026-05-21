@@ -1,15 +1,25 @@
 package social.fairshare.union;
 
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
 
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        injectAndroidFcmFlag();
+        scheduleInjectAndroidFcmFlag();
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        scheduleInjectAndroidFcmFlag();
     }
 
     /**
@@ -18,6 +28,13 @@ public class MainActivity extends BridgeActivity {
      * reads {@code window.__UNION_ANDROID_FCM__} to avoid calling register() until
      * Firebase is configured.
      */
+    private void scheduleInjectAndroidFcmFlag() {
+        injectAndroidFcmFlag();
+        // Bridge/WebView are often null in onCreate; retry after Capacitor loads.
+        mainHandler.postDelayed(this::injectAndroidFcmFlag, 300);
+        mainHandler.postDelayed(this::injectAndroidFcmFlag, 1000);
+    }
+
     private void injectAndroidFcmFlag() {
         boolean enabled = BuildConfig.HAS_GOOGLE_SERVICES;
         Bridge bridge = getBridge();
