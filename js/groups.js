@@ -162,6 +162,14 @@ async function selectGroup(group, membership) {
 }
 
 function showGroupsList() {
+    document.body.classList.remove('chat-tab-active');
+    const main = document.querySelector('.main-content');
+    if (main) {
+        main.style.height = '';
+        main.style.overflow = '';
+    }
+    if (typeof resetChatLayoutStyles === 'function') resetChatLayoutStyles();
+    if (typeof unbindChatViewportListeners === 'function') unbindChatViewportListeners();
     document.getElementById('groupsScreen').classList.remove('hidden');
     document.getElementById('groupView').classList.add('hidden');
     selectedGroup = null;

@@ -12,6 +12,7 @@
     --yellow: #ffc107;
     --app-chrome-top-safe: env(safe-area-inset-top, 0px);
     --app-chrome-bottom-safe: max(0px, calc(env(safe-area-inset-bottom, 0px) - 18px));
+    --bottom-bar-height: calc(62px + var(--app-chrome-bottom-safe));
     --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     --transition: all 0.3s ease;
 }
@@ -200,6 +201,28 @@ body {
 .group-header-avatar-wrap .group-avatar-placeholder {
     width: 56px;
     height: 56px;
+}
+/* Compact group name header (~40% shorter than default balance card) */
+#groupView > .balance-card.group-name-link {
+    padding: 0.55rem 1rem;
+    margin-bottom: 0.9rem;
+}
+#groupView .group-header-avatar-wrap .group-avatar,
+#groupView .group-header-avatar-wrap .group-avatar-placeholder {
+    width: 34px;
+    height: 34px;
+    border-width: 2px;
+}
+#groupView .group-header-avatar-wrap .group-avatar-placeholder svg.lucide-icon {
+    width: 18px;
+    height: 18px;
+}
+#groupView .group-header-center {
+    gap: 0.5rem;
+}
+#groupView .group-header-center .balance-amount {
+    font-size: 1.45rem;
+    line-height: 1.2;
 }
 .group-header-avatar-wrap:hover {
     transform: scale(1.03);
@@ -1108,22 +1131,60 @@ body {
     to { opacity: 1; transform: translateY(0); }
 }
 
-/* Chat */
+/* Chat — full-height panel; only .chat-messages scrolls when body.chat-tab-active */
+body.chat-tab-active {
+    overflow: hidden;
+}
+body.chat-tab-active .main-content {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-bottom: 0;
+    min-height: 0;
+}
+body.chat-tab-active #groupsContent:not(.hidden) {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+body.chat-tab-active #groupView:not(.hidden) {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+body.chat-tab-active #groupView:not(.hidden) > .balance-card,
+body.chat-tab-active #groupView:not(.hidden) > .tab-bar {
+    flex-shrink: 0;
+}
+body.chat-tab-active .tab-content-card {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    margin-bottom: 0;
+    padding: 0;
+}
 .chat-container {
     display: flex;
     flex-direction: column;
-    min-height: 300px;
+    flex: 1;
+    min-height: 0;
     min-width: 0;
-    /* height set dynamically by JS to fill remaining viewport */
 }
 .chat-messages {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
     display: flex;
     flex-direction: column;
-    padding: 0.75rem 0.5rem;
+    padding: 0.75rem 0;
     gap: 0.4rem;
     min-width: 0;
 }
@@ -1183,11 +1244,30 @@ body {
 .chat-input-bar {
     display: flex;
     gap: 0.5rem;
-    padding: 0.75rem 0 0;
+    flex-shrink: 0;
+    padding: 0.75rem 0.5rem;
     border-top: 1px solid var(--medium-gray);
-    margin-top: auto;
+    background: var(--light-gray);
     min-width: 0; /* prevent flex row from overflowing tab card */
     align-items: center;
+}
+body.chat-tab-active .chat-input-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: var(--bottom-bar-height);
+    z-index: 90;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    background: var(--light-gray);
+    box-shadow: none;
+}
+/* Keyboard open: hide bottom nav so chat input sits directly above the keyboard */
+body.chat-keyboard-open .bottom-bar {
+    display: none !important;
+}
+body.chat-keyboard-open.chat-tab-active .chat-input-bar {
+    z-index: 105;
 }
 .chat-input-bar input {
     flex: 1;
@@ -1197,6 +1277,7 @@ body {
     border-radius: 6px;
     font-family: inherit;
     font-size: 16px; /* prevents iOS zoom */
+    background: var(--white);
 }
 .chat-input-bar input:focus {
     outline: none;
@@ -1381,6 +1462,12 @@ body {
     /* Balance card */
     .balance-amount { font-size: 1.5rem !important; }
     .balance-card { padding: 1rem !important; }
+    #groupView > .balance-card.group-name-link {
+        padding: 0.5rem 0.85rem !important;
+    }
+    #groupView .group-header-center .balance-amount {
+        font-size: 1.15rem !important;
+    }
 
     /* Modals */
     .modal { width: 95%; min-width: 0; padding: 1.2rem; }
@@ -2973,7 +3060,7 @@ a.contact-shared-group-link:active {
     height: 10px;
     background: var(--medium-gray);
 }
-/* Bottom bar */
+/* Bottom bar — above chat input bar so center handshake sits on top */
 .bottom-bar {
     position: fixed;
     bottom: 0;
@@ -2986,7 +3073,7 @@ a.contact-shared-group-link:active {
     padding: 0;
     padding-bottom: var(--app-chrome-bottom-safe);
     box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
-    z-index: 100;
+    z-index: 110;
     height: calc(62px + var(--app-chrome-bottom-safe));
 }
 .bottom-bar-btn {
@@ -3036,6 +3123,7 @@ a.contact-shared-group-link:active {
     box-shadow: 0 4px 14px rgba(58, 124, 165, 0.4);
     padding: 0;
     position: relative;
+    z-index: 1;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 .bottom-bar-btn-center:hover {

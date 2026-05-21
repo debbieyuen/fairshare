@@ -2,6 +2,15 @@ async function switchTab(tabName) {
     if (tabName !== 'chat' && typeof unbindChatViewportListeners === 'function') {
         unbindChatViewportListeners();
     }
+    document.body.classList.toggle('chat-tab-active', tabName === 'chat');
+    if (tabName !== 'chat') {
+        const main = document.querySelector('.main-content');
+        if (main) {
+            main.style.height = '';
+            main.style.overflow = '';
+        }
+        if (typeof resetChatLayoutStyles === 'function') resetChatLayoutStyles();
+    }
     activeTab = tabName;
     document.querySelectorAll('.tab-btn').forEach(btn =>
         btn.classList.toggle('active', btn.dataset.tab === tabName));

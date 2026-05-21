@@ -66,6 +66,17 @@ function navigateTo(view, arg) {
 
     activeMainView = view;
 
+    if (view !== 'groups') {
+        document.body.classList.remove('chat-tab-active');
+        const main = document.querySelector('.main-content');
+        if (main) {
+            main.style.height = '';
+            main.style.overflow = '';
+        }
+        if (typeof resetChatLayoutStyles === 'function') resetChatLayoutStyles();
+        if (typeof unbindChatViewportListeners === 'function') unbindChatViewportListeners();
+    }
+
     const contactsScreen = document.getElementById('contactsScreen');
     const groupsContent = document.getElementById('groupsContent');
     const profileScreen = document.getElementById('profileScreen');
@@ -98,6 +109,9 @@ function navigateTo(view, arg) {
         case 'groups':
             groupsContent.classList.remove('hidden');
             renderGroupList();
+            if (typeof restoreChatLayoutIfNeeded === 'function') {
+                restoreChatLayoutIfNeeded();
+            }
             break;
         case 'profile':
             profileScreen.classList.remove('hidden');
