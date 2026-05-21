@@ -278,6 +278,16 @@ serve(async (req) => {
       .filter((r) => r.status === "rejected")
       .map((r) => (r as PromiseRejectedResult).reason?.message || "unknown");
 
+    console.log(
+      JSON.stringify({
+        sent,
+        total: tokens.length,
+        apns: iosTokens.length,
+        fcm: androidTokens.length,
+        failed: failed.length ? failed : undefined,
+      })
+    );
+
     return new Response(
       JSON.stringify({
         sent,
