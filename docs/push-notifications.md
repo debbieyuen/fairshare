@@ -282,6 +282,25 @@ In-app: also inserts a `contact_notifications` row of type
 
 ---
 
+## 11. Shared vouch received
+
+When a contact sends a vouch whose type is marked `shared` in `attestation_types`
+(e.g. Accurate Profile Picture, I Love You).
+
+| Field | Value |
+|-------|-------|
+| Trigger | RPC `create_attestation(p_to_user_id, p_attestation_type)` after insert, when the type's `shared` flag is true |
+| Recipient | The vouched contact (`p_to_user_id`) |
+| Title | `"Union"` |
+| Body | `"{attester display name} says {vouch description}"` |
+| URL | `/?action=view_contact&contact={attesterUuid}` |
+| Source | [sql/vouch-types-migration.sql](../sql/vouch-types-migration.sql) `create_attestation` |
+
+Non-shared vouch types do not notify the recipient (older clients still call the
+same RPC; behavior is determined server-side by the catalog).
+
+---
+
 ## Maintenance
 
 When you add, remove, or change a push notification, update this file in the

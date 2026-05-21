@@ -747,9 +747,9 @@ function cdOpenTrustInfoDialog() {
 
             <p class="cd-trust-info-foot">
                 You can tune the &times; weights for each component in your
-                preferences. Vouches you receive are kept private from the
-                people you vouch for &mdash; only aggregate counts ever
-                leave the server.
+                preferences. Most vouches you receive stay private; shared
+                vouch types notify you directly, and other types appear only
+                as aggregate counts.
             </p>
         </div>
         <div class="form-actions">

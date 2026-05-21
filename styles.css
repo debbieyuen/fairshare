@@ -3172,6 +3172,28 @@ a.contact-shared-group-link:active {
     justify-content: center;
 }
 
+.vouch-choice-btn-shared {
+    background: #E3AD4F;
+    border: 2px solid #c9953f;
+    color: #1a2433;
+}
+.vouch-choice-btn-shared:hover:not(:disabled) {
+    background: #d4a04a;
+    border-color: #b88838;
+    color: #1a2433;
+}
+
+.vouch-choice-btn-private {
+    background: var(--primary-color);
+    border: 2px solid var(--primary-color);
+    color: var(--white);
+}
+.vouch-choice-btn-private:hover:not(:disabled) {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    color: var(--white);
+}
+
 /* Sponsor dialog: contact picker */
 .sponsor-choice-tabs {
     display: flex;

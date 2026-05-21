@@ -167,20 +167,7 @@ function showModal(type) {
         }
 
         case 'vouchChoice':
-            body.innerHTML = `
-                <h3>Vouch for ${esc(vouchWithContactName || 'contact')}</h3>
-                <p style="font-size:0.9rem;color:var(--dark-gray);margin-bottom:1rem;">Vouches are not shared with the receiver, and decay over time.</p>
-                <div class="choice-list">
-                    <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="vouchWithContactChoice('profile_picture_accurate')">Profile picture is accurate</button></div>
-                    <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="vouchWithContactChoice('respect')">I respect you</button></div>
-                    <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="vouchWithContactChoice('trust')">I trust you</button></div>
-                    <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="vouchWithContactChoice('love')">I love you</button></div>
-                    <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="vouchWithContactChoice('help')">I will help you</button></div>
-                    <div class="form-actions">
-                        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-                    </div>
-                </div>
-            `;
+            renderVouchChoiceModal();
             break;
 
         case 'shareLocationDuration':
