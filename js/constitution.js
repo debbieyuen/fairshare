@@ -527,7 +527,7 @@ async function submitAmendment() {
     const voteDays = periodDays || 7;
     showToast(`Amendment proposed! Members have ${voteDays} day${voteDays === 1 ? '' : 's'} to vote.`, 'success');
     closeModal();
-    if (activeTab === 'constitution') await loadConstitutionContent();
+    if (activeTab === 'governance') await loadConstitutionContent();
 }
 
 async function voteAmendment(amendmentId, approve) {

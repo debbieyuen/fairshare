@@ -35,8 +35,8 @@ function subscribeToGroup(groupId) {
               filter: `group_id=eq.${groupId}` },
             async (payload) => {
                 const edit = payload.new;
-                // If we're on the Docs tab, refresh the document display
-                if (activeTab === 'constitution') {
+                // If we're on the Commons tab, refresh the document display
+                if (activeTab === 'commons') {
                     // Only auto-refresh if the editor isn't open (don't clobber in-progress edits)
                     if (!document.getElementById('groupDocEditor')) {
                         await loadGroupDocument();
@@ -133,7 +133,7 @@ async function handleGroupEvent(event) {
         case 'amendment_proposed':
         case 'amendment_passed':
         case 'amendment_failed': {
-            if (activeTab === 'constitution') await loadConstitutionContent();
+            if (activeTab === 'governance') await loadConstitutionContent();
             // Amendment pass may have changed group settings
             if (event.event_type === 'amendment_passed') {
                 const { data: freshGroup } = await db.from('groups').select('*').eq('id', selectedGroup.id).single();

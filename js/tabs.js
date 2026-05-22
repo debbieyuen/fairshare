@@ -11,6 +11,7 @@ async function switchTab(tabName) {
         }
         if (typeof resetChatLayoutStyles === 'function') resetChatLayoutStyles();
     }
+    if (tabName === 'constitution') tabName = 'governance'; // legacy tab id
     activeTab = tabName;
     document.querySelectorAll('.tab-btn').forEach(btn =>
         btn.classList.toggle('active', btn.dataset.tab === tabName));
@@ -33,9 +34,11 @@ async function switchTab(tabName) {
     switch (tabName) {
         case 'money': await renderMoneyTab(); break;
         case 'members': await renderMembersTab(); break;
-        case 'constitution': await renderConstitutionTab(); break;
+        case 'governance': await renderGovernanceTab(); break;
+        case 'commons': await renderCommonsTab(); break;
         case 'chat': await renderChatTab(); break;
     }
+    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
 }
 
 async function renderMoneyTab() {
@@ -108,18 +111,26 @@ async function renderMembersTab() {
     await Promise.all([loadMembersList(), loadCandidatesList()]);
 }
 
-async function renderConstitutionTab() {
+async function renderGovernanceTab() {
     if (!selectedGroup) return;
     const content = document.getElementById('tabContent');
     content.innerHTML = `
-        <h4 style="color:var(--accent-color);margin-bottom:0.5rem;">Group Document</h4>
-        <div id="groupDocContent"><p style="color:var(--dark-gray);">Loading…</p></div>
-        <hr style="margin:1.5rem 0;border:none;border-top:1px solid var(--medium-gray);">
         <h4 style="color:var(--accent-color);margin-bottom:0.5rem;">Constitution</h4>
         <div id="constitutionContent"><p style="color:var(--dark-gray);">Loading…</p></div>
         <h4 style="color:var(--accent-color);margin:1.5rem 0 0.5rem;">Group Statistics</h4>
         <div id="statsContent"><p style="color:var(--dark-gray);">Loading…</p></div>
     `;
 
-    await Promise.all([loadGroupDocument(), loadConstitutionContent(), loadStatsContent()]);
+    await Promise.all([loadConstitutionContent(), loadStatsContent()]);
+}
+
+async function renderCommonsTab() {
+    if (!selectedGroup) return;
+    const content = document.getElementById('tabContent');
+    content.innerHTML = `
+        <h4 style="color:var(--accent-color);margin-bottom:0.5rem;">Shared Document</h4>
+        <div id="groupDocContent"><p style="color:var(--dark-gray);">Loading…</p></div>
+    `;
+
+    await loadGroupDocument();
 }
