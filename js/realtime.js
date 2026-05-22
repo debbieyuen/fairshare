@@ -120,8 +120,10 @@ async function handleGroupEvent(event) {
                     if (myMember) {
                         membership.balance = myMember.balance;
                         const balEl = document.getElementById('balanceAmount');
-                        if (balEl) balEl.textContent =
-                            `${selectedGroup.currency_symbol} ${Number(myMember.balance).toFixed(2)}`;
+                        if (balEl && groupCurrencyEnabled(selectedGroup)) {
+                            balEl.textContent =
+                                `${selectedGroup.currency_symbol} ${Number(myMember.balance).toFixed(2)}`;
+                        }
                     }
                 }
                 if (activeTab === 'money') await loadTransactions();

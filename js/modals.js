@@ -13,23 +13,32 @@ function showModal(type) {
                         <label>Group Name</label>
                         <input type="text" id="newGroupName" required placeholder="e.g. My Community">
                     </div>
-                    <div class="form-group">
-                        <label>Currency Name (plural if desired, e.g. "credits")</label>
-                        <input type="text" id="newCurrencyName" required placeholder="e.g. credits, coins, points">
+                    <div class="form-toggle-row">
+                        <span class="form-toggle-label">Enable group currency</span>
+                        <button type="button" id="newCurrencyEnabled" class="form-switch" role="switch" aria-checked="false" aria-label="Enable group currency">
+                            <span class="form-switch-knob"></span>
+                        </button>
                     </div>
-                    <div class="form-group">
-                        <label>Currency Symbol</label>
-                        <input type="text" id="newCurrencySymbol" required placeholder="e.g. C, $, ¢" maxlength="5" value="C">
+                    <div id="createGroupCurrencyFields" class="hidden">
+                        <div class="form-group">
+                            <label>Currency Name (plural if desired, e.g. "credits")</label>
+                            <input type="text" id="newCurrencyName" placeholder="e.g. credits, coins, points" value="credits">
+                        </div>
+                        <div class="form-group">
+                            <label>Currency Symbol</label>
+                            <input type="text" id="newCurrencySymbol" placeholder="e.g. C, $, ¢" maxlength="5" value="C">
+                        </div>
+                        <p id="createGroupCurrencyPreview" style="font-size:0.8rem;color:var(--dark-gray);margin-top:0.5rem;">
+                            Balances display as: <strong>C 100.00 credits</strong>
+                        </p>
                     </div>
-                    <p style="font-size:0.8rem;color:var(--dark-gray);margin-top:0.5rem;">
-                        Balances display as: <strong>C 100.00 credits</strong>
-                    </p>
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
                         <button type="submit" class="btn btn-primary">Create</button>
                     </div>
                 </form>
             `;
+            initCreateGroupForm();
             document.getElementById('createGroupForm').addEventListener('submit', (e) => createGroup(e));
             break;
 

@@ -1,4 +1,8 @@
 function showVoteDialog(voteType) {
+    if (!selectedGroup || !groupCurrencyEnabled(selectedGroup)) {
+        showToast('This group does not use currency', 'error');
+        return;
+    }
     const isFee = voteType === 'fee_rate';
     const label = isFee ? 'Fee Rate' : 'Daily Income';
     const currentVal = isFee

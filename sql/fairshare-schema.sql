@@ -100,6 +100,7 @@ create table public.groups (
   logo_updated_at timestamptz, -- bumps when logo changes; client uses for image cache-busting
   currency_name text not null,
   currency_symbol text not null default 'C',
+  currency_enabled boolean not null default false,
   fee_rate numeric not null default 0,        -- current voted fee rate (0-1)
   daily_income numeric not null default 0,    -- current voted daily income amount
   constitution text,                          -- group constitution with tagged variables
@@ -111,6 +112,7 @@ alter table public.groups enable row level security;
 
 alter table public.groups add column if not exists logo_url text;
 alter table public.groups add column if not exists logo_updated_at timestamptz;
+alter table public.groups add column if not exists currency_enabled boolean not null default false;
 
 -- Anyone can read groups (needed to browse/join)
 create policy "Groups are viewable by everyone"

@@ -102,6 +102,17 @@ async function leaveGroup(groupId, groupName, event) {
     }
 }
 
+function groupCurrencyEnabled(group) {
+    return group?.currency_enabled !== false;
+}
+
+function updateGroupTabBar(group) {
+    const moneyBtn = document.querySelector('.tab-btn[data-tab="money"]');
+    const currencyOn = groupCurrencyEnabled(group);
+    if (moneyBtn) moneyBtn.classList.toggle('hidden', !currencyOn);
+    if (!currencyOn && activeTab === 'money') activeTab = 'members';
+}
+
 function selectGroupById(groupId) {
     const membership = myGroups.find(m => m.group_id === groupId);
     if (membership) selectGroup(membership.groups, membership);
@@ -138,12 +149,13 @@ async function selectGroup(group, membership) {
 
     document.getElementById('tabBar').classList.remove('hidden');
     document.getElementById('activityLog').classList.remove('hidden');
+    updateGroupTabBar(group);
 
     // Render current tab
     await switchTab(activeTab);
 
     // Claim daily income if 24h+ since last claim
-    if (membership.status === 'active' && Number(group.daily_income) > 0) {
+    if (groupCurrencyEnabled(group) && membership.status === 'active' && Number(group.daily_income) > 0) {
         try {
             const { data: incomeResult } = await db.rpc('claim_daily_income', { p_group_id: group.id });
             if (incomeResult?.claimed) {

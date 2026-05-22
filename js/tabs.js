@@ -23,6 +23,13 @@ async function switchTab(tabName) {
     // recoverable; explicit SIGNED_OUT remains the logout path.
     if (!(await ensureSession())) return;
 
+    if (tabName === 'money' && selectedGroup && !groupCurrencyEnabled(selectedGroup)) {
+        tabName = 'members';
+        activeTab = tabName;
+        document.querySelectorAll('.tab-btn').forEach(btn =>
+            btn.classList.toggle('active', btn.dataset.tab === tabName));
+    }
+
     switch (tabName) {
         case 'money': await renderMoneyTab(); break;
         case 'members': await renderMembersTab(); break;
@@ -32,7 +39,7 @@ async function switchTab(tabName) {
 }
 
 async function renderMoneyTab() {
-    if (!selectedGroup) return;
+    if (!selectedGroup || !groupCurrencyEnabled(selectedGroup)) return;
     const membership = myGroups.find(m => m.group_id === selectedGroup.id);
     if (!membership) return;
     const content = document.getElementById('tabContent');
