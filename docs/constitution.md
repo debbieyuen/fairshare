@@ -16,7 +16,11 @@ In economic matters, we choose the Currency Name: credits $CURRENCY_NAME, and th
 To Approve New Member: 100% $NEW_MEMBER_PERCENTAGE of member's vote is required.
 
 Any member may propose amendment to this constitution. To Approve Amendment: 100% $AMENDMENT_PERCENTAGE of member's vote is required.
+
+Voting will happen over a period of 3 days $VOTING_PERIOD_DAYS, with the percentage to approve being taken from the number of votes submitted.
 ```
+
+When `$VOTING_PERIOD_DAYS` is present, percentage thresholds apply among members who voted during each round's window (not the full active membership). When the tag is omitted, thresholds use the full active membership (legacy behavior).
 
 When an amendment changes a tagged value and passes, the `resolve_amendment` function uses a global regex (`:\s*([^:]*?)\s*\$([A-Z_]+)`) to find all tags and extract values, then applies changes to the corresponding database columns.
 
@@ -30,6 +34,7 @@ When an amendment changes a tagged value and passes, the `resolve_amendment` fun
 | `$NEW_MEMBER_PERCENTAGE` | Read at endorsement time from constitution text |
 | `$AMENDMENT_PERCENTAGE` | Snapshot stored on each new amendment proposal |
 | `$CHANGE_CURRENCY_RATES_PERCENTAGE` | Read at vote time by `compute_tally`; controls when enough members have voted to apply median fee rate / daily income (default 66%) |
+| `$VOTING_PERIOD_DAYS` | When set (e.g. `3 days`), voting uses period-based denominators; amendment `expires_at` uses this many days; `finalize_expired_voting` closes expired rounds (client-triggered) |
 
 ### Adding New Tags
 

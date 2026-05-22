@@ -32,6 +32,20 @@ function showModal(type) {
                             Balances display as: <strong>C 100.00 credits</strong>
                         </p>
                     </div>
+                    <div class="form-toggle-row">
+                        <span class="form-toggle-label">Enable Voting Period</span>
+                        <button type="button" id="newVotingPeriodEnabled" class="form-switch form-switch-on" role="switch" aria-checked="true" aria-label="Enable Voting Period">
+                            <span class="form-switch-knob"></span>
+                        </button>
+                    </div>
+                    <div id="createGroupVotingPeriodFields">
+                        <div class="voting-period-days-row">
+                            <label for="newVotingPeriodDays">Voting Period</label>
+                            <input type="number" id="newVotingPeriodDays" min="1" max="365" value="3">
+                            <span>days</span>
+                        </div>
+                        <p class="voting-basis-helper">Voting percentages are among those having voted during the period.</p>
+                    </div>
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
                         <button type="submit" class="btn btn-primary">Create</button>
@@ -237,7 +251,7 @@ function showModal(type) {
                     </div>
                 </div>
                 <p style="font-size:0.8rem;color:var(--dark-gray);margin-top:0.5rem;">
-                    The amendment will be put to a 7-day vote. Members must approve by the threshold defined in the constitution.
+                    Members vote for the period defined in the constitution (or 7 days if not set). Thresholds apply as described in the constitution.
                 </p>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>

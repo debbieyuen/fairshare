@@ -44,6 +44,14 @@ async function renderMoneyTab() {
     if (!membership) return;
     const content = document.getElementById('tabContent');
 
+    await ensureVotingFinalized(selectedGroup.id);
+
+    const { data: freshGroup } = await db.from('groups').select('*').eq('id', selectedGroup.id).single();
+    if (freshGroup) {
+        selectedGroup = freshGroup;
+        membership.groups = freshGroup;
+    }
+
     // Fetch user's pending votes
     const { data: myVotes } = await db.from('votes').select('vote_type, value')
         .eq('group_id', selectedGroup.id).eq('user_id', currentUser.id);

@@ -68,6 +68,27 @@ function parseNewMemberThreshold(constitutionText) {
     return 1.0;
 }
 
+function parseVotingPeriodDays(constitutionText) {
+    if (!constitutionText) return null;
+    const match = constitutionText.match(/(\d+)\s*days?\s*\$VOTING_PERIOD_DAYS/i);
+    return match ? parseInt(match[1], 10) : null;
+}
+
+function isVotingPeriodMode(constitutionText) {
+    const days = parseVotingPeriodDays(constitutionText);
+    return days != null && days > 0;
+}
+
+async function ensureVotingFinalized(groupId) {
+    const constitution = selectedGroup?.constitution;
+    if (!groupId || !isVotingPeriodMode(constitution)) return;
+    try {
+        await db.rpc('finalize_expired_voting', { p_group_id: groupId });
+    } catch (e) {
+        console.warn('ensureVotingFinalized:', e);
+    }
+}
+
 // Build word-level attribution by replaying edit history diffs.
 // Returns an array of { word, user_id, created_at } for each word in the final content.
 function buildWordAttribution(history) {
@@ -278,6 +299,8 @@ async function loadConstitutionContent() {
     el.innerHTML = '<p style="color:var(--dark-gray);">Loading…</p>';
 
     try {
+        await ensureVotingFinalized(groupId);
+
         // Refresh group data to get latest constitution
         const { data: freshGroup, error: groupErr } = await db
             .from('groups')
@@ -382,9 +405,14 @@ async function loadConstitutionContent() {
 function renderAmendmentCard(a, votesMap, myVotesMap, activeMemberCount) {
     const votes = votesMap[a.id] || { approve: 0, reject: 0 };
     const myVote = myVotesMap[a.id];
-    const total = activeMemberCount || 1;
+    const periodMode = isVotingPeriodMode(selectedGroup?.constitution);
+    const voterTotal = periodMode
+        ? Math.max(1, votes.approve + votes.reject)
+        : (activeMemberCount || 1);
+    const total = voterTotal;
     const pct = total > 0 ? (votes.approve / total * 100) : 0;
     const thresholdPct = (a.threshold * 100);
+    const countLabel = periodMode ? `${votes.approve}/${total} voted` : `${votes.approve}/${total}`;
     const now = new Date();
     const expires = new Date(a.expires_at);
     const isExpired = expires <= now;
@@ -421,7 +449,7 @@ function renderAmendmentCard(a, votesMap, myVotesMap, activeMemberCount) {
             &middot; ${a.status === 'voting' ? timeLeft : (a.resolved_at ? new Date(a.resolved_at).toLocaleDateString() : '')}
         </div>
         <div class="vote-bar">
-            <span style="font-size:0.8rem;font-weight:600;">${votes.approve}/${total}</span>
+            <span style="font-size:0.8rem;font-weight:600;">${countLabel}</span>
             <div class="vote-bar-track">
                 <div class="vote-bar-fill" style="width:${pct}%"></div>
                 <div class="vote-bar-threshold" style="left:${thresholdPct}%" title="Threshold: ${thresholdPct}%"></div>
@@ -467,15 +495,24 @@ async function submitAmendment() {
     if (newText === oldText) { showToast('No changes detected in the constitution', 'error'); return; }
 
     const threshold = parseAmendmentThreshold(oldText);
+    const periodDays = parseVotingPeriodDays(oldText);
 
-    const { error } = await db.from('amendments').insert({
+    const amendmentRow = {
         group_id: selectedGroup.id,
         proposed_by: currentUser.id,
         title,
         old_text: oldText,
         new_text: newText,
         threshold
-    });
+    };
+
+    if (periodDays) {
+        const expires = new Date();
+        expires.setDate(expires.getDate() + periodDays);
+        amendmentRow.expires_at = expires.toISOString();
+    }
+
+    const { error } = await db.from('amendments').insert(amendmentRow);
 
     if (error) { showToast(error.message, 'error'); return; }
 
@@ -487,7 +524,8 @@ async function submitAmendment() {
         p_metadata: { title }
     });
 
-    showToast('Amendment proposed! Members have 7 days to vote.', 'success');
+    const voteDays = periodDays || 7;
+    showToast(`Amendment proposed! Members have ${voteDays} day${voteDays === 1 ? '' : 's'} to vote.`, 'success');
     closeModal();
     if (activeTab === 'constitution') await loadConstitutionContent();
 }
@@ -505,7 +543,10 @@ async function voteAmendment(amendmentId, approve) {
     if (approve) {
         const { data, error: resolveError } = await db.rpc('resolve_amendment', { p_amendment_id: amendmentId });
         if (!resolveError && data?.passed) {
-            showToast(`Amendment passed! (${data.approve_count}/${data.active_members} approved, ${data.ratio}% ≥ ${data.threshold}% needed)`, 'success');
+            const tally = data.voting_period && data.voter_count != null
+                ? `${data.approve_count}/${data.voter_count} voted`
+                : `${data.approve_count}/${data.active_members} approved`;
+            showToast(`Amendment passed! (${tally}, ${data.ratio}% ≥ ${data.threshold}% needed)`, 'success');
             // Refresh group data since constitution may have changed
             const { data: freshGroup } = await db.from('groups').select('*').eq('id', selectedGroup.id).single();
             if (freshGroup) {
@@ -528,9 +569,15 @@ async function resolveAmendment(amendmentId) {
     if (error) { showToast(error.message, 'error'); return; }
 
     if (data?.resolved === false) {
-        showToast(`Not enough votes yet (${data.approve_count}/${data.active_members}, need ${data.threshold}%)`, 'info');
+        const tally = data.voting_period && data.voter_count != null
+            ? `${data.approve_count}/${data.voter_count} voted`
+            : `${data.approve_count}/${data.active_members}`;
+        showToast(`Not enough votes yet (${tally}, need ${data.threshold}%)`, 'info');
     } else if (data?.passed) {
-        showToast(`Amendment passed! (${data.approve_count}/${data.active_members} approved, ${data.ratio}% ≥ ${data.threshold}% needed)`, 'success');
+        const tally = data.voting_period && data.voter_count != null
+            ? `${data.approve_count}/${data.voter_count} voted`
+            : `${data.approve_count}/${data.active_members} approved`;
+        showToast(`Amendment passed! (${tally}, ${data.ratio}% ≥ ${data.threshold}% needed)`, 'success');
         const { data: freshGroup } = await db.from('groups').select('*').eq('id', selectedGroup.id).single();
         if (freshGroup) {
             selectedGroup = freshGroup;
@@ -539,7 +586,10 @@ async function resolveAmendment(amendmentId) {
             renderGroupList();
         }
     } else {
-        showToast(`Amendment failed. (${data.approve_count}/${data.active_members} approved, ${data.ratio}% < ${data.threshold}% needed)`, 'error');
+        const tally = data.voting_period && data.voter_count != null
+            ? `${data.approve_count}/${data.voter_count} voted`
+            : `${data.approve_count}/${data.active_members} approved`;
+        showToast(`Amendment failed. (${tally}, ${data.ratio}% < ${data.threshold}% needed)`, 'error');
     }
     await loadConstitutionContent();
 }

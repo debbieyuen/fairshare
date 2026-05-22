@@ -1,7 +1,28 @@
+function candidateEndorsementStats(endorsementsForCandidate, roundOpenedAt, periodDays, memberPct, activeCount) {
+    if (!isVotingPeriodMode(selectedGroup?.constitution) || !roundOpenedAt || !periodDays) {
+        const count = endorsementsForCandidate.length;
+        const threshold = Math.max(1, Math.ceil((activeCount || 0) * memberPct));
+        return { count, threshold, periodMode: false };
+    }
+    const windowEnd = new Date(roundOpenedAt);
+    windowEnd.setDate(windowEnd.getDate() + periodDays);
+    const opened = new Date(roundOpenedAt);
+    const inWindow = endorsementsForCandidate.filter(e => {
+        const t = new Date(e.created_at);
+        return t >= opened && t < windowEnd;
+    });
+    const participants = new Set(inWindow.map(e => e.endorser_id)).size;
+    const count = inWindow.length;
+    const threshold = Math.max(1, Math.ceil(participants * memberPct));
+    return { count, threshold, periodMode: true };
+}
+
 async function loadCandidatesList() {
     if (!selectedGroup) return;
     const el = document.getElementById('candidatesContent');
     if (!el) return;
+
+    await ensureVotingFinalized(selectedGroup.id);
 
     const { data: candidates, error } = await db
         .from('members')
@@ -14,18 +35,29 @@ async function loadCandidatesList() {
         return;
     }
 
-    // Get endorsement counts
     const { data: endorsements } = await db
         .from('endorsements')
-        .select('candidate_id, endorser_id')
+        .select('candidate_id, endorser_id, created_at')
         .eq('group_id', selectedGroup.id);
 
-    const endorseMap = {};
+    const endorseByCandidate = {};
     const myEndorsements = new Set();
     (endorsements || []).forEach(e => {
-        endorseMap[e.candidate_id] = (endorseMap[e.candidate_id] || 0) + 1;
+        if (!endorseByCandidate[e.candidate_id]) endorseByCandidate[e.candidate_id] = [];
+        endorseByCandidate[e.candidate_id].push(e);
         if (e.endorser_id === currentUser.id) myEndorsements.add(e.candidate_id);
     });
+
+    const periodDays = parseVotingPeriodDays(selectedGroup.constitution);
+    const roundKeys = candidates.map(c => 'candidate:' + c.user_id);
+    const { data: voteRounds } = await db
+        .from('vote_rounds')
+        .select('round_key, opened_at')
+        .eq('group_id', selectedGroup.id)
+        .in('round_key', roundKeys);
+
+    const roundMap = {};
+    (voteRounds || []).forEach(r => { roundMap[r.round_key] = r.opened_at; });
 
     // Get sponsorship info for each candidate (sponsor name + message)
     const candidateIds = candidates.map(c => c.user_id);
@@ -51,17 +83,26 @@ async function loadCandidatesList() {
         .eq('status', 'active');
 
     const memberPct = parseNewMemberThreshold(selectedGroup.constitution);
-    const threshold = Math.max(1, Math.ceil((activeCount || 0) * memberPct));
 
     el.innerHTML = candidates.map(c => {
         const endorsed = myEndorsements.has(c.user_id);
-        const count = endorseMap[c.user_id] || 0;
+        const roundKey = 'candidate:' + c.user_id;
+        const stats = candidateEndorsementStats(
+            endorseByCandidate[c.user_id] || [],
+            roundMap[roundKey],
+            periodDays,
+            memberPct,
+            activeCount
+        );
+        const endorseLabel = stats.periodMode
+            ? `${stats.count}/${stats.threshold} endorsements (period)`
+            : `${stats.count}/${stats.threshold} endorsements`;
         const sponsorInfo = sponsorMap[c.user_id];
         return `<div class="member-item" style="flex-direction:column;align-items:stretch;gap:0.5rem;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
                 <div>
                     <span class="member-name">${esc(c.profiles?.display_name || 'Unknown')}</span>
-                    <span style="font-size:0.8rem;color:var(--dark-gray);margin-left:0.5rem;">${count}/${threshold} endorsements</span>
+                    <span style="font-size:0.8rem;color:var(--dark-gray);margin-left:0.5rem;">${endorseLabel}</span>
                 </div>
                 <div>
                     ${endorsed

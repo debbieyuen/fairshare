@@ -656,6 +656,33 @@ body {
     transform: translateX(18px);
 }
 
+.voting-period-days-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+.voting-period-days-row label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--accent-color);
+    margin: 0;
+}
+.voting-period-days-row input[type="number"] {
+    width: 4rem;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid var(--medium-gray);
+    border-radius: 6px;
+}
+#createGroupVotingPeriodFields.hidden {
+    display: none;
+}
+.voting-basis-helper {
+    font-size: 0.8rem;
+    color: var(--dark-gray);
+    margin: 0 0 1rem;
+}
+
 /* Cards */
 .card {
     background: var(--white);

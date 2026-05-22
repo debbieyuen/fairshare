@@ -4,6 +4,8 @@ function initCreateGroupForm() {
     const nameInput = document.getElementById('newCurrencyName');
     const symInput = document.getElementById('newCurrencySymbol');
     const preview = document.getElementById('createGroupCurrencyPreview');
+    const votingToggle = document.getElementById('newVotingPeriodEnabled');
+    const votingPeriodFields = document.getElementById('createGroupVotingPeriodFields');
 
     function updatePreview() {
         if (!preview) return;
@@ -21,14 +23,25 @@ function initCreateGroupForm() {
         if (on) updatePreview();
     }
 
+    function setVotingPeriodEnabled(on) {
+        votingToggle.classList.toggle('form-switch-on', on);
+        votingToggle.setAttribute('aria-checked', on ? 'true' : 'false');
+        votingPeriodFields.classList.toggle('hidden', !on);
+    }
+
     toggle.addEventListener('click', () => setCurrencyEnabled(!toggle.classList.contains('form-switch-on')));
+    votingToggle.addEventListener('click', () => setVotingPeriodEnabled(!votingToggle.classList.contains('form-switch-on')));
     nameInput?.addEventListener('input', updatePreview);
     symInput?.addEventListener('input', updatePreview);
     setCurrencyEnabled(false);
+    setVotingPeriodEnabled(true);
 }
 
-function buildDefaultConstitution(name, currencyEnabled, currencyName, currencySymbol) {
+function buildDefaultConstitution(name, currencyEnabled, currencyName, currencySymbol, votingPeriodDays) {
     let text = 'We, the people, hereby give this Group Name: ' + name + ' $GROUP_NAME\n\n';
+    if (votingPeriodDays > 0) {
+        text += 'Voting will happen over a period of ' + votingPeriodDays + ' days $VOTING_PERIOD_DAYS, with the percentage to approve being taken from the number of votes submitted.\n\n';
+    }
     if (currencyEnabled) {
         text += 'In economic matters, we choose the Currency Name: ' + currencyName + ' $CURRENCY_NAME, and the Currency Symbol: ' + currencySymbol + ' $CURRENCY_SYMBOL, and to Change Currency Rates: 66% $CHANGE_CURRENCY_RATES_PERCENTAGE of member\'s vote is required.\n\n';
     }
@@ -53,7 +66,12 @@ async function createGroup(e) {
         return;
     }
 
-    const defaultConstitution = buildDefaultConstitution(name, currencyEnabled, currencyName, currencySymbol);
+    const votingPeriodMode = document.getElementById('newVotingPeriodEnabled').classList.contains('form-switch-on');
+    const votingPeriodDays = votingPeriodMode
+        ? Math.max(1, parseInt(document.getElementById('newVotingPeriodDays')?.value, 10) || 3)
+        : 0;
+
+    const defaultConstitution = buildDefaultConstitution(name, currencyEnabled, currencyName, currencySymbol, votingPeriodDays);
 
     const { data: group, error: groupError } = await db
         .from('groups')

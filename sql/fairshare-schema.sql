@@ -276,6 +276,21 @@ create policy "Members can delete own votes"
   using (auth.uid() = user_id);
 
 
+-- 6b. VOTE ROUNDS (voting-period window start per group + round key)
+create table public.vote_rounds (
+  group_id uuid not null references public.groups(id) on delete cascade,
+  round_key text not null,
+  opened_at timestamptz not null default now(),
+  primary key (group_id, round_key)
+);
+
+alter table public.vote_rounds enable row level security;
+
+create policy "Group members can view vote rounds"
+  on public.vote_rounds for select
+  using (public.is_group_member(group_id));
+
+
 -- 7. SPONSORSHIPS (invite-only membership)
 create table public.sponsorships (
   id uuid primary key default gen_random_uuid(),
@@ -747,6 +762,24 @@ end;
 $$ language plpgsql security definer;
 
 
+-- Parse $VOTING_PERIOD_DAYS from constitution (null = full active membership basis)
+create or replace function public.get_voting_period_days(p_constitution text)
+returns int as $$
+declare
+  v_match text[];
+begin
+  if p_constitution is null then
+    return null;
+  end if;
+  v_match := regexp_match(p_constitution, '(\d+)\s*days?\s*\$VOTING_PERIOD_DAYS', 'i');
+  if v_match is not null and v_match[1]::int > 0 then
+    return v_match[1]::int;
+  end if;
+  return null;
+end;
+$$ language plpgsql immutable;
+
+
 -- Check endorsements and admit candidate if threshold met
 -- Reads $NEW_MEMBER_PERCENTAGE from group constitution (default 100%)
 create or replace function public.check_endorsements(
@@ -757,21 +790,21 @@ returns json as $$
 declare
   v_active_count int;
   v_endorsement_count int;
+  v_participants int;
   v_threshold int;
   v_constitution text;
   v_pct_match text[];
   v_pct numeric;
   v_sponsor_name text;
+  v_period_days int;
+  v_round_key text;
+  v_opened_at timestamptz;
+  v_window_end timestamptz;
 begin
   -- Count active members
   select count(*) into v_active_count
   from public.members
   where group_id = p_group_id and status = 'active';
-
-  -- Count endorsements for this candidate
-  select count(*) into v_endorsement_count
-  from public.endorsements
-  where group_id = p_group_id and candidate_id = p_candidate_id;
 
   -- Read threshold from constitution ($NEW_MEMBER_PERCENTAGE), default 100%
   select constitution into v_constitution
@@ -786,7 +819,43 @@ begin
     end if;
   end if;
 
-  v_threshold := greatest(1, ceil(v_active_count * v_pct));
+  v_period_days := public.get_voting_period_days(v_constitution);
+  v_round_key := 'candidate:' || p_candidate_id::text;
+
+  if v_period_days is not null and v_period_days > 0 then
+    insert into public.vote_rounds (group_id, round_key, opened_at)
+    values (p_group_id, v_round_key, now())
+    on conflict do nothing;
+
+    select opened_at into v_opened_at
+    from public.vote_rounds
+    where group_id = p_group_id and round_key = v_round_key;
+
+    v_window_end := v_opened_at + (v_period_days || ' days')::interval;
+
+    select count(*) into v_endorsement_count
+    from public.endorsements
+    where group_id = p_group_id
+      and candidate_id = p_candidate_id
+      and created_at >= v_opened_at
+      and created_at < v_window_end;
+
+    select count(distinct endorser_id) into v_participants
+    from public.endorsements
+    where group_id = p_group_id
+      and candidate_id = p_candidate_id
+      and created_at >= v_opened_at
+      and created_at < v_window_end;
+
+    v_threshold := greatest(1, ceil(v_participants * v_pct));
+  else
+    select count(*) into v_endorsement_count
+    from public.endorsements
+    where group_id = p_group_id and candidate_id = p_candidate_id;
+
+    v_participants := null;
+    v_threshold := greatest(1, ceil(v_active_count * v_pct));
+  end if;
 
   if v_endorsement_count >= v_threshold then
     -- Admit the candidate
@@ -794,9 +863,14 @@ begin
     set status = 'active', joined_at = now()
     where group_id = p_group_id and user_id = p_candidate_id and status = 'pending';
 
-    -- Clean up endorsements
+    -- Clean up endorsements and voting round
     delete from public.endorsements
     where group_id = p_group_id and candidate_id = p_candidate_id;
+
+    if v_period_days is not null and v_period_days > 0 then
+      delete from public.vote_rounds
+      where group_id = p_group_id and round_key = v_round_key;
+    end if;
 
     -- Look up the sponsor's name
     select p.display_name into v_sponsor_name
@@ -823,14 +897,18 @@ begin
     return json_build_object(
       'admitted', true,
       'endorsements', v_endorsement_count,
-      'threshold', v_threshold
+      'threshold', v_threshold,
+      'participants', v_participants,
+      'voting_period', v_period_days is not null
     );
   end if;
 
   return json_build_object(
     'admitted', false,
     'endorsements', v_endorsement_count,
-    'threshold', v_threshold
+    'threshold', v_threshold,
+    'participants', v_participants,
+    'voting_period', v_period_days is not null
   );
 end;
 $$ language plpgsql security definer;
@@ -838,42 +916,91 @@ $$ language plpgsql security definer;
 
 -- Compute tally (median) of votes and update group settings
 -- Reads $CHANGE_CURRENCY_RATES_PERCENTAGE from constitution (default 66%)
--- Only applies the change when enough active members have voted
+-- Full population: quorum = % of active members who voted
+-- Voting period: quorum = % of participants who voted in the round window
 create or replace function public.compute_tally(
   p_group_id uuid,
-  p_vote_type text
+  p_vote_type text,
+  p_finalize boolean default false
 )
 returns json as $$
 declare
   v_median numeric;
   v_vote_count int;
   v_active_count int;
+  v_participants int;
   v_constitution text;
   v_pct_match text[];
   v_pct numeric;
   v_threshold int;
   v_applied boolean := false;
+  v_period_days int;
+  v_opened_at timestamptz;
+  v_window_end timestamptz;
+  v_expired boolean;
+  v_should_apply boolean;
 begin
-  -- Count votes for this type
-  select count(*) into v_vote_count
-  from public.votes
-  where group_id = p_group_id and vote_type = p_vote_type;
-
-  if v_vote_count = 0 then
-    return json_build_object('median', 0, 'vote_count', 0, 'applied', false, 'reason', 'No votes cast');
-  end if;
-
-  -- Count active members
-  select count(*) into v_active_count
-  from public.members
-  where group_id = p_group_id and status = 'active';
-
-  -- Read threshold from constitution ($CHANGE_CURRENCY_RATES_PERCENTAGE), default 66%
   select constitution into v_constitution
   from public.groups
   where id = p_group_id;
 
-  v_pct := 0.66; -- default 66%
+  v_period_days := public.get_voting_period_days(v_constitution);
+
+  if v_period_days is not null then
+    insert into public.vote_rounds (group_id, round_key, opened_at)
+    values (p_group_id, p_vote_type, now())
+    on conflict do nothing;
+
+    select opened_at into v_opened_at
+    from public.vote_rounds
+    where group_id = p_group_id and round_key = p_vote_type;
+
+    v_window_end := v_opened_at + (v_period_days || ' days')::interval;
+    v_expired := now() >= v_window_end;
+
+    if p_finalize and not v_expired then
+      return json_build_object(
+        'median', 0,
+        'vote_count', 0,
+        'applied', false,
+        'reason', 'Voting period not expired'
+      );
+    end if;
+
+    select count(*) into v_vote_count
+    from public.votes
+    where group_id = p_group_id
+      and vote_type = p_vote_type
+      and created_at >= v_opened_at
+      and created_at < v_window_end;
+
+    if v_vote_count = 0 then
+      if p_finalize and v_expired then
+        delete from public.vote_rounds
+        where group_id = p_group_id and round_key = p_vote_type;
+      end if;
+      return json_build_object('median', 0, 'vote_count', 0, 'applied', false, 'reason', 'No votes cast');
+    end if;
+
+    v_participants := v_vote_count;
+  else
+    select count(*) into v_vote_count
+    from public.votes
+    where group_id = p_group_id and vote_type = p_vote_type;
+
+    if v_vote_count = 0 then
+      return json_build_object('median', 0, 'vote_count', 0, 'applied', false, 'reason', 'No votes cast');
+    end if;
+
+    v_participants := null;
+    v_expired := false;
+  end if;
+
+  select count(*) into v_active_count
+  from public.members
+  where group_id = p_group_id and status = 'active';
+
+  v_pct := 0.66;
   if v_constitution is not null then
     v_pct_match := regexp_match(v_constitution, '(\d+)%\s*(?:members?\s*)?\$CHANGE_CURRENCY_RATES_PERCENTAGE');
     if v_pct_match is not null then
@@ -881,28 +1008,42 @@ begin
     end if;
   end if;
 
-  v_threshold := greatest(1, ceil(v_active_count * v_pct));
+  if v_period_days is not null then
+    v_threshold := greatest(1, ceil(v_participants * v_pct));
+  else
+    v_threshold := greatest(1, ceil(v_active_count * v_pct));
+  end if;
 
-  -- Only apply if enough members have voted
-  if v_vote_count >= v_threshold then
-    -- Compute median
-    select percentile_cont(0.5) within group (order by value)
-    into v_median
-    from public.votes
-    where group_id = p_group_id and vote_type = p_vote_type;
+  v_should_apply := v_vote_count >= v_threshold;
 
-    -- Update the group setting
+  if v_should_apply and (v_period_days is null or not v_expired or p_finalize) then
+    if v_period_days is not null then
+      select percentile_cont(0.5) within group (order by value)
+      into v_median
+      from public.votes
+      where group_id = p_group_id
+        and vote_type = p_vote_type
+        and created_at >= v_opened_at
+        and created_at < v_window_end;
+    else
+      select percentile_cont(0.5) within group (order by value)
+      into v_median
+      from public.votes
+      where group_id = p_group_id and vote_type = p_vote_type;
+    end if;
+
     if p_vote_type = 'fee_rate' then
       update public.groups set fee_rate = v_median where id = p_group_id;
     elsif p_vote_type = 'daily_income' then
       update public.groups set daily_income = v_median where id = p_group_id;
     end if;
 
-    -- Clear all votes for this type so a fresh round is needed
     delete from public.votes
     where group_id = p_group_id and vote_type = p_vote_type;
 
-    -- Log the rate change event
+    delete from public.vote_rounds
+    where group_id = p_group_id and round_key = p_vote_type;
+
     insert into public.group_events (group_id, event_type, summary, metadata)
     values (
       p_group_id,
@@ -916,20 +1057,48 @@ begin
     );
 
     v_applied := true;
-  else
-    -- Still compute median for display, but don't apply
+  elsif v_period_days is not null and v_expired and p_finalize then
     select percentile_cont(0.5) within group (order by value)
     into v_median
     from public.votes
+    where group_id = p_group_id
+      and vote_type = p_vote_type
+      and created_at >= v_opened_at
+      and created_at < v_window_end;
+
+    delete from public.votes
     where group_id = p_group_id and vote_type = p_vote_type;
+
+    delete from public.vote_rounds
+    where group_id = p_group_id and round_key = p_vote_type;
+
+    v_median := coalesce(v_median, 0);
+  else
+    if v_period_days is not null then
+      select percentile_cont(0.5) within group (order by value)
+      into v_median
+      from public.votes
+      where group_id = p_group_id
+        and vote_type = p_vote_type
+        and created_at >= v_opened_at
+        and created_at < v_window_end;
+    else
+      select percentile_cont(0.5) within group (order by value)
+      into v_median
+      from public.votes
+      where group_id = p_group_id and vote_type = p_vote_type;
+    end if;
   end if;
 
   return json_build_object(
-    'median', v_median,
+    'median', coalesce(v_median, 0),
     'vote_count', v_vote_count,
     'active_members', v_active_count,
+    'participants', v_participants,
     'threshold', v_threshold,
-    'applied', v_applied
+    'applied', v_applied,
+    'voting_period', v_period_days is not null,
+    'expired', v_expired
   );
 end;
 $$ language plpgsql security definer;
@@ -988,18 +1157,24 @@ $$ language plpgsql security definer;
 
 
 -- Resolve an amendment: either early (threshold already met) or after voting expires
--- Counts approvals vs active members, applies if threshold met
+-- Full population: approvals / active members
+-- Voting period: approvals / (approvals + rejections) among votes in the period
 create or replace function public.resolve_amendment(p_amendment_id uuid)
 returns json as $$
 declare
   v_amendment record;
   v_active_count int;
   v_approve_count int;
+  v_reject_count int;
+  v_voter_count int;
   v_ratio numeric;
   v_passed boolean;
   v_tag text;
   v_value text;
   v_parts record;
+  v_constitution text;
+  v_period_days int;
+  v_window_end timestamptz;
 begin
   -- Fetch the amendment
   select * into v_amendment
@@ -1020,33 +1195,66 @@ begin
     raise exception 'You are not an active member of this group';
   end if;
 
-  -- Count active members
   select count(*) into v_active_count
   from public.members
   where group_id = v_amendment.group_id and status = 'active';
 
-  -- Count approval votes
-  select count(*) into v_approve_count
-  from public.amendment_votes
-  where amendment_id = p_amendment_id and vote = true;
+  select constitution into v_constitution
+  from public.groups
+  where id = v_amendment.group_id;
 
-  -- Calculate ratio
-  if v_active_count = 0 then
-    v_ratio := 0;
+  v_period_days := public.get_voting_period_days(v_constitution);
+  v_window_end := v_amendment.created_at + coalesce(v_period_days, 7) * interval '1 day';
+
+  if v_period_days is not null then
+    select count(*) into v_approve_count
+    from public.amendment_votes
+    where amendment_id = p_amendment_id
+      and vote = true
+      and created_at >= v_amendment.created_at
+      and created_at < v_window_end;
+
+    select count(*) into v_reject_count
+    from public.amendment_votes
+    where amendment_id = p_amendment_id
+      and vote = false
+      and created_at >= v_amendment.created_at
+      and created_at < v_window_end;
+
+    v_voter_count := v_approve_count + v_reject_count;
+
+    if v_voter_count = 0 then
+      v_ratio := 0;
+    else
+      v_ratio := v_approve_count::numeric / v_voter_count::numeric;
+    end if;
   else
-    v_ratio := v_approve_count::numeric / v_active_count::numeric;
+    select count(*) into v_approve_count
+    from public.amendment_votes
+    where amendment_id = p_amendment_id and vote = true;
+
+    v_reject_count := 0;
+    v_voter_count := null;
+
+    if v_active_count = 0 then
+      v_ratio := 0;
+    else
+      v_ratio := v_approve_count::numeric / v_active_count::numeric;
+    end if;
   end if;
 
   v_passed := v_ratio >= v_amendment.threshold;
 
-  -- If threshold not met and voting hasn't expired, don't resolve yet
   if not v_passed and v_amendment.expires_at > now() then
     return json_build_object(
       'resolved', false,
       'approve_count', v_approve_count,
+      'reject_count', v_reject_count,
+      'voter_count', v_voter_count,
       'active_members', v_active_count,
       'ratio', round(v_ratio * 100, 1),
-      'threshold', round(v_amendment.threshold * 100, 1)
+      'threshold', round(v_amendment.threshold * 100, 1),
+      'voting_period', v_period_days is not null
     );
   end if;
 
@@ -1117,9 +1325,66 @@ begin
   return json_build_object(
     'passed', v_passed,
     'approve_count', v_approve_count,
+    'reject_count', v_reject_count,
+    'voter_count', v_voter_count,
     'active_members', v_active_count,
     'ratio', round(v_ratio * 100, 1),
-    'threshold', round(v_amendment.threshold * 100, 1)
+    'threshold', round(v_amendment.threshold * 100, 1),
+    'voting_period', v_period_days is not null
+  );
+end;
+$$ language plpgsql security definer;
+
+
+-- Finalize voting rounds that have passed their constitution voting period (client-triggered)
+create or replace function public.finalize_expired_voting(p_group_id uuid)
+returns json as $$
+declare
+  v_constitution text;
+  v_period_days int;
+  v_round record;
+  v_amendment record;
+  v_amendment_ids uuid[] := '{}';
+  v_currency_rounds text[] := '{}';
+begin
+  select constitution into v_constitution
+  from public.groups
+  where id = p_group_id;
+
+  v_period_days := public.get_voting_period_days(v_constitution);
+
+  if v_period_days is null then
+    return json_build_object('finalized', false, 'reason', 'full_population_mode');
+  end if;
+
+  for v_round in
+    select round_key
+    from public.vote_rounds
+    where group_id = p_group_id
+      and round_key in ('fee_rate', 'daily_income')
+      and opened_at + (v_period_days || ' days')::interval <= now()
+  loop
+    perform public.compute_tally(p_group_id, v_round.round_key, true);
+    delete from public.vote_rounds
+    where group_id = p_group_id and round_key = v_round.round_key;
+    v_currency_rounds := array_append(v_currency_rounds, v_round.round_key);
+  end loop;
+
+  for v_amendment in
+    select id
+    from public.amendments
+    where group_id = p_group_id
+      and status = 'voting'
+      and expires_at <= now()
+  loop
+    perform public.resolve_amendment(v_amendment.id);
+    v_amendment_ids := array_append(v_amendment_ids, v_amendment.id);
+  end loop;
+
+  return json_build_object(
+    'finalized', true,
+    'currency_rounds', to_json(v_currency_rounds),
+    'amendments', to_json(v_amendment_ids)
   );
 end;
 $$ language plpgsql security definer;
