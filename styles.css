@@ -184,10 +184,23 @@ body {
     object-fit: cover;
     border: 3px solid rgba(255,255,255,0.5);
     background: rgba(255,255,255,0.15);
+    display: block;
+    flex-shrink: 0;
+}
+.group-avatar-placeholder {
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 3px solid rgba(255,255,255,0.5);
+    background: rgba(255,255,255,0.15);
+    flex-shrink: 0;
+    overflow: hidden;
 }
 .group-avatar-placeholder svg.lucide-icon {
     width: 28px;
     height: 28px;
+    display: block;
 }
 .group-header-avatar-wrap {
     margin-right: 0;
@@ -196,6 +209,9 @@ body {
     border-radius: 50%;
     transition: var(--transition);
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 .group-header-avatar-wrap .group-avatar,
 .group-header-avatar-wrap .group-avatar-placeholder {
@@ -212,6 +228,8 @@ body {
     width: 34px;
     height: 34px;
     border-width: 2px;
+    border-style: solid;
+    border-color: rgba(255,255,255,0.5);
 }
 #groupView .group-header-avatar-wrap .group-avatar-placeholder svg.lucide-icon {
     width: 18px;
@@ -453,7 +471,17 @@ body {
     border: 2px solid var(--medium-gray);
     background: var(--light-gray);
 }
+.group-card-logo-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--light-gray);
+    border: 2px solid var(--medium-gray);
+    color: var(--dark-gray);
+    overflow: hidden;
+}
 .group-card-logo-placeholder svg.lucide-icon {
+    display: block;
     width: 22px;
     height: 22px;
 }
@@ -1338,6 +1366,212 @@ body.chat-keyboard-open .bottom-bar {
 body.chat-keyboard-open.chat-tab-active .chat-input-bar {
     z-index: 105;
 }
+
+body.dm-screen-active {
+    overflow: hidden;
+    overscroll-behavior: none;
+}
+body.dm-screen-active .bottom-bar {
+    display: none !important;
+}
+body.dm-screen-active .header {
+    display: flex;
+}
+/* Keep DM header the exact same row height as normal header icons.
+   In DM mode we hide the real icon clusters, so we add an invisible
+   in-flow box to preserve the header's intrinsic height. */
+body.dm-screen-active .header::before {
+    content: '';
+    display: block;
+    width: 48px;
+    height: 48px;
+    visibility: hidden;
+}
+body.dm-screen-active .header-globe-btn,
+body.dm-screen-active .header-right {
+    display: none !important;
+}
+body.dm-screen-active .header .user-name {
+    cursor: default;
+    pointer-events: none;
+    max-width: calc(100% - 120px);
+}
+.header.dm-header .user-name {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.dm-header-title-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-width: 0;
+}
+.dm-header-title-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dm-header-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    flex-shrink: 0;
+}
+.dm-header-avatar-fallback {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--white);
+    background: rgba(255, 255, 255, 0.22);
+}
+.header.dm-header {
+    justify-content: center;
+    min-height: 48px;
+    box-shadow: none;
+}
+.dm-header-back-btn {
+    position: absolute;
+    left: 0.65rem;
+    top: calc(env(safe-area-inset-top, 0px) + 1rem);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    height: 48px;
+    border: none;
+    background: transparent;
+    color: var(--white);
+    font-family: inherit;
+    font-size: 0.98rem;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0.35rem 0.4rem;
+    z-index: 2;
+}
+.dm-header-back-btn svg.lucide-icon {
+    width: 18px;
+    height: 18px;
+}
+.dm-header-back-btn span {
+    line-height: 1;
+}
+body.dm-screen-active .main-content {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    min-height: 0;
+    height: calc(100vh - (env(safe-area-inset-top, 0px) + 80px));
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.main-content:has(> #directMessageScreen:not(.hidden)) {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+}
+#directMessageScreen {
+    height: 100%;
+    min-height: 0;
+    background: var(--white);
+    display: flex;
+    flex-direction: column;
+}
+#directMessageScreen.hidden { display: none; }
+.dm-screen-shell {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--white);
+}
+.dm-chat-container {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+.dm-chat-messages {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+}
+.dm-input-bar {
+    position: static;
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+    background: var(--light-gray);
+    z-index: 100;
+}
+.dm-typing-indicator {
+    font-size: 0.75rem;
+    color: var(--dark-gray);
+    padding: 0.25rem 0.9rem 0.4rem;
+}
+.dm-reactions {
+    margin-top: 0.2rem;
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+.dm-msg-meta-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+}
+.dm-msg-meta-row .chat-msg-time {
+    margin-top: 0;
+    padding-right: 0.1rem;
+}
+.dm-msg-meta-row .chat-msg-report {
+    padding: 0.05rem 0.2rem;
+    font-size: 1rem;
+}
+.dm-reaction-chip {
+    border: 1px solid var(--medium-gray);
+    background: var(--white);
+    border-radius: 999px;
+    font-size: 0.72rem;
+    padding: 0.1rem 0.42rem;
+    cursor: pointer;
+}
+.dm-reaction-chip-mine {
+    border-color: var(--primary-color);
+    background: rgba(58, 124, 165, 0.12);
+}
+.dm-reaction-menu {
+    position: fixed;
+    z-index: 5000;
+    background: var(--white);
+    border: 1px solid var(--light-gray);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14);
+    border-radius: 999px;
+    padding: 0.28rem 0.35rem;
+    display: flex;
+    gap: 0.25rem;
+}
+.dm-reaction-option {
+    border: none;
+    background: transparent;
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 0.3rem;
+    border-radius: 999px;
+    cursor: pointer;
+}
+.dm-reaction-option:hover {
+    background: var(--light-gray);
+}
 .chat-input-bar input {
     flex: 1;
     min-width: 0; /* critical: input shrinks so Send stays in frame */
@@ -1513,6 +1747,21 @@ body.chat-keyboard-open.chat-tab-active .chat-input-bar {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+    body.dm-screen-active .header::before {
+        width: 44px;
+        height: 44px;
+    }
+    .dm-header-back-btn {
+        top: calc(var(--app-chrome-top-safe) + 0.45rem);
+        height: 44px;
+    }
+    body.dm-screen-active .main-content {
+        height: calc(100vh - (var(--app-chrome-top-safe) + 62px));
+    }
+    .dm-header-avatar {
+        width: 44px;
+        height: 44px;
     }
 
     /* Tab bar: icon-only pills */

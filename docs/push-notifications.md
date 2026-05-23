@@ -68,6 +68,21 @@ Separate trigger on `chat_messages` so the title/body are chat-shaped.
 
 ---
 
+## 2a. Direct messages (contact chat)
+
+One-to-one contact chat uses a dedicated trigger on `direct_messages`.
+
+| Field | Value |
+|-------|-------|
+| Trigger | `INSERT` on `public.direct_messages` (`on_direct_message_push` trigger) |
+| Recipient | The message recipient (`to_user_id`) if push is enabled |
+| Title | `"Union"` |
+| Body | `"{sender display name}: {first 80 chars of message}…"` |
+| URL | `/?action=view_dm&contact={senderUuid}` |
+| Source | [sql/direct-messages-schema.sql](../sql/direct-messages-schema.sql) |
+
+---
+
 ## 3. Group membership offer (invitation)
 
 When someone sponsors you into a group via the `offer_group_membership` RPC.

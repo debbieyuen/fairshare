@@ -125,9 +125,7 @@ function renderContactDetailsScreen(root, row) {
                 title="Suggest a profile picture">${esc(initial)}</div>`;
 
     const callDisabled = !phone ? 'disabled' : '';
-    const messageDisabled = !phone ? 'disabled' : '';
     const callHref = phone ? `tel:${esc(phone)}` : '#';
-    const messageHref = phone ? `sms:${esc(phone)}` : '#';
 
     const hasContactLinePhone = !!(phone && String(phone).trim());
     const hasContactLineEmail = !!(email && String(email).trim());
@@ -197,10 +195,10 @@ function renderContactDetailsScreen(root, row) {
                     <span class="cd-action-icon">${cdPhoneIcon()}</span>
                     <span class="cd-action-label">Call</span>
                 </a>
-                <a class="cd-action-btn cd-action-link ${messageDisabled ? 'cd-action-disabled' : ''}" href="${messageHref}" ${messageDisabled} aria-disabled="${messageDisabled ? 'true' : 'false'}">
+                <button type="button" class="cd-action-btn cd-action-link" onclick="openDirectMessageScreen('${esc(id)}')">
                     <span class="cd-action-icon">${cdMessageIcon()}</span>
                     <span class="cd-action-label">Message</span>
-                </a>
+                </button>
             </div>
         </div>
 

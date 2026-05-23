@@ -292,6 +292,13 @@ async function logout() {
         db.removeChannel(groupInvitationsChannel);
         groupInvitationsChannel = null;
     }
+    if (typeof directMessageChannel !== 'undefined' && directMessageChannel) {
+        db.removeChannel(directMessageChannel);
+        directMessageChannel = null;
+    }
+    if (typeof unbindDirectMessageSubscriptions === 'function') {
+        unbindDirectMessageSubscriptions();
+    }
     // Stop nearby location tracking
     stopNearbyTracking();
     // Stop location sharing updates
@@ -302,12 +309,14 @@ async function logout() {
     selectedGroup = null;
     myGroups = [];
     if (typeof clearContactDetailResumeState === 'function') clearContactDetailResumeState();
-                pendingPostHandshakeSelfieContactId = null;
-                pendingPostHandshakeSelfieContactName = null;
-                pendingContactIntroId = null;
-                introSubjectContactId = null;
-                introSubjectContactName = '';
-                currentUser = null;
+    if (typeof clearDirectMessageResumeState === 'function') clearDirectMessageResumeState();
+    pendingPostHandshakeSelfieContactId = null;
+    pendingPostHandshakeSelfieContactName = null;
+    pendingContactIntroId = null;
+    pendingOpenDmContactId = null;
+    introSubjectContactId = null;
+    introSubjectContactName = '';
+    currentUser = null;
     currentProfile = null;
     profileCache = {};
     if (typeof blockedUserIds !== 'undefined' && typeof blockedUserIds.clear === 'function') {
@@ -359,7 +368,7 @@ async function showApp(navigateToGroupId) {
     if (loadingScreen) loadingScreen.classList.add('hidden');
     document.getElementById('authScreen').classList.add('hidden');
     document.getElementById('appScreen').classList.remove('hidden');
-    document.getElementById('userDisplay').textContent = currentProfile?.display_name || currentUser.email;
+    document.getElementById('userDisplay').textContent = APP_NAME;
     setHeaderAvatar(currentProfile?.profile_image_url || null);
     initContactsSortPrefs();
 
@@ -378,11 +387,22 @@ async function showApp(navigateToGroupId) {
     }
 
     if (!navigateToGroupId) {
+        let resumeDmContactId = null;
         let resumeContactId = null;
-        if (!pendingOpenContactId && !pendingOpenNewestContact && !pendingContactIntroId && typeof readContactDetailResumeContactId === 'function') {
-            resumeContactId = readContactDetailResumeContactId();
+        if (!pendingOpenContactId
+            && !pendingOpenDmContactId
+            && !pendingOpenNewestContact
+            && !pendingContactIntroId) {
+            if (typeof readDirectMessageResumeContactId === 'function') {
+                resumeDmContactId = readDirectMessageResumeContactId();
+            }
+            if (!resumeDmContactId && typeof readContactDetailResumeContactId === 'function') {
+                resumeContactId = readContactDetailResumeContactId();
+            }
         }
-        if (resumeContactId) {
+        if (resumeDmContactId) {
+            navigateTo('directMessage', resumeDmContactId);
+        } else if (resumeContactId) {
             navigateTo('contactDetails', resumeContactId);
         } else {
             navigateTo('contacts');
@@ -406,8 +426,10 @@ async function showApp(navigateToGroupId) {
         subscribeToContactEvents();
         subscribeToContactNotifications();
         subscribeToGroupInvitations();
+        if (typeof subscribeToDirectMessages === 'function') subscribeToDirectMessages();
         maybeShowInstallHintFloater();
         if (currentProfile?.push_notifications !== false) subscribeToPush();
+        if (typeof openPendingDirectMessageIfAny === 'function') await openPendingDirectMessageIfAny();
         await openPendingContactDetailsIfAny();
         if (typeof openPostHandshakeSelfieIfPending === 'function') {
             await openPostHandshakeSelfieIfPending();

@@ -7,7 +7,7 @@ let contactSharesChannel = null; // Realtime for "X shared Y with you" toasts
 let contactEventsChannel = null; // Realtime for new contacts + selfie updates
 let contactNotificationsChannel = null; // Realtime for profile picture / met-date toasts
 let activeTab = 'money'; // Current tab: 'money', 'members', 'governance', 'commons', 'chat'
-let activeMainView = 'contacts'; // Current main view: 'contacts', 'groups', 'profile'
+let activeMainView = 'contacts'; // Current main view: 'contacts', 'groups', 'profile', 'contactDetails', 'directMessage', 'globe'
 let shareWithContactId = null;
 let shareWithContactName = '';
 let shareWithInitialPhone = false; // pre-checked state for shareChoice modal
@@ -28,6 +28,7 @@ let recentSelfieUploads = {}; // contact_id -> timestamp for suppressing self no
 let suggestPicContactId = null;
 let suggestPicStream = null;
 let pendingOpenContactId = null; // open this contact detail after app render
+let pendingOpenDmContactId = null; // open this DM after app render
 let pendingOpenNewestContact = false; // fallback when exact new contact id is unknown
 let pendingContactIntroId = null; // contact intro deep link / push (UUID)
 // Meet-link joiner: show new-contact selfie first; close navigates to sponsor details.

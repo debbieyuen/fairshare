@@ -325,6 +325,18 @@ function handleNotificationNavigation(url) {
             }
         }
 
+        if (params.get('action') === 'view_dm') {
+            const cid = params.get('contact');
+            if (cid) {
+                if (typeof openDirectMessageScreen === 'function') {
+                    openDirectMessageScreen(cid);
+                } else {
+                    pendingOpenDmContactId = cid;
+                }
+                return;
+            }
+        }
+
         if (params.get('action') === 'contact_intro') {
             const iid = params.get('intro');
             if (iid && typeof showContactIntroDialog === 'function') {

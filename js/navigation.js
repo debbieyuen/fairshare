@@ -14,6 +14,15 @@ function getContactDetailResumeKeys() {
     };
 }
 
+function getDirectMessageResumeKeys() {
+    if (!currentUser) return null;
+    const uid = currentUser.id;
+    return {
+        wasDmKey: `fairshare_was_dm_${uid}`,
+        homeDmKey: `fairshare_home_dm_${uid}`
+    };
+}
+
 // Persist one contact as the user's "home" screen: reopen to contact details
 // on next launch if they left the app while viewing that screen. Cleared when
 // they return to the contact list or switch to another main tab (profile,
@@ -44,12 +53,48 @@ function clearContactDetailResumeState() {
     } catch (_) {}
 }
 
+// Persist one 1:1 chat as the user's home screen so relaunch/background
+// restore returns them to the same direct-message thread.
+function updateDirectMessageResumeState(view, arg) {
+    const keys = getDirectMessageResumeKeys();
+    if (!keys) return;
+    try {
+        if (view === 'directMessage' && arg) {
+            localStorage.setItem(keys.wasDmKey, '1');
+            localStorage.setItem(keys.homeDmKey, arg);
+        } else {
+            localStorage.setItem(keys.wasDmKey, '0');
+            localStorage.removeItem(keys.homeDmKey);
+        }
+    } catch (_) { /* storage full or unavailable */ }
+}
+
+function clearDirectMessageResumeState() {
+    const keys = getDirectMessageResumeKeys();
+    if (!keys) return;
+    try {
+        localStorage.removeItem(keys.wasDmKey);
+        localStorage.removeItem(keys.homeDmKey);
+    } catch (_) {}
+}
+
 function readContactDetailResumeContactId() {
     const keys = getContactDetailResumeKeys();
     if (!keys) return null;
     try {
         if (localStorage.getItem(keys.wasDetailKey) !== '1') return null;
         return localStorage.getItem(keys.homeContactKey) || null;
+    } catch (_) {
+        return null;
+    }
+}
+
+function readDirectMessageResumeContactId() {
+    const keys = getDirectMessageResumeKeys();
+    if (!keys) return null;
+    try {
+        if (localStorage.getItem(keys.wasDmKey) !== '1') return null;
+        return localStorage.getItem(keys.homeDmKey) || null;
     } catch (_) {
         return null;
     }
@@ -76,17 +121,23 @@ function navigateTo(view, arg) {
         if (typeof resetChatLayoutStyles === 'function') resetChatLayoutStyles();
         if (typeof unbindChatViewportListeners === 'function') unbindChatViewportListeners();
     }
+    if (view !== 'directMessage') {
+        document.body.classList.remove('dm-screen-active');
+        if (typeof teardownDirectMessageView === 'function') teardownDirectMessageView();
+    }
 
     const contactsScreen = document.getElementById('contactsScreen');
     const groupsContent = document.getElementById('groupsContent');
     const profileScreen = document.getElementById('profileScreen');
     const contactDetailsScreen = document.getElementById('contactDetailsScreen');
+    const directMessageScreen = document.getElementById('directMessageScreen');
     const globeScreen = document.getElementById('globeScreen');
 
     contactsScreen.classList.add('hidden');
     groupsContent.classList.add('hidden');
     profileScreen.classList.add('hidden');
     if (contactDetailsScreen) contactDetailsScreen.classList.add('hidden');
+    if (directMessageScreen) directMessageScreen.classList.add('hidden');
     if (globeScreen) globeScreen.classList.add('hidden');
 
     switch (view) {
@@ -127,6 +178,15 @@ function navigateTo(view, arg) {
                 requestAnimationFrame(() => window.scrollTo(0, 0));
             }
             break;
+        case 'directMessage':
+            if (directMessageScreen) {
+                directMessageScreen.classList.remove('hidden');
+                document.body.classList.add('dm-screen-active');
+                renderDirectMessageScreen(arg);
+                window.scrollTo(0, 0);
+                requestAnimationFrame(() => window.scrollTo(0, 0));
+            }
+            break;
         case 'globe':
             if (globeScreen) {
                 globeScreen.classList.remove('hidden');
@@ -143,6 +203,7 @@ function navigateTo(view, arg) {
     // the previous session before readContactDetailResumeContactId runs.
     if (!(view === 'contacts' && previousMainView === 'contacts')) {
         updateContactDetailResumeState(view, arg);
+        updateDirectMessageResumeState(view, arg);
     }
 }
 
@@ -150,7 +211,7 @@ function updateBottomBarActive(view) {
     document.querySelectorAll('.bottom-bar-btn[data-view]').forEach(btn => {
         // Contact Details is logically a child of the Contacts tab, so keep
         // the Contacts button highlighted while it's open.
-        const target = view === 'contactDetails' ? 'contacts' : view;
+        const target = (view === 'contactDetails' || view === 'directMessage') ? 'contacts' : view;
         btn.classList.toggle('active', btn.dataset.view === target);
     });
 }

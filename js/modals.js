@@ -621,7 +621,7 @@ async function savePreferences(e) {
             if ('trust_weight_trusted' in payload) currentProfile.trust_weight_trusted = payload.trust_weight_trusted;
         }
         const userDisplay = document.getElementById('userDisplay');
-        if (userDisplay) userDisplay.textContent = payload.display_name;
+        if (userDisplay) userDisplay.textContent = APP_NAME;
         const headerBust = uploadedNewProfilePhoto ? Date.now() : null;
         setHeaderAvatar(profileImageUrl || null, headerBust);
         showToast('Saved.', 'success');
