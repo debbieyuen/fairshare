@@ -107,6 +107,7 @@ async function renderChatTab() {
             </div>
             <div class="chat-input-bar">
                 <input type="text" id="chatInput" placeholder="Type a message…" maxlength="2000"
+                       autocorrect="off" autocapitalize="off" spellcheck="false"
                        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMessage();}">
                 <button class="btn-icon chat-map-btn" onclick="openMapPicker()" title="Share location" type="button">
                     <i data-lucide="map-pin" aria-hidden="true"></i>
