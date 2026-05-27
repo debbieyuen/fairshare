@@ -2062,17 +2062,25 @@ declare
   v_group_name text;
   v_sender_name text;
   v_preview text;
+  v_body text;
 begin
   select name into v_group_name from public.groups where id = NEW.group_id;
   select display_name into v_sender_name from public.profiles where id = NEW.user_id;
-  v_preview := left(NEW.body, 80);
-  if length(NEW.body) > 80 then v_preview := v_preview || '...'; end if;
+  if NEW.body like '📷image:%' then
+    v_body := coalesce(v_sender_name, 'Someone') || ' sent a photo';
+  elsif NEW.body like '📍location:%' then
+    v_body := coalesce(v_sender_name, 'Someone') || ' shared a location';
+  else
+    v_preview := left(NEW.body, 80);
+    if length(NEW.body) > 80 then v_preview := v_preview || '...'; end if;
+    v_body := coalesce(v_sender_name, 'Someone') || ': ' || v_preview;
+  end if;
 
   perform public.send_push_to_group(
     NEW.group_id,
     NEW.user_id,
     coalesce(v_group_name, 'FairShare') || ' Chat',
-    coalesce(v_sender_name, 'Someone') || ': ' || v_preview,
+    v_body,
     '/?group=' || NEW.group_id::text || '&tab=chat'
   );
   return NEW;

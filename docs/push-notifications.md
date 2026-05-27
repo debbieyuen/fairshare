@@ -62,9 +62,9 @@ Separate trigger on `chat_messages` so the title/body are chat-shaped.
 | Trigger | `INSERT` on `public.chat_messages` (`on_chat_message_push` trigger) |
 | Recipient | Group members with push enabled, excluding the message author |
 | Title | `"{group name} Chat"` |
-| Body | `"{sender display name}: {first 80 chars of message}…"` |
+| Body | `"{sender} sent a photo"` for image messages (`📷image:`), `"{sender} shared a location"` for location (`📍location:`), otherwise `"{sender}: {first 80 chars}…"` |
 | URL | `/?group={groupUuid}&tab=chat` |
-| Source | [sql/fairshare-schema.sql](../sql/fairshare-schema.sql) 1743–1768 |
+| Source | [sql/fairshare-schema.sql](../sql/fairshare-schema.sql) 2059–2090 |
 
 ---
 
@@ -77,9 +77,9 @@ One-to-one contact chat uses a dedicated trigger on `direct_messages`.
 | Trigger | `INSERT` on `public.direct_messages` (`on_direct_message_push` trigger) |
 | Recipient | The message recipient (`to_user_id`) if push is enabled |
 | Title | `"Union"` |
-| Body | `"{sender display name}: {first 80 chars of message}…"` |
+| Body | `"{sender} sent a photo"` for image messages (`📷image:`), `"{sender} shared a location"` for location (`📍location:`), otherwise `"{sender}: {first 80 chars}…"` |
 | URL | `/?action=view_dm&contact={senderUuid}` |
-| Source | [sql/direct-messages-schema.sql](../sql/direct-messages-schema.sql) |
+| Source | [sql/direct-messages-schema.sql](../sql/direct-messages-schema.sql) 139–174 |
 
 ---
 

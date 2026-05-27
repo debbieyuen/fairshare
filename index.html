@@ -307,6 +307,7 @@
     <video id="newContactSelfieVideo" autoplay playsinline muted class="new-contact-selfie-video"></video>
     <img id="newContactSelfiePreview" class="new-contact-selfie-preview hidden" alt="Selfie preview" />
     <div class="new-contact-selfie-banner" id="newContactSelfieBanner">Take a selfie with your new contact!</div>
+    <button type="button" class="new-contact-selfie-flip" id="newContactSelfieFlipBtn" onclick="flipCameraOverlay()" title="Switch camera" aria-label="Switch camera"><i data-lucide="switch-camera" aria-hidden="true"></i></button>
     <button class="new-contact-selfie-skip" id="newContactSelfieSkipBtn" onclick="closeNewContactSelfieOverlay({navigate:true})"><i data-lucide="x" aria-hidden="true"></i></button>
     <button class="new-contact-selfie-capture" id="newContactSelfieCaptureBtn" onclick="captureContactSelfie()"><i data-lucide="camera" aria-hidden="true"></i></button>
     <div id="newContactSelfieReview" class="new-contact-selfie-review hidden">
@@ -402,6 +403,7 @@
 <script src="js/nearby.js"></script>
 <script src="js/location-sharing.js"></script>
 <script src="js/contacts.js"></script>
+<script src="js/chat-images.js"></script>
     <script src="js/contact-details.js"></script>
     <script src="js/contact-intro.js"></script>
     <script src="js/preferences.js"></script>

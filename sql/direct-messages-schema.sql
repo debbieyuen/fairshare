@@ -141,21 +141,29 @@ returns trigger as $$
 declare
   v_sender_name text;
   v_preview text;
+  v_body text;
 begin
   select display_name into v_sender_name
   from public.profiles
   where id = NEW.from_user_id;
 
-  v_preview := left(NEW.body, 80);
-  if length(NEW.body) > 80 then
-    v_preview := v_preview || '...';
+  if NEW.body like '📷image:%' then
+    v_body := coalesce(v_sender_name, 'Someone') || ' sent a photo';
+  elsif NEW.body like '📍location:%' then
+    v_body := coalesce(v_sender_name, 'Someone') || ' shared a location';
+  else
+    v_preview := left(NEW.body, 80);
+    if length(NEW.body) > 80 then
+      v_preview := v_preview || '...';
+    end if;
+    v_body := coalesce(v_sender_name, 'Someone') || ': ' || v_preview;
   end if;
 
   perform public.send_push_to_users(
     array[NEW.to_user_id],
     NEW.from_user_id,
     'Union',
-    coalesce(v_sender_name, 'Someone') || ': ' || v_preview,
+    v_body,
     '/?action=view_dm&contact=' || NEW.from_user_id::text
   );
   return NEW;

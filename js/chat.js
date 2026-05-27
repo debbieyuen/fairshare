@@ -109,6 +109,9 @@ async function renderChatTab() {
                 <input type="text" id="chatInput" placeholder="Type a message…" maxlength="2000"
                        autocorrect="off" autocapitalize="off" spellcheck="false"
                        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMessage();}">
+                <button class="btn-icon chat-image-btn" onclick="openGroupChatPhotoPicker()" title="Send photo" type="button">
+                    <i data-lucide="image" aria-hidden="true"></i>
+                </button>
                 <button class="btn-icon chat-map-btn" onclick="openMapPicker()" title="Share location" type="button">
                     <i data-lucide="map-pin" aria-hidden="true"></i>
                 </button>
@@ -410,7 +413,10 @@ async function createMessageElement(msg) {
     const timeStr = isToday ? time : date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + time;
 
     const loc = parseLocationBody(msg.body);
-    const bubbleContent = loc ? '<div class="chat-location-wrap"></div>' : esc(msg.body);
+    const img = parseImageBody(msg.body);
+    const bubbleContent = img ? '<div class="chat-image-wrap"></div>'
+        : loc ? '<div class="chat-location-wrap"></div>'
+        : esc(msg.body);
 
     // Other people's messages get a small "Report" affordance so users
     // can flag objectionable content (Apple Guideline 1.2). Own messages
@@ -440,8 +446,12 @@ async function createMessageElement(msg) {
             </div>`;
     }
 
-    if (loc) {
-        const bubble = div.querySelector('.chat-bubble');
+    const bubble = div.querySelector('.chat-bubble');
+    if (img && bubble) {
+        bubble.classList.add('chat-bubble-image');
+        const wrap = div.querySelector('.chat-image-wrap');
+        if (wrap) renderChatImagePreview(wrap, img.url);
+    } else if (loc) {
         if (bubble) bubble.classList.add('chat-bubble-location');
         const wrap = div.querySelector('.chat-location-wrap');
         if (wrap) renderLocationPreview(wrap, loc.lat, loc.lng, loc.radius);

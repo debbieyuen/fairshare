@@ -1606,33 +1606,53 @@ function renderFamilyTree(container, myChain, theirChain, contactId) {
 }
 
 // ============================================================================
-// Selfie-with-contact overlay (single fullscreen UI, two modes)
+// Shared fullscreen camera overlay (#newContactSelfieOverlay)
 // ----------------------------------------------------------------------------
-// Both "first selfie after handshake" and "tap Take selfie from contact
-// details / contact list" reuse the same #newContactSelfieOverlay element in
-// index.html. The mode is encoded by which id variable is set:
-//   - newContactSelfieId  — post-handshake first selfie (navigates to the
-//                           contact's details screen when the overlay closes)
-//   - contactSelfieId     — from the contact list or contact details; just
-//                           closes in place when done
-// The live stream is tracked once in newContactSelfieStream, regardless of
-// mode.
+// Modes (cameraOverlayMode):
+//   - contactSelfie — contactSelfieId / newContactSelfieId set; Use uploads selfie
+//   - chatPhoto     — cameraOverlayContext + cameraOverlayOnUse; Use sends chat image
 // ============================================================================
 
+function _updateCameraMirrorClasses() {
+    const video = document.getElementById('newContactSelfieVideo');
+    const preview = document.getElementById('newContactSelfiePreview');
+    const isUser = cameraFacingMode === 'user';
+    [video, preview].forEach((el) => {
+        if (!el) return;
+        el.classList.toggle('camera-facing-user', isUser);
+    });
+}
+
 function openContactSelfie(contactId) {
+    cameraOverlayMode = 'contactSelfie';
+    cameraOverlayContext = null;
+    cameraOverlayOnUse = null;
     contactSelfieId = contactId;
     const row = (contactsLoadedRows || []).find(r => r.contact?.contact_id === contactId);
     const name = row?.profile?.display_name || 'your contact';
-    _openSelfieOverlay(contactId, name);
+    _openCameraOverlay(`Take a selfie with ${name}!`);
 }
 
 async function openNewContactSelfieOverlay(contactId, contactName) {
+    cameraOverlayMode = 'contactSelfie';
+    cameraOverlayContext = null;
+    cameraOverlayOnUse = null;
     newContactSelfieId = contactId;
     newContactSelfieContactName = contactName || 'your new contact';
     if (typeof shouldOfferBetaIosPromptAfterSignup === 'function' && shouldOfferBetaIosPromptAfterSignup()) {
         pendingBetaIosPromptAfterPostHandshakeSelfie = true;
     }
-    await _openSelfieOverlay(contactId, newContactSelfieContactName);
+    await _openCameraOverlay(`Take a selfie with ${newContactSelfieContactName}!`);
+}
+
+// Chat and other features open the same overlay with a custom Use handler.
+async function openCameraOverlay({ banner, context, onUse }) {
+    cameraOverlayMode = 'chatPhoto';
+    cameraOverlayContext = context || null;
+    cameraOverlayOnUse = typeof onUse === 'function' ? onUse : null;
+    contactSelfieId = null;
+    newContactSelfieId = null;
+    await _openCameraOverlay(banner || 'Send a photo');
 }
 
 function _resetSelfieOverlayUi() {
@@ -1641,6 +1661,7 @@ function _resetSelfieOverlayUi() {
     const preview = document.getElementById('newContactSelfiePreview');
     const captureBtn = document.getElementById('newContactSelfieCaptureBtn');
     const review = document.getElementById('newContactSelfieReview');
+    const flipBtn = document.getElementById('newContactSelfieFlipBtn');
     if (video) video.classList.remove('hidden');
     if (preview) {
         preview.removeAttribute('src');
@@ -1648,6 +1669,8 @@ function _resetSelfieOverlayUi() {
     }
     if (captureBtn) captureBtn.classList.remove('hidden');
     if (review) review.classList.add('hidden');
+    if (flipBtn) flipBtn.style.display = '';
+    _updateCameraMirrorClasses();
 }
 
 function _stopSelfieCamera() {
@@ -1659,16 +1682,18 @@ function _stopSelfieCamera() {
     if (video) video.srcObject = null;
 }
 
-async function _startSelfieCamera() {
+async function _startSelfieCamera(facingMode) {
     const video = document.getElementById('newContactSelfieVideo');
     if (!video) return;
+    if (facingMode) cameraFacingMode = facingMode;
     _stopSelfieCamera();
     newContactSelfieStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { facingMode: cameraFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false
     });
     video.srcObject = newContactSelfieStream;
     await video.play();
+    _updateCameraMirrorClasses();
 }
 
 function _showSelfieReviewUi(canvas) {
@@ -1677,6 +1702,7 @@ function _showSelfieReviewUi(canvas) {
     const preview = document.getElementById('newContactSelfiePreview');
     const captureBtn = document.getElementById('newContactSelfieCaptureBtn');
     const review = document.getElementById('newContactSelfieReview');
+    const flipBtn = document.getElementById('newContactSelfieFlipBtn');
     _stopSelfieCamera();
     if (video) video.classList.add('hidden');
     if (preview) {
@@ -1685,23 +1711,46 @@ function _showSelfieReviewUi(canvas) {
     }
     if (captureBtn) captureBtn.classList.add('hidden');
     if (review) review.classList.remove('hidden');
+    if (flipBtn) flipBtn.style.display = 'none';
+    _updateCameraMirrorClasses();
 }
 
-async function _openSelfieOverlay(contactId, bannerName) {
+async function _openCameraOverlay(bannerText) {
     const overlay = document.getElementById('newContactSelfieOverlay');
     const banner = document.getElementById('newContactSelfieBanner');
     const video = document.getElementById('newContactSelfieVideo');
     if (!overlay || !video) return;
-    if (banner) banner.textContent = `Take a selfie with ${bannerName || 'your contact'}!`;
+    if (banner) banner.textContent = bannerText;
+    cameraFacingMode = 'user';
     _resetSelfieOverlayUi();
     overlay.classList.remove('hidden');
+    if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
     try {
-        await _startSelfieCamera();
-        await unlockNativeOrientationForSelfiePreview();
+        await _startSelfieCamera('user');
+        if (cameraOverlayMode === 'contactSelfie') {
+            await unlockNativeOrientationForSelfiePreview();
+        }
     } catch (e) {
-        console.error('Selfie camera error:', e);
+        console.error('Camera overlay error:', e);
         showToast('Camera unavailable: ' + (e.message || 'error'), 'error');
         closeSelfieOverlay();
+    }
+}
+
+async function flipCameraOverlay() {
+    const next = cameraFacingMode === 'user' ? 'environment' : 'user';
+    const useBtn = document.getElementById('newContactSelfieUseBtn');
+    if (useBtn) useBtn.disabled = true;
+    try {
+        if (pendingSelfieCanvas) {
+            _resetSelfieOverlayUi();
+        }
+        await _startSelfieCamera(next);
+    } catch (e) {
+        console.error('Camera flip error:', e);
+        showToast('Could not switch camera: ' + (e.message || 'error'), 'error');
+    } finally {
+        if (useBtn) useBtn.disabled = false;
     }
 }
 
@@ -1714,11 +1763,16 @@ function closeSelfieOverlay() {
     _stopSelfieCamera();
     _resetSelfieOverlayUi();
     const newCid = newContactSelfieId;
+    const wasContactSelfie = cameraOverlayMode === 'contactSelfie';
     newContactSelfieId = null;
     newContactSelfieContactName = '';
     contactSelfieId = null;
+    cameraOverlayMode = null;
+    cameraOverlayContext = null;
+    cameraOverlayOnUse = null;
+    cameraFacingMode = 'user';
     void lockAppToPortrait();
-    if (newCid) {
+    if (wasContactSelfie && newCid) {
         const openPromise = openContactDetailsById(newCid);
         if (typeof maybeShowBetaIosPromptAfterSignup === 'function') {
             Promise.resolve(openPromise).then(
@@ -1738,12 +1792,17 @@ function closeNewContactSelfieOverlay() { closeSelfieOverlay(); }
 // (either mode). Used by the realtime listener to auto-close our open
 // "take a selfie" screen when the other side just posted a selfie.
 function isSelfieOverlayOpenFor(contactId) {
-    return !!contactId && (contactSelfieId === contactId || newContactSelfieId === contactId);
+    return !!contactId && cameraOverlayMode === 'contactSelfie'
+        && (contactSelfieId === contactId || newContactSelfieId === contactId);
+}
+
+function _isCameraOverlayActive() {
+    if (cameraOverlayMode === 'chatPhoto') return !!cameraOverlayOnUse;
+    return !!(contactSelfieId || newContactSelfieId);
 }
 
 async function captureContactSelfie() {
-    const cid = contactSelfieId || newContactSelfieId;
-    if (!cid || !currentUser) return;
+    if (!_isCameraOverlayActive() || !currentUser) return;
     const video = document.getElementById('newContactSelfieVideo');
     if (!video || video.readyState < 2) {
         showToast('Camera not ready — please wait a moment and try again.', 'error');
@@ -1767,7 +1826,7 @@ async function retakeContactSelfie() {
     const useBtn = document.getElementById('newContactSelfieUseBtn');
     if (useBtn) useBtn.disabled = true;
     try {
-        await _startSelfieCamera();
+        await _startSelfieCamera(cameraFacingMode);
     } catch (e) {
         console.error('Selfie camera error:', e);
         showToast('Camera unavailable: ' + (e.message || 'error'), 'error');
@@ -1778,13 +1837,30 @@ async function retakeContactSelfie() {
 }
 
 async function useContactSelfie() {
-    const cid = contactSelfieId || newContactSelfieId;
     const canvas = pendingSelfieCanvas;
-    if (!cid || !currentUser || !canvas) return;
+    if (!canvas || !currentUser) return;
     const useBtn = document.getElementById('newContactSelfieUseBtn');
     if (useBtn) useBtn.disabled = true;
 
-    // Close immediately so upload/GPS work off-screen; same as before review step.
+    if (cameraOverlayMode === 'chatPhoto' && cameraOverlayOnUse) {
+        const onUse = cameraOverlayOnUse;
+        closeSelfieOverlay();
+        if (useBtn) useBtn.disabled = false;
+        try {
+            await onUse(canvas);
+        } catch (e) {
+            console.error('Chat photo error:', e);
+            showToast('Could not send photo: ' + (e.message || 'error'), 'error');
+        }
+        return;
+    }
+
+    const cid = contactSelfieId || newContactSelfieId;
+    if (!cid) {
+        if (useBtn) useBtn.disabled = false;
+        return;
+    }
+
     closeSelfieOverlay();
     if (useBtn) useBtn.disabled = false;
 

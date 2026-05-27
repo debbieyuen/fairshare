@@ -106,6 +106,9 @@ async function renderDirectMessageScreen(contactId) {
                            onkeydown="onDirectMessageInputKeydown(event)"
                            onfocus="onDirectMessageInputFocus()"
                            onblur="onDirectMessageInputBlur()">
+                    <button class="btn-icon chat-image-btn" onclick="openDirectChatPhotoPicker()" title="Send photo" type="button">
+                        <i data-lucide="image" aria-hidden="true"></i>
+                    </button>
                     <button class="btn-icon chat-map-btn" onclick="openDirectMessageMapPicker()" title="Share location" type="button">
                         <i data-lucide="map-pin" aria-hidden="true"></i>
                     </button>
@@ -211,7 +214,10 @@ async function createDirectMessageElement(msg) {
     const isMine = msg.from_user_id === currentUser?.id;
     const senderId = msg.from_user_id;
     const loc = parseLocationBody(msg.body);
-    const bubbleContent = loc ? '<div class="chat-location-wrap"></div>' : esc(msg.body);
+    const img = parseImageBody(msg.body);
+    const bubbleContent = img ? '<div class="chat-image-wrap"></div>'
+        : loc ? '<div class="chat-location-wrap"></div>'
+        : esc(msg.body);
     const time = formatDirectMessageTime(msg.created_at);
     const reportBtnHtml = !isMine
         ? `<button type="button" class="chat-msg-report"
@@ -242,8 +248,12 @@ async function createDirectMessageElement(msg) {
         `;
     }
 
-    if (loc) {
-        const bubble = div.querySelector('.chat-bubble');
+    const bubble = div.querySelector('.chat-bubble');
+    if (img && bubble) {
+        bubble.classList.add('chat-bubble-image');
+        const wrap = div.querySelector('.chat-image-wrap');
+        if (wrap) renderChatImagePreview(wrap, img.url);
+    } else if (loc) {
         if (bubble) bubble.classList.add('chat-bubble-location');
         const wrap = div.querySelector('.chat-location-wrap');
         if (wrap) renderLocationPreview(wrap, loc.lat, loc.lng, loc.radius);

@@ -1320,6 +1320,21 @@ body.chat-tab-active .tab-content-card {
     border-bottom-left-radius: 0.25rem;
     min-width: 0; /* contain wide children (e.g. Leaflet) inside bubble */
 }
+.chat-bubble.chat-bubble-image {
+    padding: 0.25rem;
+    overflow: hidden;
+}
+.chat-image-wrap {
+    line-height: 0;
+}
+.chat-image-wrap img {
+    display: block;
+    max-width: min(240px, 70vw);
+    max-height: 280px;
+    border-radius: 10px;
+    object-fit: cover;
+    cursor: pointer;
+}
 .chat-bubble.chat-bubble-location {
     overflow: hidden; /* clip map tiles to rounded bubble */
 }
@@ -1602,13 +1617,81 @@ body.dm-screen-active .main-content {
     flex-shrink: 0;
     transition: color 0.2s, border-color 0.2s;
 }
-.chat-map-btn:hover {
+.chat-map-btn:hover,
+.chat-image-btn:hover {
     color: var(--primary-color);
     border-color: var(--primary-color);
 }
-.chat-map-btn svg.lucide-icon {
+.chat-map-btn svg.lucide-icon,
+.chat-image-btn svg.lucide-icon {
     width: 20px;
     height: 20px;
+}
+.chat-image-btn {
+    background: none;
+    border: 1px solid var(--medium-gray);
+    border-radius: 6px;
+    padding: 0.45rem 0.5rem;
+    cursor: pointer;
+    color: var(--dark-gray);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: color 0.2s, border-color 0.2s;
+}
+
+/* Chat photo action sheet */
+.chat-photo-action-sheet {
+    position: fixed;
+    inset: 0;
+    z-index: 5000;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+.chat-photo-action-sheet.active {
+    pointer-events: auto;
+    opacity: 1;
+}
+.chat-photo-action-sheet-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+}
+.chat-photo-action-sheet-panel {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    margin: 0 0.75rem calc(env(safe-area-inset-bottom, 0px) + 0.75rem);
+    background: var(--white);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+.chat-photo-action-item {
+    display: block;
+    width: 100%;
+    border: none;
+    background: var(--white);
+    padding: 1rem 1.25rem;
+    font-size: 1rem;
+    text-align: center;
+    cursor: pointer;
+    border-bottom: 1px solid var(--medium-gray);
+}
+.chat-photo-action-item:last-child {
+    border-bottom: none;
+}
+.chat-photo-action-item:active {
+    background: var(--light-gray, #f5f5f5);
+}
+.chat-photo-action-cancel {
+    color: var(--dark-gray);
+    font-weight: 600;
 }
 
 /* Map picker overlay */
@@ -3061,11 +3144,9 @@ body.drag-sort-active * { user-select: none; -webkit-user-select: none; }
     object-fit: cover;
     display: block;
 }
-/* Front-facing camera previews are shown mirrored so they behave like a
-   real mirror to the user. Capture/scan logic reads the raw video frames
-   via canvas, so saved images and QR decoding are unaffected. */
-#newContactSelfieVideo,
-#newContactSelfiePreview,
+/* Front-facing camera previews are mirrored like a mirror; rear camera is not. */
+#newContactSelfieVideo.camera-facing-user,
+#newContactSelfiePreview.camera-facing-user,
 #meetVideo {
     transform: scaleX(-1);
 }
@@ -3089,6 +3170,26 @@ body.drag-sort-active * { user-select: none; -webkit-user-select: none; }
     font-weight: 600;
     text-align: center;
     pointer-events: none;
+}
+.new-contact-selfie-flip {
+    position: absolute;
+    top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+    left: 1rem;
+    background: rgba(0,0,0,0.45);
+    color: #fff;
+    border: none;
+    border-radius: 50%;
+    width: 2.2rem;
+    height: 2.2rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+}
+.new-contact-selfie-flip svg.lucide-icon {
+    width: 18px;
+    height: 18px;
 }
 .new-contact-selfie-skip {
     position: absolute;
