@@ -824,7 +824,13 @@ begin
 
   if v_period_days is not null and v_period_days > 0 then
     insert into public.vote_rounds (group_id, round_key, opened_at)
-    values (p_group_id, v_round_key, now())
+    values (p_group_id, v_round_key,
+      coalesce(
+        (select min(created_at) from public.endorsements
+         where group_id = p_group_id and candidate_id = p_candidate_id),
+        now()
+      )
+    )
     on conflict do nothing;
 
     select opened_at into v_opened_at
@@ -847,7 +853,13 @@ begin
       and created_at >= v_opened_at
       and created_at < v_window_end;
 
-    v_threshold := greatest(1, ceil(v_participants * v_pct));
+    if now() >= v_window_end then
+      -- Voting period expired: threshold from those who actually voted
+      v_threshold := greatest(1, ceil(v_participants * v_pct));
+    else
+      -- Voting period still open: only admit early if all active members endorsed
+      v_threshold := greatest(1, ceil(v_active_count * v_pct));
+    end if;
   else
     select count(*) into v_endorsement_count
     from public.endorsements
@@ -1346,6 +1358,8 @@ declare
   v_amendment record;
   v_amendment_ids uuid[] := '{}';
   v_currency_rounds text[] := '{}';
+  v_candidate_ids uuid[] := '{}';
+  v_candidate_id uuid;
 begin
   select constitution into v_constitution
   from public.groups
@@ -1381,10 +1395,45 @@ begin
     v_amendment_ids := array_append(v_amendment_ids, v_amendment.id);
   end loop;
 
+  for v_round in
+    select round_key
+    from public.vote_rounds
+    where group_id = p_group_id
+      and round_key like 'candidate:%'
+      and opened_at + (v_period_days || ' days')::interval <= now()
+  loop
+    v_candidate_id := substring(v_round.round_key from 11)::uuid;
+    perform public.check_endorsements(p_group_id, v_candidate_id);
+    v_candidate_ids := array_append(v_candidate_ids, v_candidate_id);
+  end loop;
+
+  -- Also handle pending candidates that have endorsements but no vote_rounds row
+  -- (e.g. sponsored before the voting-period function was deployed)
+  for v_candidate_id in
+    select m.user_id
+    from public.members m
+    where m.group_id = p_group_id
+      and m.status = 'pending'
+      and not exists (
+        select 1 from public.vote_rounds vr
+        where vr.group_id = p_group_id
+          and vr.round_key = 'candidate:' || m.user_id::text
+      )
+      and exists (
+        select 1 from public.endorsements e
+        where e.group_id = p_group_id
+          and e.candidate_id = m.user_id
+      )
+  loop
+    perform public.check_endorsements(p_group_id, v_candidate_id);
+    v_candidate_ids := array_append(v_candidate_ids, v_candidate_id);
+  end loop;
+
   return json_build_object(
     'finalized', true,
     'currency_rounds', to_json(v_currency_rounds),
-    'amendments', to_json(v_amendment_ids)
+    'amendments', to_json(v_amendment_ids),
+    'candidates', to_json(v_candidate_ids)
   );
 end;
 $$ language plpgsql security definer;

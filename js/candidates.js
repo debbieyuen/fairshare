@@ -13,8 +13,11 @@ function candidateEndorsementStats(endorsementsForCandidate, roundOpenedAt, peri
     });
     const participants = new Set(inWindow.map(e => e.endorser_id)).size;
     const count = inWindow.length;
-    const threshold = Math.max(1, Math.ceil(participants * memberPct));
-    return { count, threshold, periodMode: true };
+    const expired = new Date() >= windowEnd;
+    const threshold = expired
+        ? Math.max(1, Math.ceil(participants * memberPct))
+        : Math.max(1, Math.ceil((activeCount || 0) * memberPct));
+    return { count, threshold, periodMode: true, expired };
 }
 
 async function loadCandidatesList() {
