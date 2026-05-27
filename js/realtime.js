@@ -132,7 +132,10 @@ async function handleGroupEvent(event) {
         }
         case 'amendment_proposed':
         case 'amendment_passed':
-        case 'amendment_failed': {
+        case 'amendment_failed':
+        case 'accord_proposed':
+        case 'accord_passed':
+        case 'accord_failed': {
             if (activeTab === 'governance') await loadConstitutionContent();
             // Amendment pass may have changed group settings
             if (event.event_type === 'amendment_passed') {

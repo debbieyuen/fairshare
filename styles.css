@@ -2002,6 +2002,7 @@ body.dm-screen-active .main-content {
 .amendment-status.voting { background: #cce5ff; color: #004085; }
 .amendment-status.passed { background: #d4edda; color: #155724; }
 .amendment-status.failed { background: #f8d7da; color: #721c24; }
+.amendment-status.withdrawn { background: #eceff3; color: #4a5568; }
 .vote-bar {
     display: flex;
     align-items: center;
@@ -2028,6 +2029,21 @@ body.dm-screen-active .main-content {
     height: 14px;
     width: 2px;
     background: var(--red);
+}
+.accord-entry {
+    border: 1px solid var(--medium-gray);
+    border-radius: 8px;
+    margin-bottom: 0.5rem;
+    background: var(--white);
+}
+.accord-entry > summary {
+    cursor: pointer;
+    padding: 0.65rem 0.75rem;
+    font-weight: 600;
+    color: var(--text-color);
+}
+.accord-entry-body {
+    padding: 0 0.75rem 0.75rem;
 }
 
 /* Activity log */

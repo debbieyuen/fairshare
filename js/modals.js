@@ -233,8 +233,14 @@ function showModal(type) {
 
         case 'proposeAmendment':
             document.getElementById('modalBody').classList.add('modal-wide');
+            {
+                const votingPeriodMatch = selectedGroup?.constitution?.match(/(\d+)\s*days?\s*\$VOTING_PERIOD_DAYS/i);
+                const votingPeriodDays = votingPeriodMatch ? parseInt(votingPeriodMatch[1], 10) : null;
+                const amendmentVoteCopy = votingPeriodDays && votingPeriodDays > 0
+                    ? `Members vote for ${votingPeriodDays} day${votingPeriodDays === 1 ? '' : 's'}. Thresholds apply as described in the constitution.`
+                    : 'Members vote for the period defined in the constitution (or 7 days if not set). Thresholds apply as described in the constitution.';
             body.innerHTML = `
-                <h3>Propose an Amendment</h3>
+                <h3>Propose Constitutional Amendment</h3>
                 <div class="form-group">
                     <label>Title (short summary)</label>
                     <input type="text" id="amendmentTitle" required placeholder="e.g. Lower amendment threshold to 75%">
@@ -251,14 +257,39 @@ function showModal(type) {
                     </div>
                 </div>
                 <p style="font-size:0.8rem;color:var(--dark-gray);margin-top:0.5rem;">
-                    Members vote for the period defined in the constitution (or 7 days if not set). Thresholds apply as described in the constitution.
+                    ${esc(amendmentVoteCopy)}
                 </p>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
                     <button type="button" class="btn btn-primary" onclick="submitAmendment()">Submit Amendment</button>
                 </div>
             `;
+            }
             break;
+
+        case 'createProposal': {
+            const votingPeriodMatch = selectedGroup?.constitution?.match(/(\d+)\s*days?\s*\$VOTING_PERIOD_DAYS/i);
+            const votingPeriodDays = votingPeriodMatch ? parseInt(votingPeriodMatch[1], 10) : null;
+            const periodSuffix = votingPeriodDays && votingPeriodDays > 0
+                ? `, with a voting period of ${votingPeriodDays} day${votingPeriodDays === 1 ? '' : 's'}`
+                : '';
+            body.innerHTML = `
+                <h3>Create Proposal</h3>
+                <div class="form-group">
+                    <label>Proposal text</label>
+                    <textarea id="proposalEditor" rows="6"
+                        placeholder="Clearly describe your proposal here, e.g. 'All group members will wear blue pants at all time.'"></textarea>
+                </div>
+                <p style="font-size:0.8rem;color:var(--dark-gray);margin-top:0.5rem;">
+                    When you press 'Submit Proposal', this proposal will be circulated to all group members for their vote${periodSuffix}.
+                </p>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="submitProposal()">Submit Proposal</button>
+                </div>
+            `;
+            break;
+        }
     }
     if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
 }

@@ -414,7 +414,89 @@ create policy "Members can delete own amendment votes"
   using (auth.uid() = user_id);
 
 
--- 10. GROUP EVENTS (activity log + realtime notifications)
+-- 10. ACCORD PROPOSALS
+create table public.accord_proposals (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid not null references public.groups(id) on delete cascade,
+  proposed_by uuid not null references public.profiles(id),
+  text text not null check (char_length(btrim(text)) > 0 and char_length(text) <= 8000),
+  status text not null default 'voting'
+    check (status in ('voting', 'passed', 'failed', 'withdrawn')),
+  threshold numeric not null,
+  created_at timestamptz default now(),
+  expires_at timestamptz default (now() + interval '7 days'),
+  resolved_at timestamptz
+);
+
+create index idx_accord_proposals_group_status_created
+  on public.accord_proposals (group_id, status, created_at desc);
+create index idx_accord_proposals_group_status_resolved
+  on public.accord_proposals (group_id, status, resolved_at desc);
+
+alter table public.accord_proposals enable row level security;
+
+create policy "Group members can view accord proposals"
+  on public.accord_proposals for select
+  using (public.is_group_member(group_id));
+
+create policy "Active members can create accord proposals"
+  on public.accord_proposals for insert
+  with check (
+    auth.uid() = proposed_by
+    and public.is_group_member(group_id)
+  );
+
+create policy "Proposers can withdraw accord proposals"
+  on public.accord_proposals for update
+  using (auth.uid() = proposed_by and status = 'voting')
+  with check (true);
+
+
+-- 11. ACCORD VOTES
+create table public.accord_votes (
+  id uuid primary key default gen_random_uuid(),
+  accord_id uuid not null references public.accord_proposals(id) on delete cascade,
+  user_id uuid not null references public.profiles(id),
+  vote boolean not null,
+  created_at timestamptz default now(),
+  unique(accord_id, user_id)
+);
+
+create index idx_accord_votes_accord on public.accord_votes (accord_id);
+
+alter table public.accord_votes enable row level security;
+
+create policy "Members can view accord votes"
+  on public.accord_votes for select
+  using (
+    exists (
+      select 1 from public.accord_proposals ap
+      where ap.id = accord_votes.accord_id
+        and public.is_group_member(ap.group_id)
+    )
+  );
+
+create policy "Active members can vote on accords"
+  on public.accord_votes for insert
+  with check (
+    auth.uid() = user_id
+    and exists (
+      select 1 from public.accord_proposals ap
+      where ap.id = accord_votes.accord_id
+        and ap.status = 'voting'
+        and public.is_group_member(ap.group_id)
+    )
+  );
+
+create policy "Members can update own accord votes"
+  on public.accord_votes for update
+  using (auth.uid() = user_id);
+
+create policy "Members can delete own accord votes"
+  on public.accord_votes for delete
+  using (auth.uid() = user_id);
+
+-- 12. GROUP EVENTS (activity log + realtime notifications)
 create table public.group_events (
   id uuid primary key default gen_random_uuid(),
   group_id uuid not null references public.groups(id) on delete cascade,
@@ -433,7 +515,7 @@ create policy "Group members can view events"
   using (public.is_group_member(group_id));
 
 -- Events are inserted by SECURITY DEFINER functions, but allow client insert
--- for amendment_proposed (logged client-side via RPC)
+-- for amendment_proposed / accord_proposed (logged client-side via RPC)
 create policy "Active members can log events"
   on public.group_events for insert
   with check (
@@ -441,8 +523,55 @@ create policy "Active members can log events"
     and public.is_group_member(group_id)
   );
 
+-- Emit accord_proposed group event whenever a proposal row is created.
+create or replace function public.trigger_group_event_on_accord_proposal()
+returns trigger as $$
+declare
+  v_snippet text;
+  v_group_name text;
+  v_subject text;
+  v_html text;
+  v_notify_fn regprocedure;
+begin
+  v_snippet := left(regexp_replace(coalesce(NEW.text, ''), '\s+', ' ', 'g'), 120);
+  insert into public.group_events (group_id, event_type, summary, actor_id, metadata)
+  values (
+    NEW.group_id,
+    'accord_proposed',
+    'Accord proposed: ' || coalesce(v_snippet, ''),
+    NEW.proposed_by,
+    json_build_object('accord_id', NEW.id, 'text', NEW.text)::jsonb
+  );
 
--- 11. CHAT MESSAGES
+  select name into v_group_name from public.groups where id = NEW.group_id;
+  v_subject := '[' || coalesce(v_group_name, 'FairShare') || '] New proposal for accord';
+  v_html := '<div style="font-family:sans-serif;max-width:480px;margin:0 auto;">'
+    || '<h2 style="color:#1a5276;">New Accord Proposal</h2>'
+    || '<p>Accord proposed: ' || coalesce(v_snippet, '') || '</p>'
+    || '<p style="margin-top:1rem;">Log in to review and vote:</p>'
+    || '<p><a href="https://app.fairshare.social/" '
+    || 'style="display:inline-block;padding:0.6rem 1.2rem;background:#1a5276;color:#fff;'
+    || 'border-radius:6px;text-decoration:none;font-weight:600;">Open FairShare</a></p>'
+    || '<p style="font-size:0.8rem;color:#888;margin-top:2rem;">'
+    || 'You are receiving this because you are a member of ' || coalesce(v_group_name, 'a FairShare group') || '. '
+    || 'You can disable email notifications in your profile settings.</p>'
+    || '</div>';
+  v_notify_fn := to_regprocedure('public.notify_group_members(uuid,uuid,text,text,boolean)');
+  if v_notify_fn is not null then
+    perform public.notify_group_members(NEW.group_id, NEW.proposed_by, v_subject, v_html, p_include_actor := true);
+  end if;
+
+  return NEW;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists on_accord_proposal_group_event on public.accord_proposals;
+create trigger on_accord_proposal_group_event
+  after insert on public.accord_proposals
+  for each row execute function public.trigger_group_event_on_accord_proposal();
+
+
+-- 13. CHAT MESSAGES
 create table public.chat_messages (
   id uuid primary key default gen_random_uuid(),
   group_id uuid not null references public.groups(id) on delete cascade,
@@ -466,7 +595,7 @@ create policy "Active members can send chat"
   with check (auth.uid() = user_id and public.is_group_member(group_id));
 
 
--- 12. GROUP DOCUMENTS (shared bulletin board / editable doc per group)
+-- 14. GROUP DOCUMENTS (shared bulletin board / editable doc per group)
 create table public.group_documents (
   id uuid primary key default gen_random_uuid(),
   group_id uuid not null unique references public.groups(id) on delete cascade,
@@ -493,7 +622,7 @@ create policy "Active members can update document"
   using (public.is_group_member(group_id));
 
 
--- 13. DOCUMENT HISTORY (revision snapshots for attribution)
+-- 15. DOCUMENT HISTORY (revision snapshots for attribution)
 create table public.document_history (
   id uuid primary key default gen_random_uuid(),
   group_id uuid not null references public.groups(id) on delete cascade,
@@ -1348,6 +1477,169 @@ end;
 $$ language plpgsql security definer;
 
 
+-- Resolve an accord proposal: either early (threshold already met) or after voting expires
+-- Full population: approvals / active members
+-- Voting period: approvals / (approvals + rejections) among votes in the period
+create or replace function public.resolve_accord(p_accord_id uuid)
+returns json as $$
+declare
+  v_accord record;
+  v_active_count int;
+  v_approve_count int;
+  v_reject_count int;
+  v_voter_count int;
+  v_ratio numeric;
+  v_passed boolean;
+  v_constitution text;
+  v_period_days int;
+  v_window_end timestamptz;
+  v_threshold numeric;
+  v_match text[];
+begin
+  select * into v_accord
+  from public.accord_proposals
+  where id = p_accord_id
+  for update;
+
+  if not found then
+    raise exception 'Accord proposal not found';
+  end if;
+
+  if v_accord.status != 'voting' then
+    raise exception 'Accord proposal is not in voting status';
+  end if;
+
+  if not public.is_group_member(v_accord.group_id) then
+    raise exception 'You are not an active member of this group';
+  end if;
+
+  select constitution into v_constitution
+  from public.groups
+  where id = v_accord.group_id;
+
+  v_threshold := coalesce(v_accord.threshold, 0.5);
+
+  if v_accord.threshold is null and v_constitution is not null then
+    v_match := regexp_match(v_constitution, '(\d+)%\s*(?:members?\s*)?\$ACCORD_PERCENTAGE', 'i');
+    if v_match is not null then
+      v_threshold := greatest(0.0, least(1.0, v_match[1]::numeric / 100.0));
+    end if;
+  end if;
+
+  update public.accord_proposals
+  set threshold = v_threshold
+  where id = p_accord_id;
+  v_accord.threshold := v_threshold;
+
+  select count(*) into v_active_count
+  from public.members
+  where group_id = v_accord.group_id and status = 'active';
+
+  v_period_days := public.get_voting_period_days(v_constitution);
+  v_window_end := v_accord.created_at + coalesce(v_period_days, 7) * interval '1 day';
+
+  if v_period_days is not null then
+    select count(*) into v_approve_count
+    from public.accord_votes
+    where accord_id = p_accord_id
+      and vote = true
+      and created_at >= v_accord.created_at
+      and created_at < v_window_end;
+
+    select count(*) into v_reject_count
+    from public.accord_votes
+    where accord_id = p_accord_id
+      and vote = false
+      and created_at >= v_accord.created_at
+      and created_at < v_window_end;
+
+    v_voter_count := v_approve_count + v_reject_count;
+    if v_voter_count = 0 then
+      v_ratio := 0;
+    else
+      v_ratio := v_approve_count::numeric / v_voter_count::numeric;
+    end if;
+  else
+    select count(*) into v_approve_count
+    from public.accord_votes
+    where accord_id = p_accord_id and vote = true;
+
+    v_reject_count := 0;
+    v_voter_count := null;
+    if v_active_count = 0 then
+      v_ratio := 0;
+    else
+      v_ratio := v_approve_count::numeric / v_active_count::numeric;
+    end if;
+  end if;
+
+  v_passed := v_ratio >= v_accord.threshold;
+
+  if not v_passed and v_accord.expires_at > now() then
+    return json_build_object(
+      'resolved', false,
+      'approve_count', v_approve_count,
+      'reject_count', v_reject_count,
+      'voter_count', v_voter_count,
+      'active_members', v_active_count,
+      'ratio', round(v_ratio * 100, 1),
+      'threshold', round(v_accord.threshold * 100, 1),
+      'voting_period', v_period_days is not null
+    );
+  end if;
+
+  if v_passed then
+    update public.accord_proposals
+    set status = 'passed', resolved_at = now(), threshold = v_accord.threshold
+    where id = p_accord_id;
+
+    insert into public.group_events (group_id, event_type, summary, actor_id, metadata)
+    values (
+      v_accord.group_id,
+      'accord_passed',
+      'Accord passed',
+      v_accord.proposed_by,
+      json_build_object(
+        'accord_id', p_accord_id,
+        'proposal_text', v_accord.text,
+        'approve_count', v_approve_count,
+        'active_members', v_active_count
+      )::jsonb
+    );
+  else
+    update public.accord_proposals
+    set status = 'failed', resolved_at = now(), threshold = v_accord.threshold
+    where id = p_accord_id;
+
+    insert into public.group_events (group_id, event_type, summary, actor_id, metadata)
+    values (
+      v_accord.group_id,
+      'accord_failed',
+      'Accord failed',
+      v_accord.proposed_by,
+      json_build_object(
+        'accord_id', p_accord_id,
+        'proposal_text', v_accord.text,
+        'approve_count', v_approve_count,
+        'active_members', v_active_count
+      )::jsonb
+    );
+  end if;
+
+  return json_build_object(
+    'passed', v_passed,
+    'approve_count', v_approve_count,
+    'reject_count', v_reject_count,
+    'voter_count', v_voter_count,
+    'active_members', v_active_count,
+    'ratio', round(v_ratio * 100, 1),
+    'threshold', round(v_accord.threshold * 100, 1),
+    'voting_period', v_period_days is not null
+  );
+end;
+$$ language plpgsql security definer;
+
+
 -- Finalize voting rounds that have passed their constitution voting period (client-triggered)
 create or replace function public.finalize_expired_voting(p_group_id uuid)
 returns json as $$
@@ -1356,7 +1648,9 @@ declare
   v_period_days int;
   v_round record;
   v_amendment record;
+  v_accord record;
   v_amendment_ids uuid[] := '{}';
+  v_accord_ids uuid[] := '{}';
   v_currency_rounds text[] := '{}';
   v_candidate_ids uuid[] := '{}';
   v_candidate_id uuid;
@@ -1393,6 +1687,17 @@ begin
   loop
     perform public.resolve_amendment(v_amendment.id);
     v_amendment_ids := array_append(v_amendment_ids, v_amendment.id);
+  end loop;
+
+  for v_accord in
+    select id
+    from public.accord_proposals
+    where group_id = p_group_id
+      and status = 'voting'
+      and expires_at <= now()
+  loop
+    perform public.resolve_accord(v_accord.id);
+    v_accord_ids := array_append(v_accord_ids, v_accord.id);
   end loop;
 
   for v_round in
@@ -1433,6 +1738,7 @@ begin
     'finalized', true,
     'currency_rounds', to_json(v_currency_rounds),
     'amendments', to_json(v_amendment_ids),
+    'accords', to_json(v_accord_ids),
     'candidates', to_json(v_candidate_ids)
   );
 end;
@@ -1585,6 +1891,22 @@ begin
       v_subject := '[' || coalesce(v_group_name, 'FairShare') || '] Amendment proposed: ' || v_title;
       v_html := '<div style="font-family:sans-serif;max-width:480px;margin:0 auto;">'
         || '<h2 style="color:#1a5276;">New Amendment Proposed</h2>'
+        || '<p>' || p_summary || '</p>'
+        || '<p style="margin-top:1rem;">Log in to review and vote:</p>'
+        || '<p><a href="https://app.fairshare.social/" '
+        || 'style="display:inline-block;padding:0.6rem 1.2rem;background:#1a5276;color:#fff;'
+        || 'border-radius:6px;text-decoration:none;font-weight:600;">Open FairShare</a></p>'
+        || '<p style="font-size:0.8rem;color:#888;margin-top:2rem;">'
+        || 'You are receiving this because you are a member of ' || coalesce(v_group_name, 'a FairShare group') || '. '
+        || 'You can disable email notifications in your profile settings.</p>'
+        || '</div>';
+      perform public.notify_group_members(p_group_id, v_actor_id, v_subject, v_html, p_include_actor := true);
+
+    when 'accord_proposed' then
+      select name into v_group_name from public.groups where id = p_group_id;
+      v_subject := '[' || coalesce(v_group_name, 'FairShare') || '] New proposal for accord';
+      v_html := '<div style="font-family:sans-serif;max-width:480px;margin:0 auto;">'
+        || '<h2 style="color:#1a5276;">New Accord Proposal</h2>'
         || '<p>' || p_summary || '</p>'
         || '<p style="margin-top:1rem;">Log in to review and vote:</p>'
         || '<p><a href="https://app.fairshare.social/" '

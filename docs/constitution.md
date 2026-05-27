@@ -2,7 +2,7 @@
 
 ## Overview
 
-Each group has a text constitution with machine-readable tagged variables. Any active member can propose amendments, which are voted on over a 7-day period and require a configurable approval threshold to pass. When an amendment passes, tagged variable changes are automatically applied to the group's settings. Amendment history is preserved with full voting records.
+Each group has a text constitution with machine-readable tagged variables. Any active member can propose constitutional amendments and can also create proposals that may become accords. Both vote flows run over a 7-day period by default (or `$VOTING_PERIOD_DAYS` when present), and each has a configurable approval threshold. When an amendment passes, tagged variable changes are automatically applied to the group's settings. Amendment and accord proposal history is preserved with full voting records.
 
 ## Constitution Format
 
@@ -16,6 +16,8 @@ In economic matters, we choose the Currency Name: credits $CURRENCY_NAME, and th
 To Approve New Member: 100% $NEW_MEMBER_PERCENTAGE of member's vote is required.
 
 Any member may propose amendment to this constitution. To Approve Amendment: 100% $AMENDMENT_PERCENTAGE of member's vote is required.
+
+Any member may write a proposed accord. To Approve a proposed accord: 50% $ACCORD_PERCENTAGE of member's vote is required.
 
 Voting will happen over a period of 3 days $VOTING_PERIOD_DAYS, with the percentage to approve being taken from the number of votes submitted.
 ```
@@ -33,6 +35,7 @@ When an amendment changes a tagged value and passes, the `resolve_amendment` fun
 | `$CURRENCY_SYMBOL` | Updates `groups.currency_symbol` |
 | `$NEW_MEMBER_PERCENTAGE` | Read at endorsement time from constitution text |
 | `$AMENDMENT_PERCENTAGE` | Snapshot stored on each new amendment proposal |
+| `$ACCORD_PERCENTAGE` | Snapshot stored on each new accord proposal (default 50%) |
 | `$CHANGE_CURRENCY_RATES_PERCENTAGE` | Read at vote time by `compute_tally`; controls when enough members have voted to apply median fee rate / daily income (default 66%) |
 | `$VOTING_PERIOD_DAYS` | When set (e.g. `3 days`), voting uses period-based denominators; amendment `expires_at` uses this many days; `finalize_expired_voting` closes expired rounds (client-triggered) |
 
@@ -86,6 +89,36 @@ create table public.amendment_votes (
 );
 ```
 
+### Accord proposals table
+
+```sql
+create table public.accord_proposals (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid not null references public.groups(id) on delete cascade,
+  proposed_by uuid not null references public.profiles(id),
+  text text not null,
+  status text not null default 'voting'
+    check (status in ('voting', 'passed', 'failed', 'withdrawn')),
+  threshold numeric not null,
+  created_at timestamptz default now(),
+  expires_at timestamptz default (now() + interval '7 days'),
+  resolved_at timestamptz
+);
+```
+
+### Accord votes table
+
+```sql
+create table public.accord_votes (
+  id uuid primary key default gen_random_uuid(),
+  accord_id uuid not null references public.accord_proposals(id) on delete cascade,
+  user_id uuid not null references public.profiles(id),
+  vote boolean not null,
+  created_at timestamptz default now(),
+  unique(accord_id, user_id)
+);
+```
+
 ## Resolution Logic
 
 The `resolve_amendment` function (PostgreSQL, `SECURITY DEFINER`):
@@ -98,6 +131,8 @@ The `resolve_amendment` function (PostgreSQL, `SECURITY DEFINER`):
 6. On pass: updates `groups.constitution`, parses `$TAG` values line by line, and applies changes via a `CASE` block
 7. Sets `resolved_at = now()` and updates status to `passed` or `failed`
 
+The `resolve_accord` function follows the same vote-window and threshold mechanics, but instead resolves text proposals in `accord_proposals` and logs `accord_passed` / `accord_failed` events without editing the constitution body.
+
 ## User Interface
 
 ### Constitution View
@@ -105,7 +140,9 @@ The `resolve_amendment` function (PostgreSQL, `SECURITY DEFINER`):
 Accessed via the "Constitution" button in the group action grid. Shows:
 
 - Current constitution text with `$TAG` identifiers highlighted
-- "Propose an Amendment" button
+- Accepted accords directly under the constitution in expandable blocks (proposer, text, voted-in date)
+- "Propose Constitutional Amendment" button
+- "Create Proposal" button
 - Active amendments (status = `voting`) with:
   - Word-level redline diff (insertions in green, deletions in red strikethrough)
   - Vote progress bar with threshold marker
@@ -114,13 +151,20 @@ Accessed via the "Constitution" button in the group action grid. Shows:
   - Withdraw button (for the proposer)
   - Resolve button (for expired amendments)
 - Amendment history (passed/failed/withdrawn) with diffs and vote tallies
+- Active proposals and proposal history rendered with the same vote card treatment
 
-### Propose Amendment Modal
+### Propose Constitutional Amendment Modal
 
 - Title field for a short summary
 - Textarea pre-filled with the current constitution text
 - Live redline diff preview that updates as you type
 - Submit creates an `amendments` row with the current threshold snapshotted
+
+### Create Proposal Modal
+
+- Free-text proposal entry field
+- Helper text explains proposal circulation and voting period (when configured)
+- Submit creates an `accord_proposals` row with `$ACCORD_PERCENTAGE` snapshotted
 
 ### Word-Level Diff
 
@@ -138,7 +182,7 @@ sequenceDiagram
     App->>DB: Fetch group.constitution + amendments
     App->>Member: Shows constitution, active amendments with diffs
 
-    Member->>App: Clicks "Propose Amendment"
+    Member->>App: Clicks "Propose Constitutional Amendment"
     App->>App: Modal with editable constitution + live diff
     Member->>App: Submits with title
     App->>DB: INSERT into amendments (old/new text + threshold snapshot)
