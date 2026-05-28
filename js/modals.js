@@ -11,14 +11,15 @@ function showModal(type) {
                 <form id="createGroupForm">
                     <div class="form-group">
                         <label>Group Name</label>
-                        <input type="text" id="newGroupName" required placeholder="e.g. My Community">
+                        <input type="text" id="newGroupName" required placeholder="e.g. San Francisco Local 94101">
                     </div>
                     <div class="form-toggle-row">
-                        <span class="form-toggle-label">Enable group currency</span>
-                        <button type="button" id="newCurrencyEnabled" class="form-switch" role="switch" aria-checked="false" aria-label="Enable group currency">
+                        <span class="form-toggle-label">Enable Group Currency</span>
+                        <button type="button" id="newCurrencyEnabled" class="form-switch" role="switch" aria-checked="false" aria-label="Enable Group Currency">
                             <span class="form-switch-knob"></span>
                         </button>
                     </div>
+                    <p class="voting-basis-helper">Members share resources using a credit system they manage collectively.</p>
                     <div id="createGroupCurrencyFields" class="hidden">
                         <div class="form-group">
                             <label>Currency Name (plural if desired, e.g. "credits")</label>
