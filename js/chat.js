@@ -8,14 +8,17 @@ function getVisibleViewportBottom() {
     return window.innerHeight;
 }
 
-let _chatSizeTimer = null;
+let _chatLayoutTimer = null;
 let _chatViewportCleanup = null;
+let _chatInputCleanup = null;
+let _chatKeyboardBaseline = null;
+let _cachedBottomBarHeight = 0;
 
-function scheduleSizeChatContainer() {
-    clearTimeout(_chatSizeTimer);
-    _chatSizeTimer = setTimeout(() => {
-        _chatSizeTimer = null;
-        sizeChatContainer();
+function scheduleLayoutChatPanel() {
+    clearTimeout(_chatLayoutTimer);
+    _chatLayoutTimer = setTimeout(() => {
+        _chatLayoutTimer = null;
+        layoutChatPanel();
     }, 80);
 }
 
@@ -26,24 +29,72 @@ function unbindChatViewportListeners() {
     }
 }
 
+function unbindChatInputListeners() {
+    if (typeof _chatInputCleanup === 'function') {
+        _chatInputCleanup();
+        _chatInputCleanup = null;
+    }
+}
+
 function bindChatViewportListeners() {
     unbindChatViewportListeners();
+    const onLayout = () => {
+        if (activeTab === 'chat') scheduleLayoutChatPanel();
+    };
+    window.addEventListener('resize', onLayout);
     const vv = window.visualViewport;
-    if (!vv) return;
-    const onVv = () => {
-        if (activeTab === 'chat') scheduleSizeChatContainer();
-    };
-    vv.addEventListener('resize', onVv);
-    vv.addEventListener('scroll', onVv);
+    if (vv) {
+        vv.addEventListener('resize', onLayout);
+        vv.addEventListener('scroll', onLayout);
+    }
     _chatViewportCleanup = () => {
-        vv.removeEventListener('resize', onVv);
-        vv.removeEventListener('scroll', onVv);
+        window.removeEventListener('resize', onLayout);
+        if (vv) {
+            vv.removeEventListener('resize', onLayout);
+            vv.removeEventListener('scroll', onLayout);
+        }
     };
+}
+
+function bindChatInputListeners() {
+    unbindChatInputListeners();
+    const input = document.getElementById('chatInput');
+    if (!input) return;
+    const onFocus = () => onChatInputFocus();
+    const onBlur = () => onChatInputBlur();
+    input.addEventListener('focus', onFocus);
+    input.addEventListener('blur', onBlur);
+    _chatInputCleanup = () => {
+        input.removeEventListener('focus', onFocus);
+        input.removeEventListener('blur', onBlur);
+    };
+}
+
+function setChatKeyboardOpen(open) {
+    document.body.classList.toggle('chat-keyboard-open', !!open);
+    if (!open) _chatKeyboardBaseline = null;
+}
+
+function onChatInputFocus() {
+    _chatKeyboardBaseline = window.innerHeight;
+    setChatKeyboardOpen(true);
+    scheduleLayoutChatPanel();
+}
+
+function onChatInputBlur() {
+    setTimeout(() => {
+        const input = document.getElementById('chatInput');
+        if (input && document.activeElement === input) return;
+        setChatKeyboardOpen(false);
+        scheduleLayoutChatPanel();
+    }, 150);
 }
 
 async function renderChatTab() {
     if (!selectedGroup) return;
     unbindChatViewportListeners();
+    unbindChatInputListeners();
+    setChatKeyboardOpen(false);
     const content = document.getElementById('tabContent');
 
     content.innerHTML = `
@@ -56,7 +107,11 @@ async function renderChatTab() {
             </div>
             <div class="chat-input-bar">
                 <input type="text" id="chatInput" placeholder="Type a message…" maxlength="2000"
+                       autocorrect="off" autocapitalize="off" spellcheck="false"
                        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMessage();}">
+                <button class="btn-icon chat-image-btn" onclick="openGroupChatPhotoPicker()" title="Send photo" type="button">
+                    <i data-lucide="image" aria-hidden="true"></i>
+                </button>
                 <button class="btn-icon chat-map-btn" onclick="openMapPicker()" title="Share location" type="button">
                     <i data-lucide="map-pin" aria-hidden="true"></i>
                 </button>
@@ -65,9 +120,10 @@ async function renderChatTab() {
         </div>
     `;
 
-    // Size the chat container to fill remaining viewport
-    sizeChatContainer();
     bindChatViewportListeners();
+    bindChatInputListeners();
+    layoutChatPanel();
+    requestAnimationFrame(() => scheduleLayoutChatPanel());
 
     if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
 
@@ -78,22 +134,158 @@ async function renderChatTab() {
     const msgsEl = document.getElementById('chatMessages');
     msgsEl.innerHTML = '';
     await loadChatMessages();
+    scheduleLayoutChatPanel();
 }
 
-function sizeChatContainer() {
-    const el = document.getElementById('chatContainer');
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    // Use visual viewport when available so height tracks the IME on Android WebView
+function getBottomBarHeightFallback() {
+    const style = getComputedStyle(document.documentElement);
+    const safe = parseFloat(style.getPropertyValue('--app-chrome-bottom-safe')) || 0;
+    return 62 + safe;
+}
+
+function getBottomBarHeight() {
+    const bar = document.getElementById('bottomBar');
+    if (bar) {
+        const h = bar.getBoundingClientRect().height;
+        if (h > 0) {
+            _cachedBottomBarHeight = h;
+            return h;
+        }
+    }
+    if (_cachedBottomBarHeight > 0) return _cachedBottomBarHeight;
+    return getBottomBarHeightFallback();
+}
+
+/** Pixels of the layout viewport covered by the on-screen keyboard (iOS/Android). */
+function getKeyboardObscuredHeight() {
+    if (!window.visualViewport) return 0;
+    const vv = window.visualViewport;
+    return Math.max(0, window.innerHeight - (vv.offsetTop + vv.height));
+}
+
+function isChatKeyboardOpen() {
+    return document.body.classList.contains('chat-keyboard-open');
+}
+
+/** Bottom offset for the fixed chat input bar (above nav or above keyboard). */
+function getChatInputBottomInset(bottomBarH) {
+    const chromeH = bottomBarH || getBottomBarHeight();
+    if (!isChatKeyboardOpen()) return chromeH;
+
+    const baseline = _chatKeyboardBaseline || window.innerHeight;
+    const viewportShrunk = window.innerHeight < baseline - 50;
+    const vv = window.visualViewport;
+
+    if (vv) {
+        const obscured = getKeyboardObscuredHeight();
+        if (obscured >= 50) return obscured;
+
+        if (viewportShrunk && Math.abs(window.innerHeight - vv.height) < 80 && vv.offsetTop < 80) {
+            return 0;
+        }
+    }
+
+    if (_chatKeyboardBaseline && !viewportShrunk) {
+        const shrink = _chatKeyboardBaseline - window.innerHeight;
+        if (shrink >= 50) return shrink;
+    }
+
+    if (viewportShrunk) return 0;
+
+    return chromeH;
+}
+
+/** Pin the input bar above the bottom nav, or flush above the keyboard when it is open. */
+function layoutChatInputBar(bottomBarH) {
+    const inputBar = document.querySelector('.chat-input-bar');
+    if (!inputBar) return;
+    inputBar.style.bottom = `${getChatInputBottomInset(bottomBarH)}px`;
+}
+
+/** Size the scroll area to the gap between message list top and input bar top. */
+function layoutChatMessagesScrollArea() {
+    const msgsEl = document.getElementById('chatMessages');
+    const inputBar = document.querySelector('.chat-input-bar');
+    if (!msgsEl || !inputBar) return;
+
+    const msgsTop = msgsEl.getBoundingClientRect().top;
+    const inputTop = inputBar.getBoundingClientRect().top;
+    const h = Math.floor(inputTop - msgsTop);
+    if (h > 0) {
+        msgsEl.style.flex = 'none';
+        msgsEl.style.height = `${h}px`;
+        msgsEl.style.maxHeight = `${h}px`;
+    }
+}
+
+function scrollChatToBottom() {
+    const msgsEl = document.getElementById('chatMessages');
+    if (!msgsEl) return;
+    const go = () => { msgsEl.scrollTop = msgsEl.scrollHeight; };
+    go();
+    requestAnimationFrame(go);
+    // iOS keyboard dismiss / layout pass
+    setTimeout(go, 50);
+    setTimeout(go, 150);
+}
+
+function resetChatLayoutStyles() {
+    unbindChatInputListeners();
+    unbindChatViewportListeners();
+    setChatKeyboardOpen(false);
+    document.body.classList.remove('chat-tab-active');
+    const main = document.querySelector('.main-content');
+    if (main) {
+        main.style.height = '';
+        main.style.overflow = '';
+    }
+    const inputBar = document.querySelector('.chat-input-bar');
+    const msgsEl = document.getElementById('chatMessages');
+    if (inputBar) inputBar.style.bottom = '';
+    if (msgsEl) {
+        msgsEl.style.paddingBottom = '';
+        msgsEl.style.height = '';
+        msgsEl.style.maxHeight = '';
+        msgsEl.style.flex = '';
+    }
+}
+
+/** Re-apply chat layout after leaving and returning (e.g. Contacts → Groups). */
+function restoreChatLayoutIfNeeded() {
+    if (activeTab !== 'chat' || !selectedGroup) return;
+    const groupView = document.getElementById('groupView');
+    if (!groupView || groupView.classList.contains('hidden')) return;
+
+    if (!document.getElementById('chatMessages')) {
+        renderChatTab();
+        return;
+    }
+
+    document.body.classList.add('chat-tab-active');
+    bindChatViewportListeners();
+    bindChatInputListeners();
+    layoutChatPanel();
+    requestAnimationFrame(() => scheduleLayoutChatPanel());
+}
+
+/** Fit the groups main column to the visible viewport so only .chat-messages scrolls. */
+function layoutChatPanel() {
+    if (activeTab !== 'chat') return;
+    const main = document.querySelector('.main-content');
+    const groupsContent = document.getElementById('groupsContent');
+    if (!main || !groupsContent || groupsContent.classList.contains('hidden')) return;
+
+    const bottomBarH = getBottomBarHeight();
+    const top = main.getBoundingClientRect().top;
     const bottom = getVisibleViewportBottom();
-    const available = bottom - rect.top - 16;
-    el.style.height = Math.max(available, 300) + 'px';
+    const available = bottom - top;
+    main.style.height = Math.max(available, 200) + 'px';
+    main.style.overflow = 'hidden';
+    layoutChatInputBar(bottomBarH);
+    requestAnimationFrame(() => {
+        layoutChatMessagesScrollArea();
+    });
 }
-
-// Resize chat on window resize
-window.addEventListener('resize', () => {
-    if (activeTab === 'chat') scheduleSizeChatContainer();
-});
 
 async function buildProfileCache() {
     if (!selectedGroup) return;
@@ -179,7 +371,8 @@ async function loadChatMessages(before) {
         } else {
             // Initial load — append and scroll to bottom
             msgsEl.appendChild(fragment);
-            msgsEl.scrollTop = msgsEl.scrollHeight;
+            scheduleLayoutChatPanel();
+            scrollChatToBottom();
         }
     } else if (!before) {
         // No messages at all
@@ -220,7 +413,10 @@ async function createMessageElement(msg) {
     const timeStr = isToday ? time : date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + time;
 
     const loc = parseLocationBody(msg.body);
-    const bubbleContent = loc ? '<div class="chat-location-wrap"></div>' : esc(msg.body);
+    const img = parseImageBody(msg.body);
+    const bubbleContent = img ? '<div class="chat-image-wrap"></div>'
+        : loc ? '<div class="chat-location-wrap"></div>'
+        : esc(msg.body);
 
     // Other people's messages get a small "Report" affordance so users
     // can flag objectionable content (Apple Guideline 1.2). Own messages
@@ -250,8 +446,12 @@ async function createMessageElement(msg) {
             </div>`;
     }
 
-    if (loc) {
-        const bubble = div.querySelector('.chat-bubble');
+    const bubble = div.querySelector('.chat-bubble');
+    if (img && bubble) {
+        bubble.classList.add('chat-bubble-image');
+        const wrap = div.querySelector('.chat-image-wrap');
+        if (wrap) renderChatImagePreview(wrap, img.url);
+    } else if (loc) {
         if (bubble) bubble.classList.add('chat-bubble-location');
         const wrap = div.querySelector('.chat-location-wrap');
         if (wrap) renderLocationPreview(wrap, loc.lat, loc.lng, loc.radius);
@@ -290,13 +490,13 @@ async function sendChatMessage() {
         showToast('Failed to send message: ' + error.message, 'error');
     } else {
         input.value = '';
-        input.focus();
-        // Immediately show the sent message in the UI
-        if (msg) appendChatMessage(msg);
+        input.blur();
+        if (msg) appendChatMessage(msg, true);
+        scheduleLayoutChatPanel();
     }
 }
 
-function appendChatMessage(msg) {
+function appendChatMessage(msg, forceScroll) {
     const msgsEl = document.getElementById('chatMessages');
     if (!msgsEl) return;
 
@@ -310,14 +510,12 @@ function appendChatMessage(msg) {
     }
 
     // Check if we're near the bottom before appending
-    const atBottom = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 60;
+    const atBottom = forceScroll
+        || msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 60;
 
     createMessageElement(msg).then(el => {
         msgsEl.appendChild(el);
-        // Auto-scroll if user was at (or near) the bottom
-        if (atBottom) {
-            msgsEl.scrollTop = msgsEl.scrollHeight;
-        }
+        if (atBottom) scrollChatToBottom();
         if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
     });
 }

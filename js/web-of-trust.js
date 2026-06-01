@@ -1,3 +1,52 @@
+const ATTESTATION_TYPES_FALLBACK = [
+    { id: 'profile_picture_accurate', description: 'Accurate Profile Picture', shared: true },
+    { id: 'respect', description: 'I respect you', shared: false },
+    { id: 'trust', description: 'I trust you', shared: false },
+    { id: 'love', description: 'I Love You', shared: true },
+    { id: 'help', description: 'I will help you', shared: false }
+];
+
+let _attestationTypesCache = null;
+
+async function loadAttestationTypes() {
+    if (_attestationTypesCache) return _attestationTypesCache;
+    try {
+        const { data, error } = await db.rpc('get_attestation_types');
+        if (error) throw error;
+        const types = Array.isArray(data) ? data : [];
+        _attestationTypesCache = types.length ? types : ATTESTATION_TYPES_FALLBACK.slice();
+    } catch (e) {
+        console.warn('Could not load attestation types, using fallback:', e);
+        _attestationTypesCache = ATTESTATION_TYPES_FALLBACK.slice();
+    }
+    return _attestationTypesCache;
+}
+
+function attestationTypeLabel(type) {
+    const row = (_attestationTypesCache || ATTESTATION_TYPES_FALLBACK).find((t) => t.id === type);
+    return row?.description || type;
+}
+
+async function renderVouchChoiceModal() {
+    const body = document.getElementById('modalBody');
+    const types = await loadAttestationTypes();
+    const buttons = types.map((t) => {
+        const tag = t.shared ? '(Shared)' : '(Private)';
+        const btnClass = t.shared ? 'vouch-choice-btn-shared' : 'vouch-choice-btn-private';
+        return `<div class="choice-item"><button type="button" class="btn choice-button ${btnClass}" onclick="vouchWithContactChoice('${esc(t.id)}')">${esc(t.description)} ${esc(tag)}</button></div>`;
+    }).join('');
+    body.innerHTML = `
+        <h3>Vouch for ${esc(vouchWithContactName || 'contact')}</h3>
+        <p style="font-size:0.9rem;color:var(--dark-gray);margin-bottom:1rem;">Vouches decay over time and can be made as often as desired.</p>
+        <div class="choice-list">
+            ${buttons}
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            </div>
+        </div>
+    `;
+}
+
 async function sendAttestation(contactId, type) {
     if (!currentUser) return;
     try {
@@ -6,14 +55,8 @@ async function sendAttestation(contactId, type) {
             p_attestation_type: type
         });
         if (error) throw error;
-        const messageMap = {
-            profile_picture_accurate: 'Profile picture accuracy recorded',
-            respect: 'Respect recorded',
-            trust: 'Trust recorded',
-            love: 'Love recorded',
-            help: 'Help recorded'
-        };
-        showToast(messageMap[type] || 'Attestation recorded', 'info');
+        await loadAttestationTypes();
+        showToast(`${attestationTypeLabel(type)} recorded`, 'info');
         // Notify any open Contact Details screen so it can fill the Vouch button,
         // fire confetti and a haptic. No-op on screens that aren't listening.
         try {

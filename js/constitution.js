@@ -61,11 +61,39 @@ function parseAmendmentThreshold(constitutionText) {
     return 1.0;
 }
 
+function parseAccordThreshold(constitutionText) {
+    if (!constitutionText) return 0.5; // default 50%
+    const match = constitutionText.match(/(\d+)%\s*(?:members?\s*)?\$ACCORD_PERCENTAGE/i);
+    if (match) return parseInt(match[1], 10) / 100;
+    return 0.5;
+}
+
 function parseNewMemberThreshold(constitutionText) {
     if (!constitutionText) return 1.0; // default 100%
     const match = constitutionText.match(/(\d+)%\s*(?:members?\s*)?\$NEW_MEMBER_PERCENTAGE/i);
     if (match) return parseInt(match[1]) / 100;
     return 1.0;
+}
+
+function parseVotingPeriodDays(constitutionText) {
+    if (!constitutionText) return null;
+    const match = constitutionText.match(/(\d+)\s*days?\s*\$VOTING_PERIOD_DAYS/i);
+    return match ? parseInt(match[1], 10) : null;
+}
+
+function isVotingPeriodMode(constitutionText) {
+    const days = parseVotingPeriodDays(constitutionText);
+    return days != null && days > 0;
+}
+
+async function ensureVotingFinalized(groupId) {
+    const constitution = selectedGroup?.constitution;
+    if (!groupId || !isVotingPeriodMode(constitution)) return;
+    try {
+        await db.rpc('finalize_expired_voting', { p_group_id: groupId });
+    } catch (e) {
+        console.warn('ensureVotingFinalized:', e);
+    }
 }
 
 // Build word-level attribution by replaying edit history diffs.
@@ -278,6 +306,8 @@ async function loadConstitutionContent() {
     el.innerHTML = '<p style="color:var(--dark-gray);">Loading…</p>';
 
     try {
+        await ensureVotingFinalized(groupId);
+
         // Refresh group data to get latest constitution
         const { data: freshGroup, error: groupErr } = await db
             .from('groups')
@@ -298,8 +328,8 @@ async function loadConstitutionContent() {
 
         const constitutionHtml = `<div class="constitution-text">${renderConstitution(selectedGroup.constitution)}</div>`;
 
-        // Load active and past amendments in parallel
-        const [activeResult, pastResult, memberResult] = await Promise.all([
+        // Load active and past amendments/proposals in parallel
+        const [activeResult, pastResult, activeProposalResult, pastProposalResult, memberResult] = await Promise.all([
             db.from('amendments')
                 .select('*, proposer:profiles(display_name)')
                 .eq('group_id', groupId)
@@ -309,6 +339,17 @@ async function loadConstitutionContent() {
                 .select('*, proposer:profiles(display_name)')
                 .eq('group_id', groupId)
                 .in('status', ['passed', 'failed', 'withdrawn'])
+                .order('resolved_at', { ascending: false })
+                .limit(20),
+            db.from('accord_proposals')
+                .select('*, proposer:profiles(display_name)')
+                .eq('group_id', groupId)
+                .eq('status', 'voting')
+                .order('created_at', { ascending: false }),
+            db.from('accord_proposals')
+                .select('*, proposer:profiles(display_name)')
+                .in('status', ['passed', 'failed', 'withdrawn'])
+                .eq('group_id', groupId)
                 .order('resolved_at', { ascending: false })
                 .limit(20),
             db.from('members')
@@ -321,19 +362,27 @@ async function loadConstitutionContent() {
 
         if (activeResult.error) console.warn('loadConstitution active amendments error:', activeResult.error);
         if (pastResult.error) console.warn('loadConstitution past amendments error:', pastResult.error);
+        if (activeProposalResult.error) console.warn('loadConstitution active proposals error:', activeProposalResult.error);
+        if (pastProposalResult.error) console.warn('loadConstitution proposal history error:', pastProposalResult.error);
 
         const activeAmendments = activeResult.data;
         const pastAmendments = pastResult.data;
+        const activeProposals = activeProposalResult.data;
+        const pastProposals = pastProposalResult.data;
         const activeMembers = memberResult.count;
 
-        // Get vote counts for all amendments we're showing
+        // Get vote counts for all amendments and proposals we're showing
         const allAmendmentIds = [
             ...(activeAmendments || []).map(a => a.id),
             ...(pastAmendments || []).map(a => a.id)
         ];
+        const allProposalIds = [
+            ...(activeProposals || []).map(a => a.id),
+            ...(pastProposals || []).map(a => a.id)
+        ];
 
-        let votesMap = {};
-        let myVotesMap = {};
+        let amendmentVotesMap = {};
+        let myAmendmentVotesMap = {};
         if (allAmendmentIds.length > 0) {
             const { data: votes } = await db
                 .from('amendment_votes')
@@ -343,30 +392,66 @@ async function loadConstitutionContent() {
             if (myGen !== _constitutionLoadGen) return;  // stale
 
             (votes || []).forEach(v => {
-                if (!votesMap[v.amendment_id]) votesMap[v.amendment_id] = { approve: 0, reject: 0 };
-                if (v.vote) votesMap[v.amendment_id].approve++;
-                else votesMap[v.amendment_id].reject++;
-                if (v.user_id === currentUser.id) myVotesMap[v.amendment_id] = v.vote;
+                if (!amendmentVotesMap[v.amendment_id]) amendmentVotesMap[v.amendment_id] = { approve: 0, reject: 0 };
+                if (v.vote) amendmentVotesMap[v.amendment_id].approve++;
+                else amendmentVotesMap[v.amendment_id].reject++;
+                if (v.user_id === currentUser.id) myAmendmentVotesMap[v.amendment_id] = v.vote;
+            });
+        }
+
+        let proposalVotesMap = {};
+        let myProposalVotesMap = {};
+        if (allProposalIds.length > 0) {
+            const { data: votes } = await db
+                .from('accord_votes')
+                .select('accord_id, user_id, vote')
+                .in('accord_id', allProposalIds);
+
+            if (myGen !== _constitutionLoadGen) return;
+
+            (votes || []).forEach(v => {
+                if (!proposalVotesMap[v.accord_id]) proposalVotesMap[v.accord_id] = { approve: 0, reject: 0 };
+                if (v.vote) proposalVotesMap[v.accord_id].approve++;
+                else proposalVotesMap[v.accord_id].reject++;
+                if (v.user_id === currentUser.id) myProposalVotesMap[v.accord_id] = v.vote;
             });
         }
 
         let html = constitutionHtml;
+        const acceptedAccords = (pastProposals || []).filter((p) => p.status === 'passed');
+        if (acceptedAccords.length > 0) {
+            html += `<h4 style="margin:1.25rem 0 0.5rem;color:var(--accent-color);">Accepted Accords</h4>`;
+            html += acceptedAccords.map((a) => renderAcceptedAccord(a)).join('');
+        }
 
-        // Propose button
+        // Governance action buttons
         html += `<div style="margin:1rem 0;">
-            <button class="btn btn-primary" onclick="showModal('proposeAmendment')">Propose an Amendment</button>
+            <button class="btn btn-primary" onclick="showModal('proposeAmendment')">Propose Constitutional Amendment</button>
+            <button class="btn btn-secondary" onclick="showModal('createProposal')">Create Proposal</button>
         </div>`;
 
         // Active amendments
         if (activeAmendments && activeAmendments.length > 0) {
             html += `<h4 style="margin:1.5rem 0 0.5rem;color:var(--accent-color);">Active Amendments</h4>`;
-            html += activeAmendments.map(a => renderAmendmentCard(a, votesMap, myVotesMap, activeMembers)).join('');
+            html += activeAmendments.map(a => renderAmendmentCard(a, amendmentVotesMap, myAmendmentVotesMap, activeMembers)).join('');
         }
 
         // Past amendments
         if (pastAmendments && pastAmendments.length > 0) {
             html += `<h4 style="margin:1.5rem 0 0.5rem;color:var(--accent-color);">Amendment History</h4>`;
-            html += pastAmendments.map(a => renderAmendmentCard(a, votesMap, myVotesMap, activeMembers)).join('');
+            html += pastAmendments.map(a => renderAmendmentCard(a, amendmentVotesMap, myAmendmentVotesMap, activeMembers)).join('');
+        }
+
+        // Active proposals
+        if (activeProposals && activeProposals.length > 0) {
+            html += `<h4 style="margin:1.5rem 0 0.5rem;color:var(--accent-color);">Active Proposals</h4>`;
+            html += activeProposals.map(a => renderProposalCard(a, proposalVotesMap, myProposalVotesMap, activeMembers)).join('');
+        }
+
+        // Past proposals
+        if (pastProposals && pastProposals.length > 0) {
+            html += `<h4 style="margin:1.5rem 0 0.5rem;color:var(--accent-color);">Proposal History</h4>`;
+            html += pastProposals.map(a => renderProposalCard(a, proposalVotesMap, myProposalVotesMap, activeMembers)).join('');
         }
 
         if (myGen !== _constitutionLoadGen) return;  // final stale check before DOM write
@@ -379,12 +464,32 @@ async function loadConstitutionContent() {
     }
 }
 
+function renderAcceptedAccord(a) {
+    const proposer = esc(a.proposer?.display_name || 'Unknown');
+    const votedInDate = a.resolved_at ? new Date(a.resolved_at).toLocaleDateString() : 'Unknown date';
+    const accordText = a.text || '';
+    const lines = accordText.split(/\r?\n/);
+    const firstLine = (lines[0] || '').trim() || 'Untitled Accord';
+    return `<details class="accord-entry">
+        <summary>${esc(firstLine)}</summary>
+        <div class="accord-entry-body">
+            <div class="amendment-meta">Proposed by ${proposer} &middot; Voted in ${votedInDate}</div>
+            <div class="diff-display" style="margin-top:0.5rem;">${esc(accordText)}</div>
+        </div>
+    </details>`;
+}
+
 function renderAmendmentCard(a, votesMap, myVotesMap, activeMemberCount) {
     const votes = votesMap[a.id] || { approve: 0, reject: 0 };
     const myVote = myVotesMap[a.id];
-    const total = activeMemberCount || 1;
+    const periodMode = isVotingPeriodMode(selectedGroup?.constitution);
+    const voterTotal = periodMode
+        ? Math.max(1, votes.approve + votes.reject)
+        : (activeMemberCount || 1);
+    const total = voterTotal;
     const pct = total > 0 ? (votes.approve / total * 100) : 0;
     const thresholdPct = (a.threshold * 100);
+    const countLabel = periodMode ? `${votes.approve}/${total} voted` : `${votes.approve}/${total}`;
     const now = new Date();
     const expires = new Date(a.expires_at);
     const isExpired = expires <= now;
@@ -421,7 +526,7 @@ function renderAmendmentCard(a, votesMap, myVotesMap, activeMemberCount) {
             &middot; ${a.status === 'voting' ? timeLeft : (a.resolved_at ? new Date(a.resolved_at).toLocaleDateString() : '')}
         </div>
         <div class="vote-bar">
-            <span style="font-size:0.8rem;font-weight:600;">${votes.approve}/${total}</span>
+            <span style="font-size:0.8rem;font-weight:600;">${countLabel}</span>
             <div class="vote-bar-track">
                 <div class="vote-bar-fill" style="width:${pct}%"></div>
                 <div class="vote-bar-threshold" style="left:${thresholdPct}%" title="Threshold: ${thresholdPct}%"></div>
@@ -431,6 +536,69 @@ function renderAmendmentCard(a, votesMap, myVotesMap, activeMemberCount) {
         <details style="margin:0.5rem 0;">
             <summary style="cursor:pointer;font-size:0.85rem;color:var(--primary-color);font-weight:500;">Show changes</summary>
             <div class="diff-display" style="margin-top:0.5rem;">${diffHtml}</div>
+        </details>
+        ${actions ? `<div style="display:flex;gap:0.5rem;margin-top:0.5rem;">${actions}</div>` : ''}
+    </div>`;
+}
+
+function renderProposalCard(a, votesMap, myVotesMap, activeMemberCount) {
+    const votes = votesMap[a.id] || { approve: 0, reject: 0 };
+    const myVote = myVotesMap[a.id];
+    const periodMode = isVotingPeriodMode(selectedGroup?.constitution);
+    const voterTotal = periodMode
+        ? Math.max(1, votes.approve + votes.reject)
+        : (activeMemberCount || 1);
+    const total = voterTotal;
+    const pct = total > 0 ? (votes.approve / total * 100) : 0;
+    const parsedThreshold = Number(a.threshold);
+    const threshold = Number.isFinite(parsedThreshold) ? parsedThreshold : parseAccordThreshold(selectedGroup?.constitution);
+    const thresholdPct = threshold * 100;
+    const countLabel = periodMode ? `${votes.approve}/${total} voted` : `${votes.approve}/${total}`;
+    const now = new Date();
+    const expires = new Date(a.expires_at);
+    const isExpired = expires <= now;
+    const timeLeft = isExpired ? 'Expired' : formatTimeLeft(expires - now);
+
+    let actions = '';
+    if (a.status === 'voting') {
+        if (isExpired) {
+            actions = `<button class="btn btn-primary btn-small" onclick="resolveProposal('${a.id}')">Resolve Vote</button>`;
+        } else {
+            const approveClass = myVote === true ? 'btn-success' : 'btn-outline';
+            const rejectClass = myVote === false ? 'btn-danger' : 'btn-outline';
+            actions = `
+                <button class="btn ${approveClass} btn-small" onclick="voteProposal('${a.id}', true)"
+                    ${myVote === true ? 'disabled' : ''}>Approve${myVote === true ? 'd' : ''}</button>
+                <button class="btn ${rejectClass} btn-small" onclick="voteProposal('${a.id}', false)"
+                    ${myVote === false ? 'disabled' : ''}>Reject${myVote === false ? 'ed' : ''}</button>
+            `;
+            if (a.proposed_by === currentUser.id) {
+                actions += ` <button class="btn btn-secondary btn-small" onclick="withdrawProposal('${a.id}')">Withdraw</button>`;
+            }
+        }
+    }
+
+    const titleText = (a.text || '').trim().slice(0, 72);
+    return `<div class="amendment-card ${a.status}">
+        <div class="amendment-header">
+            <span class="amendment-title">${esc(titleText)}${titleText.length >= 72 ? '…' : ''}</span>
+            <span class="amendment-status ${a.status}">${a.status}</span>
+        </div>
+        <div class="amendment-meta">
+            Proposed by ${esc(a.proposer?.display_name || 'Unknown')}
+            &middot; ${a.status === 'voting' ? timeLeft : (a.resolved_at ? new Date(a.resolved_at).toLocaleDateString() : '')}
+        </div>
+        <div class="vote-bar">
+            <span style="font-size:0.8rem;font-weight:600;">${countLabel}</span>
+            <div class="vote-bar-track">
+                <div class="vote-bar-fill" style="width:${pct}%"></div>
+                <div class="vote-bar-threshold" style="left:${thresholdPct}%" title="Threshold: ${thresholdPct}%"></div>
+            </div>
+            <span style="font-size:0.75rem;color:var(--dark-gray);">need ${thresholdPct}%</span>
+        </div>
+        <details style="margin:0.5rem 0;">
+            <summary style="cursor:pointer;font-size:0.85rem;color:var(--primary-color);font-weight:500;">Show proposal</summary>
+            <div class="diff-display" style="margin-top:0.5rem;">${esc(a.text || '')}</div>
         </details>
         ${actions ? `<div style="display:flex;gap:0.5rem;margin-top:0.5rem;">${actions}</div>` : ''}
     </div>`;
@@ -467,15 +635,24 @@ async function submitAmendment() {
     if (newText === oldText) { showToast('No changes detected in the constitution', 'error'); return; }
 
     const threshold = parseAmendmentThreshold(oldText);
+    const periodDays = parseVotingPeriodDays(oldText);
 
-    const { error } = await db.from('amendments').insert({
+    const amendmentRow = {
         group_id: selectedGroup.id,
         proposed_by: currentUser.id,
         title,
         old_text: oldText,
         new_text: newText,
         threshold
-    });
+    };
+
+    if (periodDays) {
+        const expires = new Date();
+        expires.setDate(expires.getDate() + periodDays);
+        amendmentRow.expires_at = expires.toISOString();
+    }
+
+    const { error } = await db.from('amendments').insert(amendmentRow);
 
     if (error) { showToast(error.message, 'error'); return; }
 
@@ -487,9 +664,46 @@ async function submitAmendment() {
         p_metadata: { title }
     });
 
-    showToast('Amendment proposed! Members have 7 days to vote.', 'success');
+    const voteDays = periodDays || 7;
+    showToast(`Amendment proposed! Members have ${voteDays} day${voteDays === 1 ? '' : 's'} to vote.`, 'success');
     closeModal();
-    if (activeTab === 'constitution') await loadConstitutionContent();
+    if (activeTab === 'governance') await loadConstitutionContent();
+}
+
+async function submitProposal() {
+    if (!selectedGroup) return;
+    const proposalText = document.getElementById('proposalEditor').value.trim();
+    if (!proposalText) {
+        showToast('Please enter your proposal text', 'error');
+        return;
+    }
+
+    const constitutionText = selectedGroup.constitution || '';
+    const threshold = parseAccordThreshold(constitutionText);
+    const periodDays = parseVotingPeriodDays(constitutionText);
+    const proposalRow = {
+        group_id: selectedGroup.id,
+        proposed_by: currentUser.id,
+        text: proposalText,
+        threshold
+    };
+
+    if (periodDays) {
+        const expires = new Date();
+        expires.setDate(expires.getDate() + periodDays);
+        proposalRow.expires_at = expires.toISOString();
+    }
+
+    const { error } = await db.from('accord_proposals').insert(proposalRow);
+    if (error) {
+        showToast(error.message, 'error');
+        return;
+    }
+
+    const voteDays = periodDays || 7;
+    showToast(`Proposal submitted! Members have ${voteDays} day${voteDays === 1 ? '' : 's'} to vote.`, 'success');
+    closeModal();
+    if (activeTab === 'governance') await loadConstitutionContent();
 }
 
 async function voteAmendment(amendmentId, approve) {
@@ -505,7 +719,10 @@ async function voteAmendment(amendmentId, approve) {
     if (approve) {
         const { data, error: resolveError } = await db.rpc('resolve_amendment', { p_amendment_id: amendmentId });
         if (!resolveError && data?.passed) {
-            showToast(`Amendment passed! (${data.approve_count}/${data.active_members} approved, ${data.ratio}% ≥ ${data.threshold}% needed)`, 'success');
+            const tally = data.voting_period && data.voter_count != null
+                ? `${data.approve_count}/${data.voter_count} voted`
+                : `${data.approve_count}/${data.active_members} approved`;
+            showToast(`Amendment passed! (${tally}, ${data.ratio}% ≥ ${data.threshold}% needed)`, 'success');
             // Refresh group data since constitution may have changed
             const { data: freshGroup } = await db.from('groups').select('*').eq('id', selectedGroup.id).single();
             if (freshGroup) {
@@ -523,14 +740,48 @@ async function voteAmendment(amendmentId, approve) {
     await loadConstitutionContent();
 }
 
+async function voteProposal(proposalId, approve) {
+    const { error } = await db.from('accord_votes').upsert({
+        accord_id: proposalId,
+        user_id: currentUser.id,
+        vote: approve
+    }, { onConflict: 'accord_id,user_id' });
+
+    if (error) {
+        showToast(error.message, 'error');
+        return;
+    }
+
+    if (approve) {
+        const { data, error: resolveError } = await db.rpc('resolve_accord', { p_accord_id: proposalId });
+        if (!resolveError && data?.passed) {
+            const tally = data.voting_period && data.voter_count != null
+                ? `${data.approve_count}/${data.voter_count} voted`
+                : `${data.approve_count}/${data.active_members} approved`;
+            showToast(`Accord adopted! (${tally}, ${data.ratio}% ≥ ${data.threshold}% needed)`, 'success');
+            await loadConstitutionContent();
+            return;
+        }
+    }
+
+    showToast(approve ? 'Voted to approve proposal' : 'Voted to reject proposal', 'info');
+    await loadConstitutionContent();
+}
+
 async function resolveAmendment(amendmentId) {
     const { data, error } = await db.rpc('resolve_amendment', { p_amendment_id: amendmentId });
     if (error) { showToast(error.message, 'error'); return; }
 
     if (data?.resolved === false) {
-        showToast(`Not enough votes yet (${data.approve_count}/${data.active_members}, need ${data.threshold}%)`, 'info');
+        const tally = data.voting_period && data.voter_count != null
+            ? `${data.approve_count}/${data.voter_count} voted`
+            : `${data.approve_count}/${data.active_members}`;
+        showToast(`Not enough votes yet (${tally}, need ${data.threshold}%)`, 'info');
     } else if (data?.passed) {
-        showToast(`Amendment passed! (${data.approve_count}/${data.active_members} approved, ${data.ratio}% ≥ ${data.threshold}% needed)`, 'success');
+        const tally = data.voting_period && data.voter_count != null
+            ? `${data.approve_count}/${data.voter_count} voted`
+            : `${data.approve_count}/${data.active_members} approved`;
+        showToast(`Amendment passed! (${tally}, ${data.ratio}% ≥ ${data.threshold}% needed)`, 'success');
         const { data: freshGroup } = await db.from('groups').select('*').eq('id', selectedGroup.id).single();
         if (freshGroup) {
             selectedGroup = freshGroup;
@@ -539,7 +790,36 @@ async function resolveAmendment(amendmentId) {
             renderGroupList();
         }
     } else {
-        showToast(`Amendment failed. (${data.approve_count}/${data.active_members} approved, ${data.ratio}% < ${data.threshold}% needed)`, 'error');
+        const tally = data.voting_period && data.voter_count != null
+            ? `${data.approve_count}/${data.voter_count} voted`
+            : `${data.approve_count}/${data.active_members} approved`;
+        showToast(`Amendment failed. (${tally}, ${data.ratio}% < ${data.threshold}% needed)`, 'error');
+    }
+    await loadConstitutionContent();
+}
+
+async function resolveProposal(proposalId) {
+    const { data, error } = await db.rpc('resolve_accord', { p_accord_id: proposalId });
+    if (error) {
+        showToast(error.message, 'error');
+        return;
+    }
+
+    if (data?.resolved === false) {
+        const tally = data.voting_period && data.voter_count != null
+            ? `${data.approve_count}/${data.voter_count} voted`
+            : `${data.approve_count}/${data.active_members}`;
+        showToast(`Not enough votes yet (${tally}, need ${data.threshold}%)`, 'info');
+    } else if (data?.passed) {
+        const tally = data.voting_period && data.voter_count != null
+            ? `${data.approve_count}/${data.voter_count} voted`
+            : `${data.approve_count}/${data.active_members} approved`;
+        showToast(`Accord adopted! (${tally}, ${data.ratio}% ≥ ${data.threshold}% needed)`, 'success');
+    } else {
+        const tally = data.voting_period && data.voter_count != null
+            ? `${data.approve_count}/${data.voter_count} voted`
+            : `${data.approve_count}/${data.active_members} approved`;
+        showToast(`Accord proposal failed. (${tally}, ${data.ratio}% < ${data.threshold}% needed)`, 'error');
     }
     await loadConstitutionContent();
 }
@@ -565,5 +845,22 @@ async function withdrawAmendment(amendmentId) {
     } catch (e) {
         console.error('withdrawAmendment exception:', e);
         showToast('Error withdrawing amendment: ' + e.message, 'error');
+    }
+}
+
+async function withdrawProposal(proposalId) {
+    try {
+        const { error } = await db
+            .from('accord_proposals')
+            .update({ status: 'withdrawn' })
+            .eq('id', proposalId);
+        if (error) {
+            showToast(error.message, 'error');
+            return;
+        }
+        showToast('Proposal withdrawn', 'info');
+        await loadConstitutionContent();
+    } catch (e) {
+        showToast('Error withdrawing proposal: ' + e.message, 'error');
     }
 }

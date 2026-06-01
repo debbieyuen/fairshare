@@ -11,25 +11,49 @@ function showModal(type) {
                 <form id="createGroupForm">
                     <div class="form-group">
                         <label>Group Name</label>
-                        <input type="text" id="newGroupName" required placeholder="e.g. My Community">
+                        <input type="text" id="newGroupName" required placeholder="e.g. San Francisco Local 94101">
                     </div>
-                    <div class="form-group">
-                        <label>Currency Name (plural if desired, e.g. "credits")</label>
-                        <input type="text" id="newCurrencyName" required placeholder="e.g. credits, coins, points">
+                    <div class="form-toggle-row">
+                        <span class="form-toggle-label">Enable Group Currency</span>
+                        <button type="button" id="newCurrencyEnabled" class="form-switch" role="switch" aria-checked="false" aria-label="Enable Group Currency">
+                            <span class="form-switch-knob"></span>
+                        </button>
                     </div>
-                    <div class="form-group">
-                        <label>Currency Symbol</label>
-                        <input type="text" id="newCurrencySymbol" required placeholder="e.g. C, $, ¢" maxlength="5" value="C">
+                    <p class="voting-basis-helper">Members share resources using a credit system they manage collectively.</p>
+                    <div id="createGroupCurrencyFields" class="hidden">
+                        <div class="form-group">
+                            <label>Currency Name (plural if desired, e.g. "credits")</label>
+                            <input type="text" id="newCurrencyName" placeholder="e.g. credits, coins, points" value="credits">
+                        </div>
+                        <div class="form-group">
+                            <label>Currency Symbol</label>
+                            <input type="text" id="newCurrencySymbol" placeholder="e.g. C, $, ¢" maxlength="5" value="C">
+                        </div>
+                        <p id="createGroupCurrencyPreview" style="font-size:0.8rem;color:var(--dark-gray);margin-top:0.5rem;">
+                            Balances display as: <strong>C 100.00 credits</strong>
+                        </p>
                     </div>
-                    <p style="font-size:0.8rem;color:var(--dark-gray);margin-top:0.5rem;">
-                        Balances display as: <strong>C 100.00 credits</strong>
-                    </p>
+                    <div class="form-toggle-row">
+                        <span class="form-toggle-label">Enable Voting Period</span>
+                        <button type="button" id="newVotingPeriodEnabled" class="form-switch form-switch-on" role="switch" aria-checked="true" aria-label="Enable Voting Period">
+                            <span class="form-switch-knob"></span>
+                        </button>
+                    </div>
+                    <div id="createGroupVotingPeriodFields">
+                        <div class="voting-period-days-row">
+                            <label for="newVotingPeriodDays">Voting Period</label>
+                            <input type="number" id="newVotingPeriodDays" min="1" max="365" value="3">
+                            <span>days</span>
+                        </div>
+                        <p class="voting-basis-helper">Voting percentages are among those having voted during the period.</p>
+                    </div>
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
                         <button type="submit" class="btn btn-primary">Create</button>
                     </div>
                 </form>
             `;
+            initCreateGroupForm();
             document.getElementById('createGroupForm').addEventListener('submit', (e) => createGroup(e));
             break;
 
@@ -167,20 +191,7 @@ function showModal(type) {
         }
 
         case 'vouchChoice':
-            body.innerHTML = `
-                <h3>Vouch for ${esc(vouchWithContactName || 'contact')}</h3>
-                <p style="font-size:0.9rem;color:var(--dark-gray);margin-bottom:1rem;">Vouches are not shared with the receiver, and decay over time.</p>
-                <div class="choice-list">
-                    <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="vouchWithContactChoice('profile_picture_accurate')">Profile picture is accurate</button></div>
-                    <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="vouchWithContactChoice('respect')">I respect you</button></div>
-                    <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="vouchWithContactChoice('trust')">I trust you</button></div>
-                    <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="vouchWithContactChoice('love')">I love you</button></div>
-                    <div class="choice-item"><button type="button" class="btn btn-outline choice-button" onclick="vouchWithContactChoice('help')">I will help you</button></div>
-                    <div class="form-actions">
-                        <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-                    </div>
-                </div>
-            `;
+            renderVouchChoiceModal();
             break;
 
         case 'shareLocationDuration':
@@ -223,8 +234,14 @@ function showModal(type) {
 
         case 'proposeAmendment':
             document.getElementById('modalBody').classList.add('modal-wide');
+            {
+                const votingPeriodMatch = selectedGroup?.constitution?.match(/(\d+)\s*days?\s*\$VOTING_PERIOD_DAYS/i);
+                const votingPeriodDays = votingPeriodMatch ? parseInt(votingPeriodMatch[1], 10) : null;
+                const amendmentVoteCopy = votingPeriodDays && votingPeriodDays > 0
+                    ? `Members vote for ${votingPeriodDays} day${votingPeriodDays === 1 ? '' : 's'}. Thresholds apply as described in the constitution.`
+                    : 'Members vote for the period defined in the constitution (or 7 days if not set). Thresholds apply as described in the constitution.';
             body.innerHTML = `
-                <h3>Propose an Amendment</h3>
+                <h3>Propose Constitutional Amendment</h3>
                 <div class="form-group">
                     <label>Title (short summary)</label>
                     <input type="text" id="amendmentTitle" required placeholder="e.g. Lower amendment threshold to 75%">
@@ -241,14 +258,39 @@ function showModal(type) {
                     </div>
                 </div>
                 <p style="font-size:0.8rem;color:var(--dark-gray);margin-top:0.5rem;">
-                    The amendment will be put to a 7-day vote. Members must approve by the threshold defined in the constitution.
+                    ${esc(amendmentVoteCopy)}
                 </p>
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
                     <button type="button" class="btn btn-primary" onclick="submitAmendment()">Submit Amendment</button>
                 </div>
             `;
+            }
             break;
+
+        case 'createProposal': {
+            const votingPeriodMatch = selectedGroup?.constitution?.match(/(\d+)\s*days?\s*\$VOTING_PERIOD_DAYS/i);
+            const votingPeriodDays = votingPeriodMatch ? parseInt(votingPeriodMatch[1], 10) : null;
+            const periodSuffix = votingPeriodDays && votingPeriodDays > 0
+                ? `, with a voting period of ${votingPeriodDays} day${votingPeriodDays === 1 ? '' : 's'}`
+                : '';
+            body.innerHTML = `
+                <h3>Create Proposal</h3>
+                <div class="form-group">
+                    <label>Proposal text</label>
+                    <textarea id="proposalEditor" rows="6"
+                        placeholder="Clearly describe your proposal here, e.g. 'All group members will wear blue pants at all time.'"></textarea>
+                </div>
+                <p style="font-size:0.8rem;color:var(--dark-gray);margin-top:0.5rem;">
+                    When you press 'Submit Proposal', this proposal will be circulated to all group members for their vote${periodSuffix}.
+                </p>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="submitProposal()">Submit Proposal</button>
+                </div>
+            `;
+            break;
+        }
     }
     if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
 }
@@ -611,7 +653,7 @@ async function savePreferences(e) {
             if ('trust_weight_trusted' in payload) currentProfile.trust_weight_trusted = payload.trust_weight_trusted;
         }
         const userDisplay = document.getElementById('userDisplay');
-        if (userDisplay) userDisplay.textContent = payload.display_name;
+        if (userDisplay) userDisplay.textContent = APP_NAME;
         const headerBust = uploadedNewProfilePhoto ? Date.now() : null;
         setHeaderAvatar(profileImageUrl || null, headerBust);
         showToast('Saved.', 'success');

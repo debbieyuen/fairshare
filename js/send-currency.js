@@ -1,4 +1,8 @@
 async function loadSendModal() {
+    if (!selectedGroup || !groupCurrencyEnabled(selectedGroup)) {
+        showToast('This group does not use currency', 'error');
+        return;
+    }
     const body = document.getElementById('modalBody');
 
     // Load active members (excluding self)

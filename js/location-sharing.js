@@ -887,8 +887,10 @@ function openContactLocationFullscreen(contactId, contactName) {
         overlay.id = 'contact-location-fullscreen';
         overlay.className = 'contact-location-fullscreen';
         overlay.innerHTML = `
-            <button class="contact-location-fullscreen-close" aria-label="Close"><i data-lucide="x" aria-hidden="true"></i></button>
-            <div class="contact-location-fullscreen-map" id="contact-location-fullscreen-map"></div>`;
+            <div class="contact-location-fullscreen-frame">
+                <div class="contact-location-fullscreen-map" id="contact-location-fullscreen-map"></div>
+                <button class="contact-location-fullscreen-close" aria-label="Close"><i data-lucide="x" aria-hidden="true"></i></button>
+            </div>`;
         overlay.querySelector('.contact-location-fullscreen-close')
             .addEventListener('click', closeContactLocationFullscreen);
         overlay.addEventListener('click', (e) => {

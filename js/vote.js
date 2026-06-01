@@ -1,13 +1,23 @@
 function showVoteDialog(voteType) {
+    if (!selectedGroup || !groupCurrencyEnabled(selectedGroup)) {
+        showToast('This group does not use currency', 'error');
+        return;
+    }
     const isFee = voteType === 'fee_rate';
     const label = isFee ? 'Fee Rate' : 'Daily Income';
     const currentVal = isFee
         ? `${(Number(selectedGroup.fee_rate) * 100).toFixed(1)}%`
         : `${selectedGroup.currency_symbol} ${Number(selectedGroup.daily_income).toFixed(2)}`;
     const placeholder = isFee ? 'e.g. 5 for 5%' : 'e.g. 10.00';
-    const hint = isFee
-        ? 'Enter a percentage (e.g. 5 for 5%). The group setting will change to the median of all votes once enough members have voted.'
-        : 'Enter an amount. The group setting will change to the median of all votes once enough members have voted.';
+    const periodDays = parseVotingPeriodDays(selectedGroup.constitution);
+    const periodMode = isVotingPeriodMode(selectedGroup.constitution);
+    const hint = periodMode
+        ? (isFee
+            ? `Enter a percentage (e.g. 5 for 5%). During the ${periodDays}-day voting period, the median applies once enough participants have voted.`
+            : `Enter an amount. During the ${periodDays}-day voting period, the median applies once enough participants have voted.`)
+        : (isFee
+            ? 'Enter a percentage (e.g. 5 for 5%). The group setting will change to the median of all votes once enough members have voted.'
+            : 'Enter an amount. The group setting will change to the median of all votes once enough members have voted.');
 
     const body = document.getElementById('modalBody');
     body.innerHTML = `
@@ -50,6 +60,8 @@ async function castVote(e, voteType) {
 
     closeModal();
 
+    await ensureVotingFinalized(selectedGroup.id);
+
     // Auto-tally: check if enough members have voted to apply the change
     const { data: tallyResult } = await db.rpc('compute_tally', {
         p_group_id: selectedGroup.id,
@@ -68,9 +80,13 @@ async function castVote(e, voteType) {
         const displayVal = voteType === 'fee_rate'
             ? `${(tallyResult.median * 100).toFixed(1)}%`
             : `${selectedGroup.currency_symbol} ${Number(tallyResult.median).toFixed(2)}`;
-        showToast(`${label} updated to ${displayVal} (${tallyResult.vote_count}/${tallyResult.active_members} members voted)`, 'success');
+        const tallyLabel = tallyResult.voting_period
+            ? `${tallyResult.vote_count}/${tallyResult.threshold} participants`
+            : `${tallyResult.vote_count}/${tallyResult.active_members} members`;
+        showToast(`${label} updated to ${displayVal} (${tallyLabel} voted)`, 'success');
     } else {
-        showToast(`Vote recorded — ${tallyResult?.vote_count || 0}/${tallyResult?.threshold || '?'} votes needed to apply ${label}`, 'info');
+        const needLabel = tallyResult?.voting_period ? 'participant votes' : 'votes';
+        showToast(`Vote recorded — ${tallyResult?.vote_count || 0}/${tallyResult?.threshold || '?'} ${needLabel} needed to apply ${label}`, 'info');
     }
 
     // Refresh the money tab to show updated rates / "Your vote" line

@@ -62,9 +62,24 @@ Separate trigger on `chat_messages` so the title/body are chat-shaped.
 | Trigger | `INSERT` on `public.chat_messages` (`on_chat_message_push` trigger) |
 | Recipient | Group members with push enabled, excluding the message author |
 | Title | `"{group name} Chat"` |
-| Body | `"{sender display name}: {first 80 chars of message}…"` |
+| Body | `"{sender} sent a photo"` for image messages (`📷image:`), `"{sender} shared a location"` for location (`📍location:`), otherwise `"{sender}: {first 80 chars}…"` |
 | URL | `/?group={groupUuid}&tab=chat` |
-| Source | [sql/fairshare-schema.sql](../sql/fairshare-schema.sql) 1743–1768 |
+| Source | [sql/fairshare-schema.sql](../sql/fairshare-schema.sql) 2059–2090 |
+
+---
+
+## 2a. Direct messages (contact chat)
+
+One-to-one contact chat uses a dedicated trigger on `direct_messages`.
+
+| Field | Value |
+|-------|-------|
+| Trigger | `INSERT` on `public.direct_messages` (`on_direct_message_push` trigger) |
+| Recipient | The message recipient (`to_user_id`) if push is enabled |
+| Title | `"Union"` |
+| Body | `"{sender} sent a photo"` for image messages (`📷image:`), `"{sender} shared a location"` for location (`📍location:`), otherwise `"{sender}: {first 80 chars}…"` |
+| URL | `/?action=view_dm&contact={senderUuid}` |
+| Source | [sql/direct-messages-schema.sql](../sql/direct-messages-schema.sql) 139–174 |
 
 ---
 
@@ -279,6 +294,25 @@ contact.
 
 In-app: also inserts a `contact_notifications` row of type
 `location_share_started`.
+
+---
+
+## 11. Shared vouch received
+
+When a contact sends a vouch whose type is marked `shared` in `attestation_types`
+(e.g. Accurate Profile Picture, I Love You).
+
+| Field | Value |
+|-------|-------|
+| Trigger | RPC `create_attestation(p_to_user_id, p_attestation_type)` after insert, when the type's `shared` flag is true |
+| Recipient | The vouched contact (`p_to_user_id`) |
+| Title | `"Union"` |
+| Body | `"{attester display name} says {vouch description}"` |
+| URL | `/?action=view_contact&contact={attesterUuid}` |
+| Source | [sql/vouch-types-migration.sql](../sql/vouch-types-migration.sql) `create_attestation` |
+
+Non-shared vouch types do not notify the recipient (older clients still call the
+same RPC; behavior is determined server-side by the catalog).
 
 ---
 

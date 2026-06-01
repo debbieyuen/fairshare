@@ -536,9 +536,10 @@ BEGIN
     SELECT
       ('v:' || a.id::text)         AS id,
       'vouch'::text                AS kind,
-      ('You vouched (' || a.attestation_type || ')') AS text,
+      ('You vouched (' || coalesce(at.description, a.attestation_type) || ')') AS text,
       a.created_at                 AS occurred_at
     FROM public.attestations a
+    LEFT JOIN public.attestation_types at ON at.id = a.attestation_type
     WHERE a.from_user_id = v_caller_id
       AND a.to_user_id   = p_contact_id
 

@@ -1,6 +1,29 @@
 -- Web of Trust: Attestations schema for FairShare
 -- Run this in Supabase SQL Editor.
 
+-- 0. Attestation types catalog (display text, shared-with-recipient flag)
+CREATE TABLE IF NOT EXISTS public.attestation_types (
+  id text PRIMARY KEY,
+  description text NOT NULL,
+  shared boolean NOT NULL DEFAULT false,
+  sort_order int NOT NULL DEFAULT 0
+);
+
+ALTER TABLE public.attestation_types ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Authenticated users can read attestation types" ON public.attestation_types;
+CREATE POLICY "Authenticated users can read attestation types"
+  ON public.attestation_types FOR SELECT
+  USING (auth.uid() IS NOT NULL);
+
+INSERT INTO public.attestation_types (id, description, shared, sort_order) VALUES
+  ('profile_picture_accurate', 'Accurate Profile Picture', true,  1),
+  ('respect',                  'I respect you',            false, 2),
+  ('trust',                    'I trust you',              false, 3),
+  ('love',                     'I Love You',               true,  4),
+  ('help',                     'I will help you',          false, 5)
+ON CONFLICT (id) DO NOTHING;
+
 -- 1. Attestations table
 -- Stores individual attestation events. Users can attest multiple times.
 -- No SELECT policy exists — individual rows are never readable via the REST API.
@@ -8,7 +31,7 @@ CREATE TABLE IF NOT EXISTS public.attestations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   from_user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   to_user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  attestation_type text NOT NULL CHECK (attestation_type IN ('profile_picture_accurate', 'respect', 'trust', 'love', 'help')),
+  attestation_type text NOT NULL REFERENCES public.attestation_types(id),
   created_at timestamptz DEFAULT now()
 );
 
@@ -29,9 +52,35 @@ CREATE POLICY "Users can insert own attestations"
   );
 
 
--- 2. RPC: create_attestation
+-- 2. RPC: get_attestation_types
+CREATE OR REPLACE FUNCTION public.get_attestation_types()
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+STABLE
+AS $$
+BEGIN
+  RETURN COALESCE(
+    (
+      SELECT json_agg(
+        json_build_object(
+          'id',          id,
+          'description', description,
+          'shared',      shared
+        )
+        ORDER BY sort_order
+      )
+      FROM public.attestation_types
+    ),
+    '[]'::json
+  );
+END;
+$$;
+
+-- 3. RPC: create_attestation
 -- SECURITY DEFINER so it bypasses RLS for the insert.
 -- Validates that the target is a contact of the caller.
+-- Shared types notify the recipient via push.
 CREATE OR REPLACE FUNCTION public.create_attestation(
   p_to_user_id uuid,
   p_attestation_type text
@@ -42,12 +91,21 @@ SECURITY DEFINER
 AS $$
 DECLARE
   v_caller_id uuid := auth.uid();
+  v_shared boolean;
+  v_description text;
+  v_name text;
+  v_msg text;
 BEGIN
   IF v_caller_id IS NULL THEN
     RAISE EXCEPTION 'You must be logged in';
   END IF;
 
-  IF p_attestation_type NOT IN ('profile_picture_accurate', 'respect', 'trust', 'love', 'help') THEN
+  SELECT shared, description
+  INTO v_shared, v_description
+  FROM public.attestation_types
+  WHERE id = p_attestation_type;
+
+  IF v_description IS NULL THEN
     RAISE EXCEPTION 'Invalid attestation type';
   END IF;
 
@@ -65,12 +123,24 @@ BEGIN
   INSERT INTO public.attestations (from_user_id, to_user_id, attestation_type)
   VALUES (v_caller_id, p_to_user_id, p_attestation_type);
 
+  IF v_shared THEN
+    SELECT display_name INTO v_name FROM public.profiles WHERE id = v_caller_id;
+    v_msg := coalesce(v_name, 'Someone') || ' says ' || v_description;
+    PERFORM public.send_push_to_users(
+      ARRAY[p_to_user_id],
+      v_caller_id,
+      'Union',
+      v_msg,
+      '/?action=view_contact&contact=' || v_caller_id::text
+    );
+  END IF;
+
   RETURN json_build_object('success', true);
 END;
 $$;
 
 
--- 3. RPC: get_my_attestation_counts
+-- 4. RPC: get_my_attestation_counts
 -- Returns aggregate vouch/attestation counts for the caller, plus sponsor tree depth.
 -- Only aggregate counts are returned — never individual attestation details.
 CREATE OR REPLACE FUNCTION public.get_my_attestation_counts()
@@ -141,7 +211,7 @@ BEGIN
 END;
 $$;
 
--- 4. RPC: get_shared_attesters_count
+-- 5. RPC: get_shared_attesters_count
 -- Returns number of distinct "other people" who have attested to both caller and p_contact_id.
 CREATE OR REPLACE FUNCTION public.get_shared_attesters_count(p_contact_id uuid)
 RETURNS integer
@@ -182,7 +252,7 @@ BEGIN
 END;
 $$;
 
--- 5. RPC: get_profile_picture_attesters_count
+-- 6. RPC: get_profile_picture_attesters_count
 -- Returns number of distinct people who attested that the contact's profile picture is accurate.
 CREATE OR REPLACE FUNCTION public.get_profile_picture_attesters_count(p_contact_id uuid)
 RETURNS integer

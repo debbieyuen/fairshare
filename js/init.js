@@ -96,6 +96,14 @@ async function init() {
         }
     }
 
+    if (urlParams.get('action') === 'view_dm') {
+        const notifDmContactId = urlParams.get('contact');
+        if (notifDmContactId) {
+            pendingOpenDmContactId = notifDmContactId;
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    }
+
     if (urlParams.get('action') === 'contact_intro') {
         const introId = urlParams.get('intro');
         if (introId) {
@@ -156,9 +164,11 @@ async function init() {
             } else if (event === 'SIGNED_OUT') {
                 try { stopLocationSharingUpdates(); } catch (_) { /* best effort */ }
                 if (typeof clearContactDetailResumeState === 'function') clearContactDetailResumeState();
+                if (typeof clearDirectMessageResumeState === 'function') clearDirectMessageResumeState();
                 pendingPostHandshakeSelfieContactId = null;
                 pendingPostHandshakeSelfieContactName = null;
                 pendingBetaIosPromptAfterPostHandshakeSelfie = false;
+                pendingOpenDmContactId = null;
                 currentUser = null;
                 currentProfile = null;
                 if (typeof clearSponsorTokenValidated === 'function') clearSponsorTokenValidated();

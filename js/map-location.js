@@ -96,13 +96,20 @@ function openMapPicker() {
         subdomains: 'abcd'
     }).addTo(map);
 
-    let currentLat = 0;
-    let currentLng = 0;
+    let currentLat = null;
+    let currentLng = null;
     let currentRadius = DEFAULT_RADIUS;
     let marker = null;
     let circle = null;
+    const sendBtn = document.getElementById('mapPickerSend');
+
+    function setSendEnabled(enabled) {
+        if (!sendBtn) return;
+        sendBtn.disabled = !enabled;
+    }
 
     function initMapAt(lat, lng) {
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
         currentLat = lat;
         currentLng = lng;
         map.setView([lat, lng], 15);
@@ -131,6 +138,7 @@ function openMapPicker() {
         });
 
         map.on('click', function (e) {
+            if (!marker || !circle || currentLat == null || currentLng == null) return;
             const center = L.latLng(currentLat, currentLng);
             const dist = center.distanceTo(e.latlng);
             const clamped = Math.max(MIN_RADIUS, Math.min(MAX_RADIUS, dist));
@@ -138,6 +146,8 @@ function openMapPicker() {
             circle.setRadius(clamped);
             radiusLabel.textContent = 'Radius: ' + formatRadius(clamped);
         });
+
+        setSendEnabled(true);
     }
 
     function initMapWithGPS() {
@@ -145,17 +155,16 @@ function openMapPicker() {
             if (pos) {
                 initMapAt(pos.lat, pos.lng);
             } else {
-                showToast('Could not get GPS location — place the marker manually', 'error');
-                initMapAt(0, 0);
+                showToast('Could not get GPS location yet. Try again when location permission is enabled.', 'error');
             }
         });
     }
 
+    setSendEnabled(false);
     if (IS_NATIVE || 'geolocation' in navigator) {
         initMapWithGPS();
     } else {
         showToast('Geolocation not available', 'error');
-        initMapAt(0, 0);
     }
 
     document.getElementById('mapPickerCancel').addEventListener('click', function () {
@@ -167,6 +176,10 @@ function openMapPicker() {
     });
 
     document.getElementById('mapPickerSend').addEventListener('click', function () {
+        if (!Number.isFinite(currentLat) || !Number.isFinite(currentLng)) {
+            showToast('Waiting for your location fix. Please try again in a moment.', 'error');
+            return;
+        }
         sendLocationMessage(currentLat, currentLng, currentRadius);
         overlay.remove();
     });
@@ -176,6 +189,14 @@ function openMapPicker() {
 
 async function sendLocationMessage(lat, lng, radius) {
     if (!selectedGroup || !currentUser) return;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        showToast('Location unavailable. Please retry after location permission is granted.', 'error');
+        return;
+    }
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        showToast('Invalid location. Please pick a valid point on the map.', 'error');
+        return;
+    }
     const body = `📍location:${lat.toFixed(6)},${lng.toFixed(6)},${Math.round(radius)}`;
 
     const { data: msg, error } = await db.from('chat_messages').insert({
