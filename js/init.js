@@ -35,7 +35,9 @@ async function init() {
         document.getElementById('appScreen').classList.remove('hidden');
     }
 
-    // Check for invite token in URL
+    // Check for invite/meet token in URL. Resolve session first so logged-in
+    // users who open someone else's handshake link do not store the token or
+    // auto-run handlePendingMeet (which would consume the link for signup).
     // NOTE: We use localStorage (not sessionStorage) so the token survives
     // the cross-tab redirect that happens when a new user confirms their
     // email — the confirmation link opens in a new tab where sessionStorage
@@ -43,23 +45,37 @@ async function init() {
     const urlParams = new URLSearchParams(window.location.search);
     const inviteToken = urlParams.get('invite');
     const meetToken = urlParams.get('meet');
+
+    let earlySession = null;
+    try {
+        const { data: { session } } = await db.auth.getSession();
+        earlySession = session;
+    } catch (_) {}
+
     if (inviteToken) {
-        localStorage.setItem('fairshare_invite', JSON.stringify({
-            token: inviteToken,
-            savedAt: Date.now()
-        }));
-        // Clean the invite param from the URL immediately
         window.history.replaceState({}, document.title, window.location.pathname);
-        await showInviteBanner(inviteToken);
+        if (earlySession) {
+            showToast('Share this link with someone who is not yet on FairShare.', 'info');
+        } else {
+            localStorage.setItem('fairshare_invite', JSON.stringify({
+                token: inviteToken,
+                savedAt: Date.now()
+            }));
+            await showInviteBanner(inviteToken);
+        }
     } else if (meetToken) {
-        localStorage.setItem('fairshare_meet', JSON.stringify({
-            token: meetToken,
-            savedAt: Date.now(),
-            meetSource: 'URL',
-        }));
         window.history.replaceState({}, document.title, window.location.pathname);
-        await showMeetBanner(meetToken);
-    } else {
+        if (earlySession) {
+            showToast('Share this link with someone who is not yet on FairShare.', 'info');
+        } else {
+            localStorage.setItem('fairshare_meet', JSON.stringify({
+                token: meetToken,
+                savedAt: Date.now(),
+                meetSource: 'URL',
+            }));
+            await showMeetBanner(meetToken);
+        }
+    } else if (!earlySession) {
         // No URL token, but the user may have rescanned and reloaded the
         // page mid-signup. Re-validate any fresh stored token so the sponsor
         // banner reappears and the signup gate unlocks itself, without ever
@@ -113,7 +129,7 @@ async function init() {
     }
 
     try {
-        const { data: { session } } = await db.auth.getSession();
+        const session = earlySession ?? (await db.auth.getSession()).data?.session;
         if (session) {
             try { localStorage.setItem('fairshare_has_account', '1'); } catch (_) {}
             currentUser = session.user;

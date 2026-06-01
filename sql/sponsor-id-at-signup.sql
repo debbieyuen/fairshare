@@ -57,6 +57,9 @@ BEGIN
       RAISE EXCEPTION 'This handshake has already been used to create an account';
     END IF;
     v_token := v_meet_token;
+    UPDATE public.meet_requests
+    SET used_by = new.id
+    WHERE token = v_meet_token;
   ELSIF v_invite_token IS NOT NULL THEN
     SELECT sponsor_id INTO v_sponsor_id
     FROM public.sponsorships

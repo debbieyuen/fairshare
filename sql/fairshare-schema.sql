@@ -61,6 +61,9 @@ begin
       raise exception 'This handshake has already been used to create an account';
     end if;
     v_token := v_meet_token;
+    update public.meet_requests
+    set used_by = new.id
+    where token = v_meet_token;
   elsif v_invite_token is not null then
     select sponsor_id into v_sponsor_id
     from public.sponsorships
