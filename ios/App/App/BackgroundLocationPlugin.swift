@@ -785,3 +785,4 @@ public class BackgroundLocationPlugin: CAPPlugin, CLLocationManagerDelegate {
         pendingFreshCalls = remaining
     }
 }
+    

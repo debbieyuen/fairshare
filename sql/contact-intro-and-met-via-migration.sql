@@ -112,7 +112,7 @@ BEGIN
     RAISE EXCEPTION 'Meet request not found or expired';
   END IF;
 
-  IF v_meet_request.used_by IS NOT NULL THEN
+  IF v_meet_request.used_by IS NOT NULL AND v_meet_request.used_by <> v_caller_id THEN
     RAISE EXCEPTION 'This meet link has already been used';
   END IF;
 
@@ -125,9 +125,11 @@ BEGIN
     WHERE user_id = v_caller_id AND contact_id = v_meet_request.user_id
   ) INTO v_already_contact;
 
-  UPDATE public.meet_requests
-  SET used_by = v_caller_id
-  WHERE id = v_meet_request.id;
+  IF v_meet_request.used_by IS NULL THEN
+    UPDATE public.meet_requests
+    SET used_by = v_caller_id
+    WHERE id = v_meet_request.id;
+  END IF;
 
   SELECT sponsor_id INTO v_caller_sponsor
   FROM public.profiles

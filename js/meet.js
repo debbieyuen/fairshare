@@ -1,5 +1,7 @@
 let currentMeetUrl = null;
 let currentMeetToken = null;
+let currentMeetRequestId = null;
+let pendingMeetUsedById = null;
 let meetScanTimer = null;
 let meetStream = null;
 let meetChannel = null;
@@ -106,7 +108,7 @@ async function openMeetScreen(options) {
     const { data, error } = await db
         .from('meet_requests')
         .insert(insertPayload)
-        .select('token')
+        .select('token, id')
         .single();
 
     if (error) {
@@ -117,6 +119,10 @@ async function openMeetScreen(options) {
 
     const token = data.token;
     currentMeetToken = token;
+    currentMeetRequestId = data.id;
+    const meetContactsSnapshot = new Set(
+        (contactsLoadedRows || []).map((r) => r.contact?.contact_id).filter(Boolean)
+    );
 
     // If the user toggled a share button while the insert was in flight (when
     // currentMeetToken was still null and toggleMeetShare couldn't write), sync
@@ -145,33 +151,52 @@ async function openMeetScreen(options) {
     if (copyBtn) copyBtn.style.display = '';
     if (typeof refreshLucideIcons === 'function') refreshLucideIcons();
 
-    // 6. Subscribe to Realtime on contacts table for this user
-    // (so if the OTHER person scans first, we still get notified)
-    // Listen for INSERT *and* UPDATE so re-meeting an existing contact still triggers
-    const meetRealtimeHandler = (payload) => {
-        if (meetHandled) return;
+    // 6. Subscribe to Realtime on this meet_requests row and to new contact
+    // INSERTs for this user. used_by may be set at signup (token reservation)
+    // before complete_meet creates the contact row on first login.
+    async function handleMeetRequestConsumed(usedById) {
+        if (meetHandled || !usedById) return;
+        const alreadyContact = meetContactsSnapshot.has(usedById);
+        const { data: row } = await db.from('contacts')
+            .select('contact_id')
+            .eq('user_id', currentUser.id)
+            .eq('contact_id', usedById)
+            .maybeSingle();
+        if (!row && !alreadyContact) {
+            pendingMeetUsedById = usedById;
+            return;
+        }
         meetHandled = true;
-        const contactId = payload.new.contact_id;
-        // Look up the contact's name
-        db.from('profiles').select('display_name').eq('id', contactId).single()
-            .then(({ data: profile }) => {
-                const name = profile?.display_name || 'someone';
-                meetSuccess(name, contactId);
-            });
-    };
-    meetChannel = db.channel('meet-contacts')
+        pendingMeetUsedById = null;
+        const { data: profile } = await db.from('profiles')
+            .select('display_name')
+            .eq('id', usedById)
+            .single();
+        const name = profile?.display_name || 'someone';
+        meetSuccess(name, usedById, alreadyContact || !!row);
+    }
+
+    meetChannel = db.channel('meet-request-' + currentMeetRequestId)
+        .on('postgres_changes', {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'meet_requests',
+            filter: 'id=eq.' + currentMeetRequestId
+        }, (payload) => {
+            const usedById = payload.new?.used_by;
+            if (usedById) void handleMeetRequestConsumed(usedById);
+        })
         .on('postgres_changes', {
             event: 'INSERT',
             schema: 'public',
             table: 'contacts',
             filter: 'user_id=eq.' + currentUser.id
-        }, meetRealtimeHandler)
-        .on('postgres_changes', {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'contacts',
-            filter: 'user_id=eq.' + currentUser.id
-        }, meetRealtimeHandler)
+        }, (payload) => {
+            const contactId = payload.new?.contact_id;
+            if (contactId && contactId === pendingMeetUsedById) {
+                void handleMeetRequestConsumed(contactId);
+            }
+        })
         .subscribe();
 
     // 7. Begin scanning loop if camera is active
@@ -298,6 +323,8 @@ function copyMeetLink() {
 function closeMeetScreen() {
     currentMeetUrl = null;
     currentMeetToken = null;
+    currentMeetRequestId = null;
+    pendingMeetUsedById = null;
     currentMeetGroup = null;
     const copyBtn = document.getElementById('meetCopyBtn');
     if (copyBtn) copyBtn.style.display = 'none';
