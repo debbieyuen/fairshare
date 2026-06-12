@@ -134,6 +134,7 @@ async function init() {
             try { localStorage.setItem('fairshare_has_account', '1'); } catch (_) {}
             currentUser = session.user;
             await loadProfile();
+            if (typeof loadDemoAccountsSetting === 'function') await loadDemoAccountsSetting();
             const claimedGroup = await handlePendingInvite();
             const claimedGroupFromMeet = await handlePendingMeet();
             // Either claim may have just updated profiles.sponsor_id (and
@@ -162,6 +163,7 @@ async function init() {
                 setTimeout(async () => {
                     try {
                         await loadProfile();
+                        if (typeof loadDemoAccountsSetting === 'function') await loadDemoAccountsSetting();
                         const claimedGroup = await handlePendingInvite();
                         const claimedGroupFromMeet = await handlePendingMeet();
                         // Refresh currentProfile if a claim ran — complete_meet /

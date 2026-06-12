@@ -36,6 +36,10 @@ begin
     return jsonb_build_object('error', 'Cannot delete the admin account');
   end if;
 
+  if exists (select 1 from public.profiles where id = v_target_id and is_demo_account = true) then
+    return jsonb_build_object('error', 'This is a demo account for store screenshots. Re-seed via Demo accounts in admin instead of deleting by name.');
+  end if;
+
   -- Clean up non-cascading FK references to profiles(id) / auth.users(id).
   -- Nullable columns: set to NULL.  NOT NULL columns: delete the row.
   update public.profiles        set sponsor_id  = null where sponsor_id  = v_target_id;
@@ -231,6 +235,10 @@ begin
     return jsonb_build_object('error', 'Cannot delete the admin account');
   end if;
 
+  if exists (select 1 from public.profiles where id = v_target_id and is_demo_account = true) then
+    return jsonb_build_object('error', 'This is a demo account for store screenshots. Re-seed via Demo accounts in admin instead of deleting by email.');
+  end if;
+
   select display_name into v_target_name
     from public.profiles
    where id = v_target_id;
@@ -360,6 +368,11 @@ begin
                where n.notification_type = 'nearby_alert' and n.created_at >= t_week),
       'day', (select count(*)::int from public.contact_notifications n
               where n.notification_type = 'nearby_alert' and n.created_at >= t_day)
+    ),
+    'demoAccounts', jsonb_build_object(
+      'total', (select count(*)::int from public.profiles p where p.is_demo_account = true),
+      'week', 0,
+      'day', 0
     )
   );
 end;

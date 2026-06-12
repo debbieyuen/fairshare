@@ -1,0 +1,138 @@
+{
+  "demo_password": "DemoUnion2026!",
+  "sponsor_email": "philip@highfidelity.io",
+  "accounts": [
+    {
+      "slug": "elena-vasquez",
+      "display_name": "Elena Vasquez",
+      "auth_email": "demo+elena@fairshare.social",
+      "contact_email": "elena.vasquez@example.com",
+      "phone": "(555) 555-0101",
+      "portrait_file": "elena-vasquez.jpg",
+      "first_met_at": "2019-03-14",
+      "met_at": "2026-05-02T14:30:00Z",
+      "vouch_weight": "high"
+    },
+    {
+      "slug": "marcus-chen",
+      "display_name": "Marcus Chen",
+      "auth_email": "demo+marcus@fairshare.social",
+      "contact_email": "marcus.chen@example.com",
+      "phone": "(555) 555-0102",
+      "portrait_file": "marcus-chen.jpg",
+      "first_met_at": "2015-08-22",
+      "met_at": "2026-04-18T09:15:00Z",
+      "vouch_weight": "high"
+    },
+    {
+      "slug": "priya-nair",
+      "display_name": "Priya Nair",
+      "auth_email": "demo+priya@fairshare.social",
+      "contact_email": "priya.nair@example.com",
+      "phone": "(555) 555-0103",
+      "portrait_file": "priya-nair.jpg",
+      "first_met_at": "2022-01-09",
+      "met_at": "2026-05-10T18:45:00Z",
+      "vouch_weight": "medium"
+    },
+    {
+      "slug": "james-whitmore",
+      "display_name": "James Whitmore",
+      "auth_email": "demo+james@fairshare.social",
+      "contact_email": "james.whitmore@example.com",
+      "phone": "(555) 555-0104",
+      "portrait_file": "james-whitmore.jpg",
+      "first_met_at": "2011-11-03",
+      "met_at": "2026-03-28T11:00:00Z",
+      "vouch_weight": "high"
+    },
+    {
+      "slug": "sofia-lindgren",
+      "display_name": "Sofia Lindgren",
+      "auth_email": "demo+sofia@fairshare.social",
+      "contact_email": "sofia.lindgren@example.com",
+      "phone": "(555) 555-0105",
+      "portrait_file": "sofia-lindgren.jpg",
+      "first_met_at": "2024-06-17",
+      "met_at": "2026-05-15T08:20:00Z",
+      "vouch_weight": "low"
+    },
+    {
+      "slug": "david-okonkwo",
+      "display_name": "David Okonkwo",
+      "auth_email": "demo+david@fairshare.social",
+      "contact_email": "david.okonkwo@example.com",
+      "phone": "(555) 555-0106",
+      "portrait_file": "david-okonkwo.jpg",
+      "first_met_at": "2020-09-30",
+      "met_at": "2026-04-05T16:10:00Z",
+      "vouch_weight": "medium"
+    },
+    {
+      "slug": "hannah-reeves",
+      "display_name": "Hannah Reeves",
+      "auth_email": "demo+hannah@fairshare.social",
+      "contact_email": "hannah.reeves@example.com",
+      "phone": "(555) 555-0107",
+      "portrait_file": "hannah-reeves.jpg",
+      "first_met_at": "2025-02-11",
+      "met_at": "2026-05-20T12:00:00Z",
+      "vouch_weight": "low"
+    },
+    {
+      "slug": "omar-farouk",
+      "display_name": "Omar Farouk",
+      "auth_email": "demo+omar@fairshare.social",
+      "contact_email": "omar.farouk@example.com",
+      "phone": "(555) 555-0108",
+      "portrait_file": "omar-farouk.jpg",
+      "first_met_at": "2017-07-25",
+      "met_at": "2026-04-22T19:30:00Z",
+      "vouch_weight": "medium"
+    },
+    {
+      "slug": "clara-nguyen",
+      "display_name": "Clara Nguyen",
+      "auth_email": "demo+clara@fairshare.social",
+      "contact_email": "clara.nguyen@example.com",
+      "phone": "(555) 555-0109",
+      "portrait_file": "clara-nguyen.jpg",
+      "first_met_at": "2023-04-08",
+      "met_at": "2026-05-08T10:45:00Z",
+      "vouch_weight": "medium"
+    },
+    {
+      "slug": "nate-bramwell",
+      "display_name": "Nate Bramwell",
+      "auth_email": "demo+nate@fairshare.social",
+      "contact_email": "nate.bramwell@example.com",
+      "phone": "(555) 555-0110",
+      "portrait_file": "nate-bramwell.jpg",
+      "first_met_at": "2026-01-20",
+      "met_at": "2026-05-25T07:00:00Z",
+      "vouch_weight": "low"
+    },
+    {
+      "slug": "zoe-matsumoto",
+      "display_name": "Zoe Matsumoto",
+      "auth_email": "demo+zoe@fairshare.social",
+      "contact_email": "zoe.matsumoto@example.com",
+      "phone": "(555) 555-0111",
+      "portrait_file": "zoe-matsumoto.jpg",
+      "first_met_at": "2021-10-12",
+      "met_at": "2026-04-30T15:25:00Z",
+      "vouch_weight": "medium"
+    },
+    {
+      "slug": "andre-santos",
+      "display_name": "Andre Santos",
+      "auth_email": "demo+andre@fairshare.social",
+      "contact_email": "andre.santos@example.com",
+      "phone": "(555) 555-0112",
+      "portrait_file": "andre-santos.jpg",
+      "first_met_at": "2018-05-06",
+      "met_at": "2026-05-12T13:40:00Z",
+      "vouch_weight": "medium"
+    }
+  ]
+}

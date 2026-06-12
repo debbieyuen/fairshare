@@ -621,6 +621,9 @@ function closeContactListScreen() {
 async function loadAndRenderContactList() {
     const content = document.getElementById('contactsListContent');
     try {
+        if (typeof loadDemoAccountsSetting === 'function') {
+            await loadDemoAccountsSetting();
+        }
         const { data: contacts, error } = await db
             .from('contacts')
             .select('*')
@@ -633,9 +636,11 @@ async function loadAndRenderContactList() {
         // list, even if the server momentarily races a delete with a fresh
         // contact insert. block_user() also clears the contacts row, so
         // this is just a belt-and-suspenders filter.
-        const visibleContacts = (contacts || []).filter(c =>
-            typeof isUserBlocked !== 'function' || !isUserBlocked(c.contact_id)
-        );
+        const visibleContacts = (contacts || []).filter(c => {
+            if (typeof isUserBlocked === 'function' && isUserBlocked(c.contact_id)) return false;
+            if (!demoAccountsVisible && typeof isDemoContact === 'function' && isDemoContact(c.contact_id)) return false;
+            return true;
+        });
 
         if (visibleContacts.length === 0) {
             contactsLoadedRows = [];

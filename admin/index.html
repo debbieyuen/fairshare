@@ -224,6 +224,51 @@
             gap: 0.5rem;
             margin-bottom: 0.5rem;
         }
+        .demo-toggle-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: 0.75rem;
+        }
+        .demo-toggle-label { font-size: 0.9rem; font-weight: 500; }
+        .demo-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            border-radius: 12px;
+            background: var(--medium-gray);
+            border: none;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: background 0.2s;
+        }
+        .demo-switch-on { background: var(--green); }
+        .demo-switch::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--white);
+            transition: transform 0.2s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        .demo-switch-on::after { transform: translateX(20px); }
+        .demo-status {
+            font-size: 0.85rem;
+            color: var(--dark-gray);
+            margin-bottom: 0.75rem;
+            line-height: 1.6;
+        }
+        .demo-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
+        .demo-hint {
+            font-size: 0.78rem;
+            color: var(--dark-gray);
+            line-height: 1.5;
+        }
     </style>
 </head>
 <body>
@@ -262,6 +307,25 @@
 
 <!-- Admin panel -->
 <div id="adminPanel" class="container hidden">
+
+    <!-- Demo accounts -->
+    <div class="card">
+        <h2>Demo accounts</h2>
+        <p style="font-size:0.82rem;color:var(--dark-gray);margin:-0.5rem 0 0.75rem 0;">
+            Fictional contacts for store screenshots and load testing. Hidden in the app by default.
+        </p>
+        <div class="demo-toggle-row">
+            <span class="demo-toggle-label">Show demo accounts in app</span>
+            <button type="button" class="demo-switch" id="demoVisibleSwitch" aria-pressed="false" onclick="toggleDemoVisible()"></button>
+        </div>
+        <div class="demo-status" id="demoStatusText">Loading…</div>
+        <div class="demo-actions">
+            <button type="button" class="btn btn-primary btn-sm" id="demoSeedBtn" onclick="seedDemoAccounts()">Seed / refresh demo accounts</button>
+            <button type="button" class="btn btn-primary btn-sm" id="demoPortraitBtn" onclick="applyDemoPortraits()">Apply demo portraits</button>
+            <button type="button" class="btn btn-primary btn-sm" id="demoTrustBtn" onclick="refreshDemoTrustScores()">Refresh trust scores</button>
+        </div>
+        <p class="demo-hint" id="demoHintText"></p>
+    </div>
 
     <!-- Summary stats -->
     <div class="card">
@@ -430,6 +494,7 @@ async function onAuth(session) {
     document.getElementById('headerUser').textContent = profile?.display_name || currentUser.email;
     document.getElementById('logoutBtn').classList.remove('hidden');
     showScreen('adminPanel');
+    loadDemoAccountsStatus();
     loadAdminStats();
 }
 
@@ -472,7 +537,142 @@ async function loadAdminStats() {
         row('Selfies', s.total, s.week, s.day) +
         row('Suggest profile pic', sp.total, sp.week, sp.day) +
         row('Location shares', ls.total, ls.week, ls.day) +
-        row('Notify if nearby', nn.total, nn.week, nn.day);
+        row('Notify if nearby', nn.total, nn.week, nn.day) +
+        row('Demo accounts', (data?.demoAccounts || {}).total, '—', '—');
+}
+
+// --- Demo accounts ---
+
+let _demoVisible = false;
+
+function setDemoSwitch(on) {
+    _demoVisible = !!on;
+    const sw = document.getElementById('demoVisibleSwitch');
+    if (!sw) return;
+    sw.classList.toggle('demo-switch-on', _demoVisible);
+    sw.setAttribute('aria-pressed', _demoVisible ? 'true' : 'false');
+}
+
+async function loadDemoAccountsStatus() {
+    const statusEl = document.getElementById('demoStatusText');
+    const hintEl = document.getElementById('demoHintText');
+    if (!statusEl) return;
+
+    const { data, error } = await db.rpc('admin_get_demo_accounts_status');
+    if (error) {
+        statusEl.textContent = 'Could not load demo status (run sql/demo-accounts-schema.sql in Supabase).';
+        if (hintEl) hintEl.textContent = '';
+        return;
+    }
+
+    setDemoSwitch(!!data.visible);
+    const visLabel = data.visible ? 'VISIBLE' : 'HIDDEN';
+    const philipContacts = data.philip_demo_contacts ?? 0;
+    statusEl.innerHTML =
+        `<strong>${esc(String(data.demo_count))}</strong> demo account(s) seeded` +
+        ` (expected ${esc(String(data.expected_count))}) · currently <strong>${visLabel}</strong><br>` +
+        `<strong>${esc(String(philipContacts))}</strong> linked as your contacts` +
+        (philipContacts === 0 && data.demo_count > 0
+            ? ' — <span style="color:var(--red)">mismatch: re-run Seed</span>'
+            : philipContacts === 0
+                ? ' — click <strong>Seed / refresh demo accounts</strong> first'
+                : '');
+
+    if (hintEl) {
+        hintEl.innerHTML =
+            'Demo logins: <code>' + esc(data.auth_email_pattern || 'demo+*@fairshare.social') + '</code>' +
+            ' · password: <code>' + esc(data.demo_password || '') + '</code><br>' +
+            'Portraits: click <strong>Apply demo portraits</strong> (serves from <code>/assets/demo-portraits/</code>). ' +
+            'Deploy the site so <code>app.fairshare.social</code> hosts those JPEGs, or use <code>npm run seed:demo</code> to upload to Supabase Storage instead.';
+    }
+}
+
+async function toggleDemoVisible() {
+    const next = !_demoVisible;
+    const sw = document.getElementById('demoVisibleSwitch');
+    if (sw) sw.disabled = true;
+
+    const { data, error } = await db.rpc('admin_set_demo_accounts_visible', { p_visible: next });
+    if (sw) sw.disabled = false;
+
+    if (error) {
+        showToast('Toggle failed: ' + error.message, 'error');
+        return;
+    }
+    if (data?.error) {
+        showToast(data.error, 'error');
+        return;
+    }
+
+    setDemoSwitch(!!data.visible);
+    showToast('Demo accounts are now ' + (data.visible ? 'visible' : 'hidden') + ' in the app.', 'success');
+    loadDemoAccountsStatus();
+}
+
+async function seedDemoAccounts() {
+    if (!confirm('Create or refresh all 12 fictional demo accounts? Safe to re-run.')) return;
+    const btn = document.getElementById('demoSeedBtn');
+    if (btn) btn.disabled = true;
+
+    const { data, error } = await db.rpc('admin_seed_demo_accounts');
+    if (btn) btn.disabled = false;
+
+    if (error) {
+        showToast('Seed failed: ' + error.message, 'error');
+        return;
+    }
+    if (data?.error) {
+        showToast(data.error, 'error');
+        return;
+    }
+
+    showToast(`Demo accounts seeded (${data.total} total). ${data.message || ''}`, 'success');
+    await applyDemoPortraits(true);
+    loadDemoAccountsStatus();
+    loadAdminStats();
+}
+
+async function applyDemoPortraits(silent) {
+    const btn = document.getElementById('demoPortraitBtn');
+    if (btn) btn.disabled = true;
+
+    // Production app loads avatars from the public site, not localhost.
+    const isLocal = /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname);
+    const origin = isLocal ? window.location.origin : 'https://app.fairshare.social';
+    const { data, error } = await db.rpc('admin_apply_demo_portraits', { p_origin: origin });
+
+    if (btn) btn.disabled = false;
+
+    if (error) {
+        if (!silent) showToast('Portrait apply failed: ' + error.message, 'error');
+        return;
+    }
+    if (data?.error) {
+        if (!silent) showToast(data.error, 'error');
+        return;
+    }
+
+    const msg = `Portrait URLs set for ${data.updated} account(s) from ${data.origin}`;
+    if (!silent) showToast(msg + '. Sample: ' + (data.sample_url || ''), 'success');
+}
+
+async function refreshDemoTrustScores() {
+    const btn = document.getElementById('demoTrustBtn');
+    if (btn) btn.disabled = true;
+
+    const { data, error } = await db.rpc('admin_refresh_demo_trust_scores');
+    if (btn) btn.disabled = false;
+
+    if (error) {
+        showToast('Refresh failed: ' + error.message, 'error');
+        return;
+    }
+    if (data?.error) {
+        showToast(data.error, 'error');
+        return;
+    }
+
+    showToast(`Trust scores refreshed for ${data.refreshed} demo contact(s).`, 'success');
 }
 
 // --- User lookup (display name, email, or UUID) ---

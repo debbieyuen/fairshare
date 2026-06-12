@@ -8,7 +8,8 @@
     "build": "node scripts/sync-www.js && node scripts/stamp-build.js",
     "cap:sync": "npm run build && npx cap sync",
     "cap:sync:ios": "npm run build && npx cap sync ios",
-    "cap:sync:android": "npm run build && npx cap sync android"
+    "cap:sync:android": "npm run build && npx cap sync android",
+    "seed:demo": "node scripts/seed-demo-accounts.js"
   },
   "keywords": [],
   "license": "ISC",
