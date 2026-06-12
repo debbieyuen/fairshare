@@ -322,6 +322,7 @@
         <div class="demo-actions">
             <button type="button" class="btn btn-primary btn-sm" id="demoSeedBtn" onclick="seedDemoAccounts()">Seed / refresh demo accounts</button>
             <button type="button" class="btn btn-primary btn-sm" id="demoPortraitBtn" onclick="applyDemoPortraits()">Apply demo portraits</button>
+            <button type="button" class="btn btn-primary btn-sm" id="demoRepairBtn" onclick="repairDemoContacts()">Repair contact links</button>
             <button type="button" class="btn btn-primary btn-sm" id="demoTrustBtn" onclick="refreshDemoTrustScores()">Refresh trust scores</button>
         </div>
         <p class="demo-hint" id="demoHintText"></p>
@@ -568,12 +569,14 @@ async function loadDemoAccountsStatus() {
     setDemoSwitch(!!data.visible);
     const visLabel = data.visible ? 'VISIBLE' : 'HIDDEN';
     const philipContacts = data.philip_demo_contacts ?? 0;
+    const yourId = data.your_id || '';
     statusEl.innerHTML =
         `<strong>${esc(String(data.demo_count))}</strong> demo account(s) seeded` +
         ` (expected ${esc(String(data.expected_count))}) · currently <strong>${visLabel}</strong><br>` +
         `<strong>${esc(String(philipContacts))}</strong> linked as your contacts` +
+        (yourId ? ` · your user id: <code>${esc(yourId)}</code>` : '') +
         (philipContacts === 0 && data.demo_count > 0
-            ? ' — <span style="color:var(--red)">mismatch: re-run Seed</span>'
+            ? '<br><span style="color:var(--red)">No contact links — click <strong>Repair contact links</strong> or re-run Seed after applying latest SQL.</span>'
             : philipContacts === 0
                 ? ' — click <strong>Seed / refresh demo accounts</strong> first'
                 : '');
@@ -626,7 +629,13 @@ async function seedDemoAccounts() {
         return;
     }
 
-    showToast(`Demo accounts seeded (${data.total} total). ${data.message || ''}`, 'success');
+    const contactNote = data.your_contacts != null
+        ? ` ${data.your_contacts} linked to you.`
+        : '';
+    showToast(`Demo accounts seeded (${data.total} total).${contactNote} ${data.message || ''}`, 'success');
+    if ((data.your_contacts ?? 0) === 0 && (data.total ?? 0) > 0) {
+        showToast('No contacts linked — click Repair contact links or re-run latest SQL in Supabase.', 'error');
+    }
     await applyDemoPortraits(true);
     loadDemoAccountsStatus();
     loadAdminStats();
@@ -654,6 +663,26 @@ async function applyDemoPortraits(silent) {
 
     const msg = `Portrait URLs set for ${data.updated} account(s) from ${data.origin}`;
     if (!silent) showToast(msg + '. Sample: ' + (data.sample_url || ''), 'success');
+}
+
+async function repairDemoContacts() {
+    const btn = document.getElementById('demoRepairBtn');
+    if (btn) btn.disabled = true;
+
+    const { data, error } = await db.rpc('admin_repair_demo_contacts');
+    if (btn) btn.disabled = false;
+
+    if (error) {
+        showToast('Repair failed: ' + error.message, 'error');
+        return;
+    }
+    if (data?.error) {
+        showToast(data.error, 'error');
+        return;
+    }
+
+    showToast(`Linked ${data.linked} demo account(s) to you.`, 'success');
+    loadDemoAccountsStatus();
 }
 
 async function refreshDemoTrustScores() {

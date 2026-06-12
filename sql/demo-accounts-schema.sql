@@ -58,15 +58,23 @@ SET search_path = public
 AS $$
 DECLARE
   v_admin_id uuid := 'a8253eea-e76a-46d1-a92d-6fe36911f038';
+  v_caller_id uuid := auth.uid();
   v_visible boolean;
   v_count int;
+  v_contact_count int;
 BEGIN
-  IF auth.uid() IS NULL OR auth.uid() != v_admin_id THEN
+  IF v_caller_id IS NULL OR v_caller_id != v_admin_id THEN
     RAISE EXCEPTION 'Unauthorized: admin access required';
   END IF;
 
   v_visible := public.get_demo_accounts_visible();
   SELECT count(*)::int INTO v_count FROM public.profiles WHERE is_demo_account = true;
+
+  SELECT count(*)::int INTO v_contact_count
+    FROM public.contacts c
+    JOIN public.profiles p ON p.id = c.contact_id
+   WHERE c.user_id = v_caller_id
+     AND p.is_demo_account = true;
 
   RETURN jsonb_build_object(
     'visible', v_visible,
@@ -74,14 +82,8 @@ BEGIN
     'expected_count', 12,
     'demo_password', 'DemoUnion2026!',
     'auth_email_pattern', 'demo+*@fairshare.social',
-    'philip_id', v_admin_id,
-    'philip_demo_contacts', (
-      SELECT count(*)::int
-        FROM public.contacts c
-        JOIN public.profiles p ON p.id = c.contact_id
-       WHERE c.user_id = v_admin_id
-         AND p.is_demo_account = true
-    )
+    'your_id', v_caller_id,
+    'philip_demo_contacts', v_contact_count
   );
 END;
 $$;
@@ -237,7 +239,9 @@ SET search_path = public, auth
 AS $$
 DECLARE
   v_admin_id uuid := 'a8253eea-e76a-46d1-a92d-6fe36911f038';
+  v_owner_id uuid := auth.uid();
   v_password text := 'DemoUnion2026!';
+  v_your_contacts int := 0;
   v_demo jsonb;
   v_accounts jsonb := '[
     {"slug":"elena-vasquez","display_name":"Elena Vasquez","auth_email":"demo+elena@fairshare.social","contact_email":"elena.vasquez@example.com","phone":"(555) 555-0101","first_met_at":"2019-03-14","met_at":"2026-05-02T14:30:00Z","vouch_weight":"high"},
@@ -279,13 +283,13 @@ DECLARE
   v_created int := 0;
   v_updated int := 0;
 BEGIN
-  IF auth.uid() IS NULL OR auth.uid() != v_admin_id THEN
+  IF v_owner_id IS NULL OR v_owner_id != v_admin_id THEN
     RAISE EXCEPTION 'Unauthorized: admin access required';
   END IF;
 
   SELECT coalesce(p.phone, '(555) 555-0001'), coalesce(p.email, 'philip@highfidelity.io')
     INTO v_philip_phone, v_philip_email
-    FROM public.profiles p WHERE p.id = v_admin_id;
+    FROM public.profiles p WHERE p.id = v_owner_id;
 
   v_n := jsonb_array_length(v_accounts);
 
@@ -307,7 +311,7 @@ BEGIN
        SET display_name = v_demo->>'display_name',
            email = v_demo->>'contact_email',
            phone = v_demo->>'phone',
-           sponsor_id = v_admin_id,
+           sponsor_id = v_owner_id,
            is_demo_account = true,
            signup_token = NULL,
            profile_image_url = 'https://app.fairshare.social/assets/demo-portraits/'
@@ -323,19 +327,19 @@ BEGIN
     v_phones := array_append(v_phones, v_demo->>'phone');
 
     PERFORM public._demo_ensure_contact_pair(
-      v_admin_id, v_uid,
+      v_owner_id, v_uid,
       (v_demo->>'first_met_at')::timestamptz,
       (v_demo->>'met_at')::timestamptz
     );
 
     INSERT INTO public.contact_shared (user_id, contact_id, shared_phone, shared_email)
-    VALUES (v_uid, v_admin_id, v_demo->>'phone', v_demo->>'contact_email')
+    VALUES (v_uid, v_owner_id, v_demo->>'phone', v_demo->>'contact_email')
     ON CONFLICT (user_id, contact_id) DO UPDATE
       SET shared_phone = EXCLUDED.shared_phone,
           shared_email = EXCLUDED.shared_email;
 
     INSERT INTO public.contact_shared (user_id, contact_id, shared_phone, shared_email)
-    VALUES (v_admin_id, v_uid, v_philip_phone, v_philip_email)
+    VALUES (v_owner_id, v_uid, v_philip_phone, v_philip_email)
     ON CONFLICT (user_id, contact_id) DO UPDATE
       SET shared_phone = EXCLUDED.shared_phone,
           shared_email = EXCLUDED.shared_email;
@@ -391,14 +395,54 @@ BEGIN
     END LOOP;
   END LOOP;
 
+  SELECT count(*)::int INTO v_your_contacts
+    FROM public.contacts c
+    JOIN public.profiles p ON p.id = c.contact_id
+   WHERE c.user_id = v_owner_id
+     AND p.is_demo_account = true;
+
   RETURN jsonb_build_object(
     'success', true,
     'created', v_created,
     'updated', v_updated,
     'total', v_n,
+    'your_contacts', v_your_contacts,
+    'your_id', v_owner_id,
     'demo_password', v_password,
     'message', 'Click Apply demo portraits in admin if avatars are missing.'
   );
+END;
+$$;
+
+-- 7a. Repair contact links only (idempotent)
+CREATE OR REPLACE FUNCTION public.admin_repair_demo_contacts()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+DECLARE
+  v_admin_id uuid := 'a8253eea-e76a-46d1-a92d-6fe36911f038';
+  v_owner_id uuid := auth.uid();
+  v_demo record;
+  v_count int := 0;
+BEGIN
+  IF v_owner_id IS NULL OR v_owner_id != v_admin_id THEN
+    RAISE EXCEPTION 'Unauthorized: admin access required';
+  END IF;
+
+  FOR v_demo IN
+    SELECT p.id, p.created_at AS first_met
+      FROM public.profiles p
+     WHERE p.is_demo_account = true
+  LOOP
+    PERFORM public._demo_ensure_contact_pair(
+      v_owner_id, v_demo.id, v_demo.first_met, now()
+    );
+    v_count := v_count + 1;
+  END LOOP;
+
+  RETURN jsonb_build_object('success', true, 'linked', v_count, 'your_id', v_owner_id);
 END;
 $$;
 
@@ -466,11 +510,12 @@ SET search_path = public
 AS $$
 DECLARE
   v_admin_id uuid := 'a8253eea-e76a-46d1-a92d-6fe36911f038';
+  v_owner_id uuid := auth.uid();
   v_demo_id uuid;
   v_count int := 0;
   v_result json;
 BEGIN
-  IF auth.uid() IS NULL OR auth.uid() != v_admin_id THEN
+  IF v_owner_id IS NULL OR v_owner_id != v_admin_id THEN
     RAISE EXCEPTION 'Unauthorized: admin access required';
   END IF;
 
@@ -478,7 +523,7 @@ BEGIN
     SELECT c.contact_id
       FROM public.contacts c
       JOIN public.profiles p ON p.id = c.contact_id
-     WHERE c.user_id = v_admin_id
+     WHERE c.user_id = v_owner_id
        AND p.is_demo_account = true
   LOOP
     v_result := public.get_contact_trust_summary(v_demo_id);
@@ -494,3 +539,7 @@ GRANT EXECUTE ON FUNCTION public.admin_set_demo_accounts_visible(boolean) TO aut
 GRANT EXECUTE ON FUNCTION public.admin_seed_demo_accounts() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_refresh_demo_trust_scores() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_apply_demo_portraits(text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_repair_demo_contacts() TO authenticated;
+
+-- Refresh PostgREST schema cache so new RPCs are visible immediately
+NOTIFY pgrst, 'reload schema';
