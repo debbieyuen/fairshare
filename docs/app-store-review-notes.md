@@ -118,13 +118,14 @@ A Privacy Manifest (`PrivacyInfo.xcprivacy`) is included in the bundle. It decla
 
 ## Age rating
 
-We have answered the App Store Connect age rating questionnaire conservatively. Union is rated **17+** because:
+We have answered the App Store Connect age rating questionnaire conservatively. Under Apple's current age-rating system (4+, 9+, 13+, 16+, 18+ — the old 17+ band no longer exists), Union is rated **18+** via **Override to Higher Age Rating** because:
 
 - Chat is unmoderated user-generated text.
 - Users can meet new people via QR-code handshakes.
 - Users can share live location with contacts.
+- Our sign-up flow and Terms of Use require users to confirm they are **18 or older**. (Apple requires an override when a EULA's minimum age exceeds the calculated rating.)
 
-Sign-up requires the user to confirm they are 17 or older. The Privacy Policy further states that Union is not directed at children under 13.
+After completing the content/capability questions (including the messaging / user-generated content capability), we select **Override to Higher Age Rating → 18+** rather than "Not Applicable". The sign-up gate, Terms of Use, and Privacy Policy all consistently state an 18+ minimum age.
 
 ---
 

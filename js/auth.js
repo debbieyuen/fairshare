@@ -91,11 +91,11 @@ async function handleSignup(e) {
     const agree = document.getElementById('signupAgree');
 
     // Apple expects an explicit, blocking agreement to Terms / Privacy /
-    // age (17+) at signup for social-with-UGC apps. The checkbox is also
+    // age (18+) at signup for social-with-UGC apps. The checkbox is also
     // marked `required` in the markup, but we double-check here in case
     // someone JS-bypasses it.
     if (agree && !agree.checked) {
-        showToast('Please confirm you are 17+ and agree to the Terms.', 'error');
+        showToast('Please confirm you are 18+ and agree to the Terms.', 'error');
         try { agree.focus(); } catch (_) {}
         return;
     }
