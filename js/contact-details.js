@@ -1093,7 +1093,18 @@ function cdMapTileSvg() {
 function cdHeroKnownLineText(firstMetIso, createdAtIso) {
     const since = firstMetIso || createdAtIso || null;
     const dur = formatKnownDuration(since);
-    return dur ? `Known ${dur}` : 'Known';
+    if (dur) return `Known ${dur}`;
+    // Sub-month spans: formatKnownDuration returns '' once we're under a
+    // month, so fall back to a day count for brand-new / recent contacts.
+    if (since) {
+        const start = new Date(since);
+        if (!isNaN(start.getTime())) {
+            const days = Math.max(0, Math.floor((Date.now() - start.getTime()) / 86400000));
+            if (days === 0) return 'Known since today';
+            return days === 1 ? 'Known 1 day' : `Known ${days} days`;
+        }
+    }
+    return 'Known';
 }
 
 function cdSaveMetOn(contactId, value) {
