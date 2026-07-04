@@ -72,7 +72,7 @@ Deletion is irreversible.
 
 | Permission / mode | Why Union needs it | Where it's used in the app |
 |---|---|---|
-| Camera (`NSCameraUsageDescription`) | Scanning sponsor QR codes at sign-up; exchanging contacts on the "meet" screen; taking selfies with new contacts | Auth screen → Sign Up → Scan QR; bottom-bar 🤝 Meet button; contact handshake selfie |
+| Camera (`NSCameraUsageDescription`) | Scanning sponsor QR codes at sign-up; exchanging contacts on the "meet" screen; taking selfies with new contacts; suggesting a new profile picture for a contact | Auth screen → Sign Up → Scan QR; bottom-bar 🤝 Meet button; contact handshake selfie; Contact Details → Suggest new picture → Take a picture|
 | Photo Library (`NSPhotoLibraryUsageDescription`) | Picking a profile photo, group logo, or suggested-picture from the user's library | Profile screen → tap avatar; Group screen → tap group logo; Suggest-picture flow on contact details |
 | Location When-In-Use (`NSLocationWhenInUseUsageDescription`) | Showing nearby Union members the user has explicitly chosen to be alerted about; reverse-geocoding for selfies on the Globe screen | Bottom-bar Globe; Contact details → "Notify if nearby" toggle |
 | Location Always (`NSLocationAlwaysAndWhenInUseUsageDescription`) | Continuing live location share to a specific contact while the app is backgrounded — only after the user explicitly toggles "Share My Location" with a duration | Contact details → "Share My Location" toggle (For an Hour / Day / Week / Indefinitely) |

@@ -25,7 +25,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Union uses your camera to scan a sponsor's QR code at sign-up, exchange contact info with someone you meet, and take selfies together with your contacts.</string>
+	<string>Union uses your camera to scan a sponsor's QR code at sign-up, exchange contact info with someone you meet, take selfies together with your contacts, and suggest a new profile picture for a contact.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Union uses your location in the background only while you have actively chosen to share your live location with a specific contact, so they can see your map pin until you stop sharing.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
